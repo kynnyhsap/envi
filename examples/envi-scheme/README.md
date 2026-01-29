@@ -18,11 +18,41 @@ pass://example/api-service/API_KEY
 
 Create a vault called **example** in your password manager with an item called **api-service** containing:
 
-| Field          | Example Value                                      |
-| -------------- | -------------------------------------------------- |
-| `API_KEY`      | `sk_live_abc123`                                   |
-| `DATABASE_URL` | `postgres://user:pass@localhost:5432/mydb`         |
-| `JWT_SECRET`   | `super-secret-jwt-key`                             |
+| Field          | Example Value                              |
+| -------------- | ------------------------------------------ |
+| `API_KEY`      | `sk_live_abc123`                           |
+| `DATABASE_URL` | `postgres://user:pass@localhost:5432/mydb` |
+| `JWT_SECRET`   | `super-secret-jwt-key`                     |
+
+### Setup via 1Password CLI
+
+```bash
+op vault create example
+
+op item create \
+  --vault example \
+  --category login \
+  --title "api-service" \
+  'API_KEY[password]=sk_live_abc123' \
+  'DATABASE_URL[password]=postgres://user:pass@localhost:5432/mydb' \
+  'JWT_SECRET[password]=super-secret-jwt-key'
+```
+
+### Setup via Proton Pass CLI
+
+```bash
+pass-cli vault create --name "example"
+
+pass-cli item create login \
+  --vault-name "example" \
+  --title "api-service" \
+  --password "placeholder"
+```
+
+> **Note:** Add custom fields (`API_KEY`, `DATABASE_URL`, `JWT_SECRET`) via the Proton Pass app, then verify:
+> ```bash
+> pass-cli item view "pass://example/api-service/API_KEY"
+> ```
 
 ## Usage
 

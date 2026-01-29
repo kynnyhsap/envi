@@ -19,10 +19,10 @@ Multiple services in a monorepo, each with their own `.env.example`. Envi auto-d
 Create a vault called **example** with these items:
 
 **api-service**
-| Field          | Description              |
-| -------------- | ------------------------ |
-| `API_KEY`      | API key                  |
-| `DATABASE_URL` | Database connection      |
+| Field          | Description         |
+| -------------- | ------------------- |
+| `API_KEY`      | API key             |
+| `DATABASE_URL` | Database connection |
 
 **web-app**
 | Field                 | Description         |
@@ -32,9 +32,40 @@ Create a vault called **example** with these items:
 | `OAUTH_CLIENT_SECRET` | OAuth client secret |
 
 **worker**
-| Field      | Description            |
-| ---------- | ---------------------- |
-| `REDIS_URL`| Redis connection       |
+| Field      | Description      |
+| ---------- | ---------------- |
+| `REDIS_URL`| Redis connection |
+
+### Setup via CLI
+
+```bash
+# Create the vault
+op vault create example
+
+# API service item
+op item create \
+  --vault example \
+  --category login \
+  --title "api-service" \
+  'API_KEY[password]=sk_live_abc123' \
+  'DATABASE_URL[password]=postgres://user:pass@localhost:5432/mydb'
+
+# Web app item
+op item create \
+  --vault example \
+  --category login \
+  --title "web-app" \
+  'SESSION_SECRET[password]=session-signing-key-xyz' \
+  'OAUTH_CLIENT_ID[password]=oauth-client-id-123' \
+  'OAUTH_CLIENT_SECRET[password]=oauth-client-secret-456'
+
+# Worker item
+op item create \
+  --vault example \
+  --category login \
+  --title "worker" \
+  'REDIS_URL[password]=redis://localhost:6379'
+```
 
 ## Usage
 
