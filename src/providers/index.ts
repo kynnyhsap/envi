@@ -14,7 +14,7 @@ export {
   SECRET_SCHEMES,
 } from './provider'
 
-export { OnePasswordProvider, OP_ACCOUNT_URL, is1PasswordAppRunning } from './1password.provider'
+export { OnePasswordProvider, is1PasswordAppRunning } from './1password.provider'
 export type { OnePasswordConfig } from './1password.provider'
 
 export { ProtonPassProvider } from './proton-pass.provider'

@@ -449,11 +449,11 @@ bun run src/cli.ts validate
 | Variable                   | Description                                    |
 | -------------------------- | ---------------------------------------------- |
 | `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service account token (overrides desktop auth) |
-| `OP_ACCOUNT_NAME`          | 1Password account name (default: "Membrane")   |
+| `OP_ACCOUNT_NAME`          | 1Password account name for desktop app auth    |
 
 ### Authentication Priority (1Password)
 
 1. `OP_SERVICE_ACCOUNT_TOKEN` env var → Service account auth (for CI/CD)
 2. `--account` CLI flag → Desktop app with specified account
 3. `OP_ACCOUNT_NAME` env var → Desktop app with env var account
-4. Default "Membrane" → Desktop app with default account
+4. Error if none provided (account name is required for desktop app auth)

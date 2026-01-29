@@ -1,7 +1,7 @@
 import pc from 'picocolors'
 import { confirm } from '@inquirer/prompts'
 import { log } from '../logger'
-import { getDefaultProvider, is1PasswordAppRunning, OP_ACCOUNT_URL } from '../providers'
+import { getDefaultProvider, is1PasswordAppRunning } from '../providers'
 
 export async function promptConfirm(message: string, defaultValue = true): Promise<boolean> {
   try {
@@ -42,7 +42,6 @@ export async function checkPrerequisites(options: { quiet?: boolean } = {}): Pro
         log.info('  To authenticate, either:')
         log.info(`  ${pc.cyan('1.')} Open the 1Password desktop app`)
         log.info(`  ${pc.cyan('2.')} Set ${pc.cyan('OP_SERVICE_ACCOUNT_TOKEN')} env var`)
-        log.info(`  Create one at ${pc.cyan(`${OP_ACCOUNT_URL}/developer-tools`)}`)
         return false
       }
     }

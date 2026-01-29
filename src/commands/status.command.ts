@@ -2,7 +2,7 @@ import pc from 'picocolors'
 import { log } from '../logger'
 import { getConfig } from '../config'
 import { formatBackupTimestamp, parseEnvFile, resolveAllEnvPaths, getBackupRootDir, type EnvPathInfo } from '../utils'
-import { getDefaultProvider, is1PasswordAppRunning, OP_ACCOUNT_URL } from '../providers'
+import { getDefaultProvider, is1PasswordAppRunning } from '../providers'
 
 interface PathStatus {
   pathInfo: EnvPathInfo
@@ -171,7 +171,6 @@ export async function statusCommand(): Promise<void> {
       log.info('  To authenticate, either:')
       log.info(`  ${pc.cyan('1.')} Open the 1Password desktop app`)
       log.info(`  ${pc.cyan('2.')} Set ${pc.cyan('OP_SERVICE_ACCOUNT_TOKEN')} env var`)
-      log.info(`  Create one at ${pc.cyan(`${OP_ACCOUNT_URL}/developer-tools`)}`)
     } else {
       if (authInfo.type === 'service-account') {
         log.info('  Authenticating via service account...')

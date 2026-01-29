@@ -9,16 +9,13 @@ import { createClient, DesktopAuth, type Client } from '@1password/sdk'
 import { VERSION } from '../config'
 import type { AuthInfo, Provider, ResolveSecretsResult } from './provider'
 
-/** Default 1Password account name. */
-const DEFAULT_ACCOUNT_NAME = 'Membrane'
-
-/** 1Password account URL for service account creation. */
-export const OP_ACCOUNT_URL = 'https://getmembrane.1password.com'
-
 let cachedClient: Client | null = null
 
 export interface OnePasswordConfig {
+  /** 1Password account name (required for desktop app auth). */
   accountName?: string
+  /** 1Password account URL (used in help messages for service account creation). */
+  accountUrl?: string
 }
 
 export class OnePasswordProvider implements Provider {
@@ -26,10 +23,17 @@ export class OnePasswordProvider implements Provider {
   readonly name = '1Password'
   readonly scheme = 'op://'
 
-  private accountName: string
+  private accountName: string | undefined
+  private accountUrl: string | undefined
 
   constructor(config: OnePasswordConfig = {}) {
-    this.accountName = config.accountName ?? process.env['OP_ACCOUNT_NAME'] ?? DEFAULT_ACCOUNT_NAME
+    this.accountName = config.accountName ?? process.env['OP_ACCOUNT_NAME']
+    this.accountUrl = config.accountUrl
+  }
+
+  /** Get the configured account URL (for help messages). */
+  getAccountUrl(): string | undefined {
+    return this.accountUrl
   }
 
   /** Update the account name (e.g., from CLI --account flag). */
@@ -44,7 +48,7 @@ export class OnePasswordProvider implements Provider {
     if (serviceAccountToken) {
       return { type: 'service-account', identifier: serviceAccountToken }
     }
-    return { type: 'desktop-app', identifier: this.accountName }
+    return { type: 'desktop-app', identifier: this.accountName ?? 'unknown' }
   }
 
   async verifyAuth(): Promise<{ success: boolean; error?: string }> {
@@ -92,7 +96,14 @@ export class OnePasswordProvider implements Provider {
     }
 
     const authInfo = this.getAuthInfo()
-    const auth = authInfo.type === 'service-account' ? authInfo.identifier : new DesktopAuth(this.accountName)
+    if (authInfo.type === 'desktop-app' && !this.accountName) {
+      throw new Error(
+        '1Password account name is required for desktop app auth. ' +
+          'Set OP_ACCOUNT_NAME env var, use --account flag, or configure it in providers.1password.accountName.',
+      )
+    }
+
+    const auth = authInfo.type === 'service-account' ? authInfo.identifier : new DesktopAuth(this.accountName!)
 
     cachedClient = await createClient({
       auth,
