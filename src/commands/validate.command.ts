@@ -36,9 +36,6 @@ interface SecretToValidate {
   resolvedReference: string // Reference with ${ENV} substituted
 }
 
-/**
- * Validate reference format (fast, offline).
- */
 function validateReferenceFormat(reference: string): { valid: boolean; error?: string | undefined } {
   try {
     parseSecretReference(reference)
@@ -49,9 +46,6 @@ function validateReferenceFormat(reference: string): { valid: boolean; error?: s
   }
 }
 
-/**
- * Validate reference by actually fetching from the provider (slow, requires auth).
- */
 async function validateReferenceRemote(reference: string): Promise<{ valid: boolean; error?: string | undefined }> {
   try {
     const provider = getProvider()

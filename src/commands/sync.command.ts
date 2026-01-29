@@ -53,13 +53,11 @@ async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null
     const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))
   const { resolved, errors } = await provider.resolveSecrets(nativeRefs)
 
-  // Map native refs back to original refs for lookup
   const nativeToOriginal = new Map<string, string>()
   for (let i = 0; i < references.length; i++) {
     nativeToOriginal.set(nativeRefs[i]!, references[i]!)
   }
 
-  // Report any errors with the specific references that failed
   if (errors.size > 0) {
     log.fail(`Failed to resolve ${errors.size} secret(s):`)
     for (let i = 0; i < secretRefs.length; i++) {

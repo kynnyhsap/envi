@@ -39,14 +39,11 @@ async function diffEnvPath(pathInfo: EnvPathInfo): Promise<DiffResult> {
     return { pathInfo, hasTemplate: false, hasEnv, changes: [] }
   }
 
-  // Parse template
   const templateContent = await templateFile.text()
   const template = parseEnvFile(templateContent)
 
-  // Resolve secrets using the configured provider
   let injected: EnvFile
 
-  // Collect all secret references
   const secretRefs: { key: string; reference: string }[] = []
   for (const [key, envVar] of template.vars) {
     if (isSecretReference(envVar.value)) {
@@ -112,38 +109,32 @@ function maskValue(value: string, maxLen = 40): string {
 }
 
 function displayGitStyleDiff(changes: Change[], pathInfo: EnvPathInfo): void {
-  // Group changes by type
   const newChanges = changes.filter((c) => c.type === 'new')
   const updatedChanges = changes.filter((c) => c.type === 'updated')
   const localModifiedChanges = changes.filter((c) => c.type === 'local_modified')
   const localOnlyChanges = changes.filter((c) => c.type === 'custom')
 
-  // Only show diff if there are actual changes
   if (newChanges.length === 0 && updatedChanges.length === 0 && localModifiedChanges.length === 0) {
     return
   }
 
   log.diffHeader(pathInfo.envPath)
 
-  // New vars (will be added)
   for (const change of newChanges) {
     log.diffAdd(`${change.key}=${maskValue(change.newValue || '')}`)
   }
 
-  // Updated secrets
   for (const change of updatedChanges) {
     log.diffRemove(`${change.key}=${maskValue(change.localValue || '')}`)
     log.diffAdd(`${change.key}=${maskValue(change.newValue || '')}`)
   }
 
-  // Local modifications (shown as context - they'll be preserved)
   for (const change of localModifiedChanges) {
     log.info(
       pc.blue(`~ ${change.key}=${maskValue(change.localValue || '')} ${pc.dim('(local modification, preserved)')}`),
     )
   }
 
-  // Local-only vars (shown as context)
   if (localOnlyChanges.length > 0) {
     log.info('')
     log.info(pc.dim(`  # ${localOnlyChanges.length} local-only var(s) will be preserved`))
@@ -213,11 +204,9 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
 
     hasAnyChanges = true
 
-    // Display git-style diff
     displayGitStyleDiff(result.changes, pathInfo)
   }
 
-  // Summary
   log.banner('Summary')
   log.info('')
 

@@ -104,7 +104,6 @@ export async function statusCommand(): Promise<void> {
   log.info(`  Environment: ${pc.cyan(config.environment)}`)
   log.info(`  Provider: ${pc.cyan(provider.name)}`)
 
-  // Auth status section
   log.header(provider.name)
   log.info('')
 
@@ -153,7 +152,6 @@ export async function statusCommand(): Promise<void> {
     }
   }
 
-  // Configured paths section
   log.header('Configured Paths')
   log.info('')
 
@@ -188,7 +186,6 @@ export async function statusCommand(): Promise<void> {
     }
   }
 
-  // Backups section
   log.header('Backups')
   log.info('')
 
@@ -200,7 +197,6 @@ export async function statusCommand(): Promise<void> {
     log.info(`  ${pc.green(String(backupInfo.count))} backup(s), latest: ${latestFormatted}`)
   }
 
-  // Summary
   const missing = statuses.filter((s) => s.status === 'missing').length
   const synced = statuses.filter((s) => s.status === 'synced').length
   const outdated = statuses.filter((s) => s.status === 'outdated').length

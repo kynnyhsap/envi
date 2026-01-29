@@ -22,7 +22,6 @@ async function findBackupSnapshots(): Promise<BackupSnapshot[]> {
   const config = getConfig()
   const snapshots: BackupSnapshot[] = []
 
-  // Check if backup directory exists
   const backupDirFile = Bun.file(config.backupDir)
   try {
     await backupDirFile.stat()
@@ -30,16 +29,13 @@ async function findBackupSnapshots(): Promise<BackupSnapshot[]> {
     return []
   }
 
-  // Find all timestamp directories
   const glob = new Bun.Glob('*')
   for await (const entry of glob.scan({ cwd: config.backupDir, onlyFiles: false })) {
-    // Check if it's a timestamp directory (YYYY-MM-DD_HH-MM-SS format)
     if (!/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(entry)) continue
 
     const snapshotPath = `${config.backupDir}/${entry}`
     const files: BackupFile[] = []
 
-    // Find all .env files in this snapshot
     const envGlob = new Bun.Glob('**/.env*')
     for await (const envFile of envGlob.scan({ cwd: snapshotPath, dot: true })) {
       const backupPath = `${snapshotPath}/${envFile}`
@@ -67,7 +63,6 @@ async function findBackupSnapshots(): Promise<BackupSnapshot[]> {
     }
   }
 
-  // Sort by timestamp descending (newest first)
   return snapshots.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
 }
 
@@ -126,7 +121,6 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
     process.exit(1)
   }
 
-  // List mode - just show available backups
   if (options.list) {
     log.header('Available Backups')
     log.info('')
@@ -143,7 +137,6 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
     return
   }
 
-  // Select which backup to restore
   let selectedSnapshot: BackupSnapshot
 
   const firstSnapshot = snapshots[0]

@@ -49,7 +49,6 @@ async function findBackupSnapshots(): Promise<BackupSnapshot[]> {
   const config = getConfig()
   const snapshots: BackupSnapshot[] = []
 
-  // Check if backup directory exists
   const backupDirFile = Bun.file(config.backupDir)
   try {
     await backupDirFile.stat()
@@ -57,16 +56,13 @@ async function findBackupSnapshots(): Promise<BackupSnapshot[]> {
     return []
   }
 
-  // Find all timestamp directories
   const glob = new Bun.Glob('*')
   for await (const entry of glob.scan({ cwd: config.backupDir, onlyFiles: false })) {
-    // Check if it's a timestamp directory (YYYY-MM-DD_HH-MM-SS format)
     if (!/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(entry)) continue
 
     const snapshotPath = `${config.backupDir}/${entry}`
     const files: { path: string; size: number }[] = []
 
-    // Find all .env files in this snapshot
     const envGlob = new Bun.Glob('**/.env*')
     for await (const envFile of envGlob.scan({ cwd: snapshotPath, dot: true })) {
       const backupPath = `${snapshotPath}/${envFile}`
@@ -92,7 +88,6 @@ async function findBackupSnapshots(): Promise<BackupSnapshot[]> {
     }
   }
 
-  // Sort by timestamp descending (newest first)
   return snapshots.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
 }
 
@@ -130,7 +125,6 @@ export async function listBackupsCommand(): Promise<void> {
 }
 
 export async function backupCommand(options: { force: boolean; dryRun: boolean; list: boolean }): Promise<void> {
-  // Handle --list flag
   if (options.list) {
     await listBackupsCommand()
     return
@@ -145,7 +139,6 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
   const config = getConfig()
   const envFiles: string[] = []
 
-  // Find all .env files
   const glob = new Bun.Glob('**/.env')
   for await (const entry of glob.scan({ cwd: '.', dot: true })) {
     if (!entry.includes('node_modules') && !entry.startsWith(config.backupDir)) {
@@ -158,7 +151,6 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
     return
   }
 
-  // Generate timestamped backup directory
   const timestamp = generateBackupTimestamp()
   const backupRoot = `${config.backupDir}/${timestamp}`
 

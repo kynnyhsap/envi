@@ -5,7 +5,6 @@
  * to its native secret reference scheme (e.g., `op://`, `pass://`).
  */
 
-/** Parsed secret reference with vault/item/field components. */
 export interface SecretReference {
   vault: string
   item: string
@@ -14,19 +13,16 @@ export interface SecretReference {
   raw: string
 }
 
-/** Result of resolving multiple secrets. */
 export interface ResolveSecretsResult {
   resolved: Map<string, string>
   errors: Map<string, string>
 }
 
-/** Authentication status info returned by providers. */
 export interface AuthInfo {
   type: string
   identifier: string
 }
 
-/** Pre-flight availability check result. */
 export interface AvailabilityResult {
   available: boolean
   /** Status lines to display (e.g., "OP_SERVICE_ACCOUNT_TOKEN: found"). */
@@ -35,7 +31,6 @@ export interface AvailabilityResult {
   helpLines?: string[]
 }
 
-/** Hints for the user when auth fails. */
 export interface AuthFailureHints {
   /** Lines to display after auth failure. */
   lines: string[]
@@ -48,35 +43,25 @@ export interface AuthFailureHints {
  * and vault listing for their respective backends.
  */
 export interface Provider {
-  /** Unique provider identifier (e.g., "1password", "proton-pass") */
   readonly id: string
-  /** Human-readable provider name */
   readonly name: string
-  /** Native URI scheme including "://" (e.g., "op://", "pass://") */
+  /** Including "://" (e.g., "op://", "pass://") */
   readonly scheme: string
 
-  /** Get the current authentication method info. */
   getAuthInfo(): AuthInfo
 
-  /**
-   * Check if the provider is available (e.g., app running, CLI installed).
-   * Called before verifyAuth. If not available, auth is skipped.
-   */
+  /** Called before verifyAuth. If not available, auth is skipped. */
   checkAvailability(): Promise<AvailabilityResult>
 
-  /** Verify that authentication is working. */
   verifyAuth(): Promise<{ success: boolean; error?: string }>
-
-  /** Get hint messages to display when auth fails. */
   getAuthFailureHints(): AuthFailureHints
 
-  /** Resolve a single secret reference string (native format, e.g., "op://vault/item/field"). */
+  /** Reference must be in native format (e.g., "op://vault/item/field"). */
   resolveSecret(reference: string): Promise<string>
 
-  /** Resolve multiple secret reference strings, collecting per-ref errors. */
+  /** Collects per-ref errors instead of throwing. */
   resolveSecrets(references: string[]): Promise<ResolveSecretsResult>
 
-  /** List accessible vaults. */
   listVaults(): Promise<{ id: string; name: string }[]>
 }
 

@@ -13,7 +13,6 @@ export function parseEnvFile(content: string): EnvFile {
   for (const line of lines) {
     const trimmed = line.trim()
 
-    // Check for env marker comment
     if (trimmed.startsWith(ENV_MARKER_PREFIX)) {
       sourceEnv = trimmed.slice(ENV_MARKER_PREFIX.length).trim()
       continue
@@ -53,7 +52,6 @@ export function parseEnvFile(content: string): EnvFile {
 export function serializeEnvFile(envFile: EnvFile, env?: string): string {
   const lines: string[] = []
 
-  // Add env marker at the top if provided
   if (env) {
     lines.push(`${ENV_MARKER_PREFIX}${env}`)
     lines.push('')

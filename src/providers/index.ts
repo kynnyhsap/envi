@@ -36,29 +36,22 @@ const PROVIDER_DEFS: ProviderDef[] = [
 // Derived constants
 // ---------------------------------------------------------------------------
 
-/** All valid provider IDs. */
 export const VALID_PROVIDERS: ProviderType[] = PROVIDER_DEFS.map((d) => d.id)
 
-/** Map from native scheme to provider ID (e.g., "op://" -> "1password"). */
 const SCHEME_TO_PROVIDER = new Map(PROVIDER_DEFS.map((d) => [d.scheme, d.id]))
 
-/** All recognized secret reference schemes (envi:// + native schemes). */
 export const SECRET_SCHEMES = ['envi://', ...SCHEME_TO_PROVIDER.keys()] as const
 
 // ---------------------------------------------------------------------------
 // Reference utilities
 // ---------------------------------------------------------------------------
 
-/** Check if a value is a secret reference (starts with a known scheme). */
 export function isSecretReference(value: string): boolean {
   const trimmed = value.trim()
   return SECRET_SCHEMES.some((scheme) => trimmed.startsWith(scheme))
 }
 
-/**
- * Detect which provider a secret reference should route to.
- * Returns undefined for `envi://` (use configured default).
- */
+/** Returns undefined for `envi://` (use configured default). */
 export function detectProvider(reference: string): ProviderType | undefined {
   const trimmed = reference.trim()
   for (const [scheme, providerId] of SCHEME_TO_PROVIDER) {
@@ -69,11 +62,7 @@ export function detectProvider(reference: string): ProviderType | undefined {
   return undefined
 }
 
-/**
- * Convert a secret reference to the provider's native format.
- * - `envi://vault/item/field` -> `<providerScheme>vault/item/field`
- * - Native refs pass through unchanged.
- */
+/** Converts `envi://` to the provider's native scheme. Native refs pass through unchanged. */
 export function toNativeReference(reference: string, providerScheme: string): string {
   const trimmed = reference.trim()
 
@@ -94,7 +83,6 @@ export function toNativeReference(reference: string, providerScheme: string): st
 // Factory
 // ---------------------------------------------------------------------------
 
-/** Create a provider instance by ID. */
 export function createProvider(id: ProviderType, options: Record<string, string> = {}): Provider {
   const def = PROVIDER_DEFS.find((d) => d.id === id)
   if (!def) throw new Error(`Unknown provider: ${id}`)

@@ -31,10 +31,6 @@ interface RunOptions {
   noTemplate?: boolean
 }
 
-/**
- * Collect all environment variables from templates.
- * Returns a flat Map<key, value> with secrets resolved.
- */
 async function resolveTemplateEnvVars(): Promise<Map<string, string> | null> {
   const config = getConfig()
   const env = config.environment
@@ -101,9 +97,6 @@ async function resolveTemplateEnvVars(): Promise<Map<string, string> | null> {
   return allVars
 }
 
-/**
- * Load and resolve secrets from a raw .env file (may contain pass://, op://, envi:// refs).
- */
 async function resolveEnvFile(filePath: string): Promise<Map<string, string> | null> {
   const config = getConfig()
   const env = config.environment
@@ -240,14 +233,11 @@ export async function runCommand(command: string[], options: RunOptions = {}): P
     log.info('')
   }
 
-  // 3. Build child process environment
-  //    Start with current process env, overlay with resolved vars
   const childEnv: Record<string, string> = { ...process.env } as Record<string, string>
   for (const [key, value] of envVars) {
     childEnv[key] = value
   }
 
-  // 4. Spawn the child process
   const [cmd, ...args] = command
   const proc = Bun.spawn([cmd!, ...args], {
     env: childEnv,
@@ -256,14 +246,12 @@ export async function runCommand(command: string[], options: RunOptions = {}): P
     stderr: 'inherit',
   })
 
-  // Forward signals to child
   const forwardSignal = (signal: NodeJS.Signals) => {
     proc.kill(signal === 'SIGINT' ? 2 : 15)
   }
   process.on('SIGINT', () => forwardSignal('SIGINT'))
   process.on('SIGTERM', () => forwardSignal('SIGTERM'))
 
-  // Wait for child to exit
   const exitCode = await proc.exited
   process.exit(exitCode)
 }

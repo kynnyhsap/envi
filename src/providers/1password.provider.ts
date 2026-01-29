@@ -137,10 +137,6 @@ export class OnePasswordProvider implements Provider {
 
 /** Check if the 1Password desktop app process is running. */
 async function is1PasswordAppRunning(): Promise<boolean> {
-  try {
-    const result = await Bun.$`pgrep -x "1Password"`.quiet().nothrow()
-    return result.exitCode === 0
-  } catch {
-    return false
-  }
+  const result = await Bun.$`pgrep -x "1Password"`.quiet().nothrow()
+  return result.exitCode === 0
 }
