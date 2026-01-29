@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Envi is a CLI tool for managing `.env` files with pluggable secret providers (1Password, Proton Pass).
+Envi syncs your `.env` files from 1Password, Proton Pass, or any secret manager — so you never copy secrets by hand again.
 
 **Runtime:** Bun — no build step, runs TypeScript directly
 **Type check:** `bun run typecheck` (tsgo)
@@ -28,6 +28,7 @@ Envi has a name — use it. All user-facing text (CLI output, logs, errors, docs
 - `PROVIDER_DEFS` in `src/providers/index.ts` is the single source of truth for providers — all scheme constants, detection, and factory derive from it. Adding a provider = one entry there + `Provider` interface implementation.
 - Provider constructors take `Record<string, string>` (not typed configs) so the CLI layer stays provider-agnostic. Provider-specific options flow through `--provider-opt key=value`.
 - Zero config file required — works like any Unix tool with just flags + env vars.
+- `references/` contains provider API docs (CLI commands, SDK usage, auth methods). Consult before implementing or modifying provider integrations.
 
 ## Code Style
 

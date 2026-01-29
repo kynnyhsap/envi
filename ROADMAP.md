@@ -28,6 +28,24 @@ See: https://developer.1password.com/docs/cli/reference/commands/run
 
 Rename default config from `envi.json` to `envi.config.json` and add support for `envi.config.toml`, `envi.config.yaml` / `envi.config.yml`, `envi.config.js`, and `envi.config.ts`. All formats map to the same JSON config shape. Auto-detect by file extension when using `--config`, or discover in priority order when no explicit path is given.
 
+### `setup` command
+
+**Status: Needs design.** Interactive command that bootstraps secrets in the provider from a template file. Parses `.env.example` (or a user-specified file), detects all secret references, and creates the corresponding vaults/items/fields in the configured provider.
+
+- Interactive by default — prompts for values, vault selection, etc.
+- Non-interactive mode with `-f` flag for CI/scripting
+- Open question: how to handle secrets that already exist in the provider (skip, overwrite, prompt?)
+- Open question: should it also generate `envi.config.json` as part of setup?
+
+### `scan` command
+
+Scan the codebase for env var usage and report all variables the project expects. Detect patterns like `process.env.X`, `Bun.env.X`, `import.meta.env.X`, `os.environ["X"]`, etc. across source files.
+
+- Diff against existing `.env.example` to surface missing or unused vars
+- Output as a list, or optionally generate/update the template file
+- Respect `.gitignore` and configurable include/exclude globs
+- Language-agnostic pattern matching (JS/TS, Python, Go, Ruby, etc.)
+
 ### Formatting & linting
 
 Set up oxfmt and oxlint with project configs. Add `fmt` and `lint` scripts to `package.json`.
