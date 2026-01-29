@@ -7,14 +7,13 @@ import {
   computeChanges,
   resolveEnvPath,
   resolveAllEnvPaths,
-  isSecretReference,
   substituteVariables,
   hasUnresolvedVariables,
   type Change,
   type EnvPathInfo,
   type EnvFile,
 } from '../utils'
-import { toNativeReference } from '../providers'
+import { isSecretReference, toNativeReference } from '../providers'
 import { getProvider } from '../config'
 
 interface DiffResult {

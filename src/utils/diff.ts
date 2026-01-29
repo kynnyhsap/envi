@@ -1,5 +1,5 @@
 import { type EnvFile, type Change } from './types'
-import { isSecretReference } from './secrets'
+import { isSecretReference } from '../providers'
 
 /**
  * Compute changes between template, injected values, and local file.

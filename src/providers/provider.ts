@@ -80,68 +80,6 @@ export interface Provider {
   listVaults(): Promise<{ id: string; name: string }[]>
 }
 
-/** Known URI schemes and their provider IDs. */
-const SCHEME_TO_PROVIDER: Record<string, string> = {
-  'op://': '1password',
-  'pass://': 'proton-pass',
-}
-
-/** All recognized secret reference schemes. */
-export const SECRET_SCHEMES = ['envi://', 'op://', 'pass://'] as const
-
-/**
- * Check if a value is a secret reference (starts with a known scheme).
- */
-export function isSecretReference(value: string): boolean {
-  const trimmed = value.trim()
-  return SECRET_SCHEMES.some((scheme) => trimmed.startsWith(scheme))
-}
-
-/**
- * Detect which provider a secret reference should route to.
- *
- * - `op://` -> "1password"
- * - `pass://` -> "proton-pass"
- * - `envi://` -> undefined (use configured default)
- *
- * Returns undefined for `envi://` so the caller uses the default provider.
- */
-export function detectProvider(reference: string): string | undefined {
-  const trimmed = reference.trim()
-  for (const [scheme, providerId] of Object.entries(SCHEME_TO_PROVIDER)) {
-    if (trimmed.startsWith(scheme)) {
-      return providerId
-    }
-  }
-  return undefined
-}
-
-/**
- * Convert a secret reference to the provider's native format.
- *
- * - `envi://vault/item/field` -> `<scheme>vault/item/field`
- * - `op://vault/item/field` -> `op://vault/item/field` (passthrough)
- * - `pass://vault/item/field` -> `pass://vault/item/field` (passthrough)
- */
-export function toNativeReference(reference: string, providerScheme: string): string {
-  const trimmed = reference.trim()
-
-  // Already in a native format — pass through
-  for (const scheme of Object.keys(SCHEME_TO_PROVIDER)) {
-    if (trimmed.startsWith(scheme)) {
-      return trimmed
-    }
-  }
-
-  // Convert envi:// to native
-  if (trimmed.startsWith('envi://')) {
-    const path = trimmed.slice('envi://'.length)
-    return `${providerScheme}${path}`
-  }
-
-  return trimmed
-}
-
 /**
  * Parse a secret reference URI into its components.
  *
@@ -149,26 +87,25 @@ export function toNativeReference(reference: string, providerScheme: string): st
  */
 export function parseSecretReference(reference: string): SecretReference {
   const trimmed = reference.trim()
-  let path: string
 
-  for (const scheme of SECRET_SCHEMES) {
-    if (trimmed.startsWith(scheme)) {
-      path = trimmed.slice(scheme.length)
-      const parts = path.split('/')
-
-      if (parts.length < 3) {
-        throw new Error(`Invalid secret reference (need vault/item/field): ${trimmed}`)
-      }
-
-      const [vault, item, ...rest] = parts
-      return {
-        vault: vault!,
-        item: item!,
-        field: rest.join('/'),
-        raw: trimmed,
-      }
-    }
+  // Match any scheme ending in ://
+  const schemeMatch = trimmed.match(/^[a-z]+:\/\//)
+  if (!schemeMatch) {
+    throw new Error(`Unknown secret reference scheme: ${trimmed}`)
   }
 
-  throw new Error(`Unknown secret reference scheme: ${trimmed}`)
+  const path = trimmed.slice(schemeMatch[0].length)
+  const parts = path.split('/')
+
+  if (parts.length < 3) {
+    throw new Error(`Invalid secret reference (need vault/item/field): ${trimmed}`)
+  }
+
+  const [vault, item, ...rest] = parts
+  return {
+    vault: vault!,
+    item: item!,
+    field: rest.join('/'),
+    raw: trimmed,
+  }
 }

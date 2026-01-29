@@ -12,7 +12,6 @@ import {
   computeChanges,
   mergeEnvFiles,
   resolveAllEnvPaths,
-  isSecretReference,
   substituteVariables,
   hasUnresolvedVariables,
   type Change,
@@ -20,7 +19,7 @@ import {
   type EnvFile,
 } from '../utils'
 import { createAutoBackup } from './backup.command'
-import { toNativeReference } from '../providers'
+import { isSecretReference, toNativeReference } from '../providers'
 import { getProvider } from '../config'
 
 async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null> {

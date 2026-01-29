@@ -9,9 +9,6 @@ export { LOCAL_ENVS_SEPARATOR, ENV_MARKER_PREFIX } from './types'
 // Parsing
 export { parseEnvFile, serializeEnvFile } from './parse'
 
-// Secrets
-export { isSecretReference } from './secrets'
-
 // Variables
 export { substituteVariables, hasUnresolvedVariables, isValidEnvironment, VALID_ENVIRONMENTS } from './variables'
 export type { Environment } from './variables'

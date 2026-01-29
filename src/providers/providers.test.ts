@@ -4,7 +4,7 @@ import {
   detectProvider,
   toNativeReference,
   parseSecretReference,
-} from './provider'
+} from './index'
 
 describe('isSecretReference', () => {
   it('detects envi:// references', () => {

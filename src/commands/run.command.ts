@@ -17,11 +17,10 @@ import {
   checkPrerequisites,
   parseEnvFile,
   resolveAllEnvPaths,
-  isSecretReference,
   substituteVariables,
   hasUnresolvedVariables,
 } from '../utils'
-import { toNativeReference } from '../providers'
+import { isSecretReference, toNativeReference } from '../providers'
 import { getProvider } from '../config'
 
 interface RunOptions {
