@@ -19,7 +19,7 @@ import {
   type EnvPathInfo,
   type EnvFile,
 } from '../utils'
-import { createAutoBackup } from './backup'
+import { createAutoBackup } from './backup.command'
 import { getDefaultProvider, detectProvider, getProvider, toNativeReference } from '../providers'
 
 async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null> {
