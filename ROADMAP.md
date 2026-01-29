@@ -50,6 +50,3 @@ Scan the codebase for env var usage and report all variables the project expects
 - **Cleanup**: finds vars in `.env.example` that are no longer referenced anywhere in code
 - **Pipeline with `setup`**: `scan` discovers what's needed, `setup` creates them in the provider
 
-### Formatting & linting
-
-Set up oxfmt and oxlint with project configs. Add `fmt` and `lint` scripts to `package.json`.
