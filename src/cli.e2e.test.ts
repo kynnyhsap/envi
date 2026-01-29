@@ -1,6 +1,7 @@
-import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { $ } from 'bun'
+import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { join } from 'path'
+
 import { BACKUP_FOLDER_NAME } from './config'
 
 const CLI_PATH = join(import.meta.dir, 'cli.ts')

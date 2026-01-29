@@ -1,14 +1,11 @@
 import pc from 'picocolors'
+
 import { getConfig } from '../config'
+import { getProvider } from '../config'
 import { log } from '../logger'
+import { isSecretReference, parseSecretReference, toNativeReference } from '../providers'
 import { parseEnvFile, resolveAllEnvPaths, type EnvPathInfo } from '../utils'
 import { substituteVariables, hasUnresolvedVariables } from '../utils/variables'
-import {
-  isSecretReference,
-  parseSecretReference,
-  toNativeReference,
-} from '../providers'
-import { getProvider } from '../config'
 
 /**
  * Format a secret reference with colored parts.
@@ -26,14 +23,7 @@ function formatReference(reference: string): string {
       const [vault, item, ...rest] = parts
       const field = rest.join('/')
 
-      return (
-        pc.dim(scheme) +
-        pc.blue(vault ?? '') +
-        pc.dim('/') +
-        pc.cyan(item ?? '') +
-        pc.dim('/') +
-        pc.yellow(field)
-      )
+      return pc.dim(scheme) + pc.blue(vault ?? '') + pc.dim('/') + pc.cyan(item ?? '') + pc.dim('/') + pc.yellow(field)
     }
   }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+
 import { parseEnvFile, serializeEnvFile } from './parse'
 import { type EnvFile, LOCAL_ENVS_SEPARATOR } from './types'
 

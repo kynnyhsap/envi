@@ -11,9 +11,9 @@ export { parseSecretReference } from './provider'
 export { OnePasswordProvider } from './1password.provider'
 export { ProtonPassProvider } from './proton-pass.provider'
 
-import type { Provider } from './provider'
 import { OnePasswordProvider } from './1password.provider'
 import { ProtonPassProvider } from './proton-pass.provider'
+import type { Provider } from './provider'
 
 // ---------------------------------------------------------------------------
 // Provider definitions — the single source of truth

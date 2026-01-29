@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import {
-  DEFAULT_ENVIRONMENT,
-  hasUnresolvedVariables,
-  substituteVariables,
-} from './variables'
+
+import { DEFAULT_ENVIRONMENT, hasUnresolvedVariables, substituteVariables } from './variables'
 
 describe('DEFAULT_ENVIRONMENT', () => {
   it('defaults to "local"', () => {

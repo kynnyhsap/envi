@@ -19,6 +19,16 @@
 
 import { Command } from 'commander'
 import pc from 'picocolors'
+
+import {
+  statusCommand,
+  diffCommand,
+  syncCommand,
+  runCommand,
+  backupCommand,
+  restoreCommand,
+  validateCommand,
+} from './commands'
 import {
   VERSION,
   DEFAULT_BACKUP_DIR,
@@ -30,17 +40,8 @@ import {
   loadConfigFile,
   type ConfigFile,
 } from './config'
-import { DEFAULT_ENVIRONMENT } from './utils/variables'
 import { VALID_PROVIDERS, type ProviderType } from './providers'
-import {
-  statusCommand,
-  diffCommand,
-  syncCommand,
-  runCommand,
-  backupCommand,
-  restoreCommand,
-  validateCommand,
-} from './commands'
+import { DEFAULT_ENVIRONMENT } from './utils/variables'
 
 function showHelp(): void {
   console.info('')
@@ -66,9 +67,7 @@ function showHelp(): void {
   console.info(
     `  ${pc.green('--provider')} ${pc.dim('<name>')}   Secret provider ${pc.dim(`(${VALID_PROVIDERS.join(', ')})`)}`,
   )
-  console.info(
-    `  ${pc.green('--provider-opt')} ${pc.dim('<k=v>')} Provider-specific option (repeatable)`,
-  )
+  console.info(`  ${pc.green('--provider-opt')} ${pc.dim('<k=v>')} Provider-specific option (repeatable)`)
   console.info(`  ${pc.green('--config')} ${pc.dim('<path>')}    Load config from JSON file`)
   console.info(`  ${pc.green('--only')} ${pc.dim('<paths>')}      Only process specified paths (comma-separated)`)
   console.info(
@@ -220,7 +219,15 @@ program
   .option('-q, --quiet', 'Suppress non-essential output')
   .option('-e, --env <name>', `Environment name for \${ENV} substitution`, DEFAULT_ENVIRONMENT)
   .option('--provider <name>', `Secret provider (${VALID_PROVIDERS.join(', ')})`, DEFAULT_PROVIDER)
-  .option('--provider-opt <key=value>', 'Provider-specific option (repeatable)', (val: string, acc: string[]) => { acc.push(val); return acc }, [] as string[])
+  .option(
+    '--provider-opt <key=value>',
+    'Provider-specific option (repeatable)',
+    (val: string, acc: string[]) => {
+      acc.push(val)
+      return acc
+    },
+    [] as string[],
+  )
   .option('--config <path>', 'Load config from JSON file')
   .option('--only <paths>', 'Only process specified paths (comma-separated)')
   .option('--output <file>', `Output file name (default: ${DEFAULT_OUTPUT_FILE})`)

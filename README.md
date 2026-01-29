@@ -63,11 +63,11 @@ bun envi sync --provider proton-pass
 
 Envi supports three URI schemes for secret references in templates:
 
-| Scheme     | Description                                      | Example                                  |
-| ---------- | ------------------------------------------------ | ---------------------------------------- |
-| `envi://`  | Universal format, routes to the default provider  | `envi://vault/item/field`                |
-| `op://`    | 1Password native format (auto-routes to 1Password)| `op://vault/item/field`                  |
-| `pass://`  | Proton Pass native format (auto-routes to Proton Pass) | `pass://vault/item/field`           |
+| Scheme    | Description                                            | Example                   |
+| --------- | ------------------------------------------------------ | ------------------------- |
+| `envi://` | Universal format, routes to the default provider       | `envi://vault/item/field` |
+| `op://`   | 1Password native format (auto-routes to 1Password)     | `op://vault/item/field`   |
+| `pass://` | Proton Pass native format (auto-routes to Proton Pass) | `pass://vault/item/field` |
 
 ### Universal Format (`envi://`)
 
@@ -160,28 +160,28 @@ bun envi status --provider proton-pass
 
 ## Commands
 
-| Command    | Description                                                      |
-| ---------- | ---------------------------------------------------------------- |
-| `status`   | Show status and auth check                                       |
-| `diff`     | Show differences between local `.env` and provider               |
-| `sync`     | Sync `.env` files from templates                                 |
-| `run`      | Run a command with secrets injected as env vars                  |
-| `backup`   | Backup all `.env` files (timestamped snapshots)                  |
-| `restore`  | Restore `.env` files from backup (interactive)                   |
+| Command    | Description                                                         |
+| ---------- | ------------------------------------------------------------------- |
+| `status`   | Show status and auth check                                          |
+| `diff`     | Show differences between local `.env` and provider                  |
+| `sync`     | Sync `.env` files from templates                                    |
+| `run`      | Run a command with secrets injected as env vars                     |
+| `backup`   | Backup all `.env` files (timestamped snapshots)                     |
+| `restore`  | Restore `.env` files from backup (interactive)                      |
 | `validate` | Validate secret reference format (use `--remote` to check provider) |
 
 ### Common Options
 
-| Option                | Description                                                 |
-| --------------------- | ----------------------------------------------------------- |
-| `-d, --dry-run`       | Preview changes without writing files                       |
-| `-f, --force`         | Skip confirmation prompts                                   |
-| `-q, --quiet`         | Suppress non-essential output                               |
-| `-e, --env <name>`    | Environment name for `${ENV}` substitution (default: `default`) |
-| `--provider <name>`   | Secret provider (1password, proton-pass)                    |
-| `--provider-opt <k=v>`| Provider-specific option (repeatable)                       |
-| `--config <path>`     | Load config from JSON file                                  |
-| `--only <paths>`      | Filter which paths to process                               |
+| Option                 | Description                                                     |
+| ---------------------- | --------------------------------------------------------------- |
+| `-d, --dry-run`        | Preview changes without writing files                           |
+| `-f, --force`          | Skip confirmation prompts                                       |
+| `-q, --quiet`          | Suppress non-essential output                                   |
+| `-e, --env <name>`     | Environment name for `${ENV}` substitution (default: `default`) |
+| `--provider <name>`    | Secret provider (1password, proton-pass)                        |
+| `--provider-opt <k=v>` | Provider-specific option (repeatable)                           |
+| `--config <path>`      | Load config from JSON file                                      |
+| `--only <paths>`       | Filter which paths to process                                   |
 
 ## How It Works
 
@@ -447,10 +447,10 @@ bun run src/cli.ts validate
 
 ## Environment Variables
 
-| Variable                   | Description                                    |
-| -------------------------- | ---------------------------------------------- |
+| Variable                   | Description                                              |
+| -------------------------- | -------------------------------------------------------- |
 | `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service account token (overrides desktop auth) |
-| `OP_ACCOUNT_NAME`          | 1Password account name for desktop app auth    |
+| `OP_ACCOUNT_NAME`          | 1Password account name for desktop app auth              |
 
 ### Authentication Priority (1Password)
 

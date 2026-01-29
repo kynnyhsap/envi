@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test'
+
 import { truncateValue, redactSecret, formatBackupTimestamp } from './format'
 
 describe('truncateValue', () => {

@@ -6,6 +6,7 @@
  */
 
 import { createClient, DesktopAuth, type Client } from '@1password/sdk'
+
 import { VERSION } from '../config'
 import type { AuthInfo, AuthFailureHints, AvailabilityResult, Provider, ResolveSecretsResult } from './provider'
 

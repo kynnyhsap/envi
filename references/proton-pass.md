@@ -65,10 +65,10 @@ Prompts for password, TOTP (if enabled), and extra password (if configured).
 
 Each credential checks in order: env var → file from env var → interactive prompt.
 
-| Credential | Env var | File env var |
-|---|---|---|
-| Password | `PROTON_PASS_PASSWORD` | `PROTON_PASS_PASSWORD_FILE` |
-| TOTP | `PROTON_PASS_TOTP` | `PROTON_PASS_TOTP_FILE` |
+| Credential     | Env var                      | File env var                      |
+| -------------- | ---------------------------- | --------------------------------- |
+| Password       | `PROTON_PASS_PASSWORD`       | `PROTON_PASS_PASSWORD_FILE`       |
+| TOTP           | `PROTON_PASS_TOTP`           | `PROTON_PASS_TOTP_FILE`           |
 | Extra password | `PROTON_PASS_EXTRA_PASSWORD` | `PROTON_PASS_EXTRA_PASSWORD_FILE` |
 
 ### Session Management
@@ -88,22 +88,22 @@ Sessions persist across terminal sessions until explicit logout.
 
 ### Environment Variables
 
-| Variable | Description |
-|---|---|
-| `PASS_LOG_LEVEL` | Log verbosity: `trace`, `debug`, `info`, `warn`, `error`, `off`. Logs go to stderr. |
-| `PROTON_PASS_SESSION_DIR` | Override session storage directory |
-| `PROTON_PASS_KEY_PROVIDER` | Key storage backend: `keyring` (default), `fs`, `env` |
-| `PROTON_PASS_ENCRYPTION_KEY` | Encryption key (required when `KEY_PROVIDER=env`) |
-| `PROTON_PASS_DISABLE_TELEMETRY` | Disable anonymous telemetry if set |
-| `PROTON_PASS_NO_UPDATE_CHECK` | Disable automatic update checks if set |
+| Variable                        | Description                                                                         |
+| ------------------------------- | ----------------------------------------------------------------------------------- |
+| `PASS_LOG_LEVEL`                | Log verbosity: `trace`, `debug`, `info`, `warn`, `error`, `off`. Logs go to stderr. |
+| `PROTON_PASS_SESSION_DIR`       | Override session storage directory                                                  |
+| `PROTON_PASS_KEY_PROVIDER`      | Key storage backend: `keyring` (default), `fs`, `env`                               |
+| `PROTON_PASS_ENCRYPTION_KEY`    | Encryption key (required when `KEY_PROVIDER=env`)                                   |
+| `PROTON_PASS_DISABLE_TELEMETRY` | Disable anonymous telemetry if set                                                  |
+| `PROTON_PASS_NO_UPDATE_CHECK`   | Disable automatic update checks if set                                              |
 
 ### Key Storage Backends
 
-| Backend | Config | Use case | Persists reboot? |
-|---|---|---|---|
-| `keyring` (default) | unset or `PROTON_PASS_KEY_PROVIDER=keyring` | Local dev (macOS Keychain, Windows Credential Manager, Linux kernel keyring) | Linux: No. Others: Yes |
-| `fs` | `PROTON_PASS_KEY_PROVIDER=fs` | Docker, headless, CI. Key stored as `<session-dir>/local.key` (0600) | Yes |
-| `env` | `PROTON_PASS_KEY_PROVIDER=env` + `PROTON_PASS_ENCRYPTION_KEY=<value>` | CI/CD, containers. Value is SHA256-hashed to derive 256-bit key | N/A |
+| Backend             | Config                                                                | Use case                                                                     | Persists reboot?       |
+| ------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------- |
+| `keyring` (default) | unset or `PROTON_PASS_KEY_PROVIDER=keyring`                           | Local dev (macOS Keychain, Windows Credential Manager, Linux kernel keyring) | Linux: No. Others: Yes |
+| `fs`                | `PROTON_PASS_KEY_PROVIDER=fs`                                         | Docker, headless, CI. Key stored as `<session-dir>/local.key` (0600)         | Yes                    |
+| `env`               | `PROTON_PASS_KEY_PROVIDER=env` + `PROTON_PASS_ENCRYPTION_KEY=<value>` | CI/CD, containers. Value is SHA256-hashed to derive 256-bit key              | N/A                    |
 
 When switching key provider, logout first: `pass-cli logout --force`
 
@@ -261,8 +261,8 @@ Template example:
 
 ```yaml
 database:
-  username: {{ pass://Production/Database/username }}
-  password: {{ pass://Production/Database/password }}
+  username: { { pass://Production/Database/username } }
+  password: { { pass://Production/Database/password } }
 # This pass://fake/uri in a comment is ignored
 ```
 
@@ -478,13 +478,13 @@ pass-cli logout
 
 ## Comparison with 1Password CLI
 
-| Feature | 1Password (`op://`) | Proton Pass (`pass://`) |
-|---|---|---|
-| URI scheme | `op://vault/item/field` | `pass://vault/item/field` |
-| Resolution | SDK (`client.secrets.resolve()`) | CLI (`pass-cli item view`) |
-| Inject syntax | N/A (SDK only) | `{{ pass://... }}` in templates |
-| Run with env | N/A | `pass-cli run -- cmd` |
-| Auth | SDK token / Desktop app | Web login / Interactive CLI |
-| Vault ID | vault name | Share ID or vault name |
-| Batch resolve | SDK loop | CLI loop (no batch API) |
-| Output masking | N/A | Default on, `--no-masking` to disable |
+| Feature        | 1Password (`op://`)              | Proton Pass (`pass://`)               |
+| -------------- | -------------------------------- | ------------------------------------- |
+| URI scheme     | `op://vault/item/field`          | `pass://vault/item/field`             |
+| Resolution     | SDK (`client.secrets.resolve()`) | CLI (`pass-cli item view`)            |
+| Inject syntax  | N/A (SDK only)                   | `{{ pass://... }}` in templates       |
+| Run with env   | N/A                              | `pass-cli run -- cmd`                 |
+| Auth           | SDK token / Desktop app          | Web login / Interactive CLI           |
+| Vault ID       | vault name                       | Share ID or vault name                |
+| Batch resolve  | SDK loop                         | CLI loop (no batch API)               |
+| Output masking | N/A                              | Default on, `--no-masking` to disable |

@@ -1,7 +1,10 @@
-import pc from 'picocolors'
 import { Table } from 'console-table-printer'
-import { log } from '../logger'
+import pc from 'picocolors'
+
 import { getConfig } from '../config'
+import { getProvider } from '../config'
+import { log } from '../logger'
+import { isSecretReference, toNativeReference } from '../providers'
 import {
   checkPrerequisites,
   promptConfirm,
@@ -19,8 +22,6 @@ import {
   type EnvFile,
 } from '../utils'
 import { createAutoBackup } from './backup.command'
-import { isSecretReference, toNativeReference } from '../providers'
-import { getProvider } from '../config'
 
 async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null> {
   const config = getConfig()

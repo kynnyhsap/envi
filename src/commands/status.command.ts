@@ -1,8 +1,9 @@
 import pc from 'picocolors'
-import { log } from '../logger'
+
 import { getConfig } from '../config'
-import { formatBackupTimestamp, parseEnvFile, resolveAllEnvPaths, getBackupRootDir, type EnvPathInfo } from '../utils'
 import { getProvider } from '../config'
+import { log } from '../logger'
+import { formatBackupTimestamp, parseEnvFile, resolveAllEnvPaths, getBackupRootDir, type EnvPathInfo } from '../utils'
 
 interface PathStatus {
   pathInfo: EnvPathInfo

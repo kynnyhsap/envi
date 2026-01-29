@@ -11,8 +11,11 @@
  */
 
 import pc from 'picocolors'
-import { log } from '../logger'
+
 import { getConfig } from '../config'
+import { getProvider } from '../config'
+import { log } from '../logger'
+import { isSecretReference, toNativeReference } from '../providers'
 import {
   checkPrerequisites,
   parseEnvFile,
@@ -20,8 +23,6 @@ import {
   substituteVariables,
   hasUnresolvedVariables,
 } from '../utils'
-import { isSecretReference, toNativeReference } from '../providers'
-import { getProvider } from '../config'
 
 interface RunOptions {
   /** Additional .env files to load (bare key=value, may contain secret refs) */
@@ -192,7 +193,6 @@ export async function runCommand(command: string[], options: RunOptions = {}): P
   }
 
   const envVars = new Map<string, string>()
-
 
   // 1. Load from templates (unless --no-template)
   if (!options.noTemplate) {

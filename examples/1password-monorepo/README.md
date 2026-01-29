@@ -19,20 +19,20 @@ Multiple services in a monorepo, each with their own `.env.example`. Envi auto-d
 Create a vault called **example** with these items:
 
 **api-service**
-| Field          | Description         |
+| Field | Description |
 | -------------- | ------------------- |
-| `API_KEY`      | API key             |
+| `API_KEY` | API key |
 | `DATABASE_URL` | Database connection |
 
 **web-app**
-| Field                 | Description         |
+| Field | Description |
 | --------------------- | ------------------- |
-| `SESSION_SECRET`      | Session signing key |
-| `OAUTH_CLIENT_ID`     | OAuth client ID     |
+| `SESSION_SECRET` | Session signing key |
+| `OAUTH_CLIENT_ID` | OAuth client ID |
 | `OAUTH_CLIENT_SECRET` | OAuth client secret |
 
 **worker**
-| Field      | Description      |
+| Field | Description |
 | ---------- | ---------------- |
 | `REDIS_URL`| Redis connection |
 

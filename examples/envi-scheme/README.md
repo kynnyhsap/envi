@@ -50,6 +50,7 @@ pass-cli item create login \
 ```
 
 > **Note:** Add custom fields (`API_KEY`, `DATABASE_URL`, `JWT_SECRET`) via the Proton Pass app, then verify:
+>
 > ```bash
 > pass-cli item view "pass://example/api-service/API_KEY"
 > ```

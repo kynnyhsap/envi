@@ -1,8 +1,9 @@
-import pc from 'picocolors'
-import { log } from '../logger'
-import { getConfig } from '../config'
-import { promptConfirm, formatBackupTimestamp } from '../utils'
 import { select } from '@inquirer/prompts'
+import pc from 'picocolors'
+
+import { getConfig } from '../config'
+import { log } from '../logger'
+import { promptConfirm, formatBackupTimestamp } from '../utils'
 
 interface BackupSnapshot {
   timestamp: string

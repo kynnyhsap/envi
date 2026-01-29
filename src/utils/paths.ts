@@ -1,4 +1,5 @@
 import path from 'node:path'
+
 import { getConfig } from '../config'
 
 export interface EnvPathInfo {

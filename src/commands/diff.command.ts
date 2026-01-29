@@ -1,6 +1,9 @@
 import pc from 'picocolors'
-import { log } from '../logger'
+
 import { getConfig } from '../config'
+import { getProvider } from '../config'
+import { log } from '../logger'
+import { isSecretReference, toNativeReference } from '../providers'
 import {
   checkPrerequisites,
   parseEnvFile,
@@ -13,8 +16,6 @@ import {
   type EnvPathInfo,
   type EnvFile,
 } from '../utils'
-import { isSecretReference, toNativeReference } from '../providers'
-import { getProvider } from '../config'
 
 interface DiffResult {
   pathInfo: EnvPathInfo

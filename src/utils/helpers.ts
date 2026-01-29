@@ -1,6 +1,7 @@
 import { confirm } from '@inquirer/prompts'
-import { log } from '../logger'
+
 import { getProvider } from '../config'
+import { log } from '../logger'
 
 export async function promptConfirm(message: string, defaultValue = true): Promise<boolean> {
   try {

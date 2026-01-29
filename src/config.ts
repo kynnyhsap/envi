@@ -1,6 +1,6 @@
 import packageJson from '../package.json'
-import { DEFAULT_ENVIRONMENT } from './utils/variables'
 import { createProvider, type Provider, type ProviderType } from './providers'
+import { DEFAULT_ENVIRONMENT } from './utils/variables'
 
 export const VERSION = packageJson.version
 

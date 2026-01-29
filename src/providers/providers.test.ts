@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import {
-  isSecretReference,
-  detectProvider,
-  toNativeReference,
-  parseSecretReference,
-} from './index'
+
+import { isSecretReference, detectProvider, toNativeReference, parseSecretReference } from './index'
 
 describe('isSecretReference', () => {
   it('detects envi:// references', () => {

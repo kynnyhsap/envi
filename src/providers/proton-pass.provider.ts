@@ -36,19 +36,13 @@ export class ProtonPassProvider implements Provider {
     return {
       available: false,
       statusLines: [`${this.binary}: not found`],
-      helpLines: [
-        `Install pass-cli from https://proton.me/pass/download`,
-        `Then run: pass-cli login`,
-      ],
+      helpLines: [`Install pass-cli from https://proton.me/pass/download`, `Then run: pass-cli login`],
     }
   }
 
   getAuthFailureHints(): AuthFailureHints {
     return {
-      lines: [
-        `Make sure ${this.binary} is installed and you are logged in`,
-        `Run: ${this.binary} login`,
-      ],
+      lines: [`Make sure ${this.binary} is installed and you are logged in`, `Run: ${this.binary} login`],
     }
   }
 

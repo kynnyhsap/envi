@@ -1,7 +1,8 @@
 import { $ } from 'bun'
 import pc from 'picocolors'
-import { log } from '../logger'
+
 import { getConfig, generateBackupTimestamp } from '../config'
+import { log } from '../logger'
 import { promptConfirm, formatBackupTimestamp } from '../utils'
 
 /**

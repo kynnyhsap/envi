@@ -41,6 +41,7 @@ done
 ```
 
 > **Note:** Proton Pass custom fields are easiest to add via the desktop/web app. Create the items with the CLI, then add the custom fields (`API_KEY`, `DATABASE_URL`, `REDIS_URL`) through the app. Verify with:
+>
 > ```bash
 > pass-cli item view "pass://example-local/api-service/API_KEY"
 > ```
