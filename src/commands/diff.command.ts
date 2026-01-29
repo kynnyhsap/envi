@@ -14,7 +14,8 @@ import {
   type EnvPathInfo,
   type EnvFile,
 } from '../utils'
-import { getDefaultProvider, detectProvider, getProvider, toNativeReference } from '../providers'
+import { toNativeReference } from '../providers'
+import { getProvider } from '../config'
 
 interface DiffResult {
   pathInfo: EnvPathInfo
@@ -66,15 +67,7 @@ async function diffEnvPath(pathInfo: EnvPathInfo): Promise<DiffResult> {
     const references = secretRefs.map((s) => s.reference)
 
     // Route to appropriate provider
-    const defaultProvider = getDefaultProvider()
-    const provider = (() => {
-      const firstRef = references[0]
-      if (firstRef) {
-        const providerId = detectProvider(firstRef)
-        if (providerId) return getProvider(providerId)
-      }
-      return defaultProvider
-    })()
+    const provider = getProvider()
 
     const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))
     const { resolved, errors } = await provider.resolveSecrets(nativeRefs)

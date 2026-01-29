@@ -7,16 +7,9 @@
 
 import { createClient, DesktopAuth, type Client } from '@1password/sdk'
 import { VERSION } from '../config'
-import type { AuthInfo, Provider, ResolveSecretsResult } from './provider'
+import type { AuthInfo, AuthFailureHints, AvailabilityResult, Provider, ResolveSecretsResult } from './provider'
 
 let cachedClient: Client | null = null
-
-export interface OnePasswordConfig {
-  /** 1Password account name (required for desktop app auth). */
-  accountName?: string
-  /** 1Password account URL (used in help messages for service account creation). */
-  accountUrl?: string
-}
 
 export class OnePasswordProvider implements Provider {
   readonly id = '1password'
@@ -24,23 +17,9 @@ export class OnePasswordProvider implements Provider {
   readonly scheme = 'op://'
 
   private accountName: string | undefined
-  private accountUrl: string | undefined
 
-  constructor(config: OnePasswordConfig = {}) {
-    this.accountName = config.accountName ?? process.env['OP_ACCOUNT_NAME']
-    this.accountUrl = config.accountUrl
-  }
-
-  /** Get the configured account URL (for help messages). */
-  getAccountUrl(): string | undefined {
-    return this.accountUrl
-  }
-
-  /** Update the account name (e.g., from CLI --account flag). */
-  setAccountName(name: string): void {
-    this.accountName = name
-    // Reset cached client since account changed
-    cachedClient = null
+  constructor(options: Record<string, string> = {}) {
+    this.accountName = options['accountName'] ?? process.env['OP_ACCOUNT_NAME']
   }
 
   getAuthInfo(): AuthInfo {
@@ -51,6 +30,38 @@ export class OnePasswordProvider implements Provider {
     return { type: 'desktop-app', identifier: this.accountName ?? 'unknown' }
   }
 
+  async checkAvailability(): Promise<AvailabilityResult> {
+    const hasServiceToken = !!process.env['OP_SERVICE_ACCOUNT_TOKEN']
+    const appRunning = await is1PasswordAppRunning()
+    const statusLines: string[] = []
+
+    if (hasServiceToken) {
+      statusLines.push('OP_SERVICE_ACCOUNT_TOKEN: found')
+    } else {
+      statusLines.push('OP_SERVICE_ACCOUNT_TOKEN: not set')
+    }
+
+    if (appRunning) {
+      statusLines.push('1Password desktop app: running')
+    } else {
+      statusLines.push('1Password desktop app: not running')
+    }
+
+    if (!hasServiceToken && !appRunning) {
+      return {
+        available: false,
+        statusLines,
+        helpLines: [
+          'To authenticate, either:',
+          '1. Open the 1Password desktop app',
+          '2. Set OP_SERVICE_ACCOUNT_TOKEN env var',
+        ],
+      }
+    }
+
+    return { available: true, statusLines }
+  }
+
   async verifyAuth(): Promise<{ success: boolean; error?: string }> {
     try {
       await this.listVaults()
@@ -59,6 +70,14 @@ export class OnePasswordProvider implements Provider {
       const message = error instanceof Error ? error.message : String(error)
       return { success: false, error: message }
     }
+  }
+
+  getAuthFailureHints(): AuthFailureHints {
+    const authInfo = this.getAuthInfo()
+    if (authInfo.type === 'desktop-app') {
+      return { lines: ['Make sure "Integrate with other apps" is enabled in Settings > Developer'] }
+    }
+    return { lines: ['Check your OP_SERVICE_ACCOUNT_TOKEN value'] }
   }
 
   async resolveSecret(reference: string): Promise<string> {
@@ -99,7 +118,7 @@ export class OnePasswordProvider implements Provider {
     if (authInfo.type === 'desktop-app' && !this.accountName) {
       throw new Error(
         '1Password account name is required for desktop app auth. ' +
-          'Set OP_ACCOUNT_NAME env var, use --account flag, or configure it in providers.1password.accountName.',
+          'Set OP_ACCOUNT_NAME env var or configure providers.1password.accountName.',
       )
     }
 
@@ -116,7 +135,7 @@ export class OnePasswordProvider implements Provider {
 }
 
 /** Check if the 1Password desktop app process is running. */
-export async function is1PasswordAppRunning(): Promise<boolean> {
+async function is1PasswordAppRunning(): Promise<boolean> {
   try {
     const result = await Bun.$`pgrep -x "1Password"`.quiet().nothrow()
     return result.exitCode === 0

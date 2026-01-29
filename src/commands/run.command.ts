@@ -1,7 +1,7 @@
 /**
  * Run command — execute a command with secrets injected as environment variables.
  *
- * Reads .env.tpl templates, resolves all secret references via the configured provider,
+ * Reads .env.example templates, resolves all secret references via the configured provider,
  * and passes the resolved key=value pairs as environment variables to the child process.
  *
  * Usage:
@@ -21,7 +21,8 @@ import {
   substituteVariables,
   hasUnresolvedVariables,
 } from '../utils'
-import { getDefaultProvider, detectProvider, getProvider, toNativeReference } from '../providers'
+import { toNativeReference } from '../providers'
+import { getProvider } from '../config'
 
 interface RunOptions {
   /** Additional .env files to load (bare key=value, may contain secret refs) */
@@ -69,15 +70,7 @@ async function resolveTemplateEnvVars(): Promise<Map<string, string> | null> {
     if (secretRefs.length > 0) {
       const references = secretRefs.map((s) => s.reference)
 
-      const defaultProvider = getDefaultProvider()
-      const provider = (() => {
-        const firstRef = references[0]
-        if (firstRef) {
-          const providerId = detectProvider(firstRef)
-          if (providerId) return getProvider(providerId)
-        }
-        return defaultProvider
-      })()
+      const provider = getProvider()
 
       const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))
       const { resolved, errors } = await provider.resolveSecrets(nativeRefs)
@@ -146,15 +139,7 @@ async function resolveEnvFile(filePath: string): Promise<Map<string, string> | n
 
   if (secretRefs.length > 0) {
     const references = secretRefs.map((s) => s.reference)
-    const defaultProvider = getDefaultProvider()
-    const provider = (() => {
-      const firstRef = references[0]
-      if (firstRef) {
-        const providerId = detectProvider(firstRef)
-        if (providerId) return getProvider(providerId)
-      }
-      return defaultProvider
-    })()
+    const provider = getProvider()
 
     const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))
     const { resolved, errors } = await provider.resolveSecrets(nativeRefs)

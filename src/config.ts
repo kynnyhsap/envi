@@ -1,13 +1,13 @@
 import packageJson from '../package.json'
 import { DEFAULT_ENVIRONMENT, type Environment } from './utils/variables'
-import { initProviders, type ProviderType, type ProvidersConfig } from './providers'
+import { createProvider, type Provider, type ProviderType } from './providers'
 
 export const VERSION = packageJson.version
 
 // Default values
 export const BACKUP_FOLDER_NAME = '.env-backup'
 export const DEFAULT_BACKUP_DIR = BACKUP_FOLDER_NAME
-export const DEFAULT_TEMPLATE_FILE = '.env.tpl'
+export const DEFAULT_TEMPLATE_FILE = '.env.example'
 export const DEFAULT_OUTPUT_FILE = '.env'
 export const DEFAULT_PROVIDER: ProviderType = '1password'
 
@@ -30,7 +30,7 @@ export interface RuntimeConfig {
   quiet: boolean
   environment: Environment
   provider: ProviderType
-  accountName?: string
+  providerOptions: Record<string, string>
 }
 
 let runtimeConfig: RuntimeConfig = {
@@ -41,18 +41,22 @@ let runtimeConfig: RuntimeConfig = {
   quiet: false,
   environment: DEFAULT_ENVIRONMENT,
   provider: DEFAULT_PROVIDER,
+  providerOptions: {},
 }
+
+let providerInstance: Provider | null = null
 
 export function setRuntimeConfig(config: Partial<RuntimeConfig>): void {
   runtimeConfig = { ...runtimeConfig, ...config }
+  providerInstance = createProvider(runtimeConfig.provider, runtimeConfig.providerOptions)
+}
 
-  // Initialize providers based on config
-  const providersConfig: ProvidersConfig = {
-    default: runtimeConfig.provider,
-    '1password': runtimeConfig.accountName ? { accountName: runtimeConfig.accountName } : {},
+/** Get the initialized provider instance. Throws if not initialized. */
+export function getProvider(): Provider {
+  if (!providerInstance) {
+    throw new Error('Provider not initialized. Call setRuntimeConfig() first.')
   }
-
-  initProviders(providersConfig)
+  return providerInstance
 }
 
 export function getConfig(): RuntimeConfig {
@@ -70,4 +74,26 @@ export function generateBackupTimestamp(): string {
 export function parseOnlyFlag(value: string | undefined): string[] | undefined {
   if (!value) return undefined
   return value.split(',').map((p) => p.trim())
+}
+
+/** Config file shape (envi.json). All fields optional. */
+export interface ConfigFile {
+  provider?: ProviderType
+  providerOptions?: Record<string, string>
+  environment?: string
+  paths?: string[]
+  templateFile?: string
+  outputFile?: string
+  backupDir?: string
+  quiet?: boolean
+}
+
+/** Load and parse a config file. Returns partial RuntimeConfig. */
+export async function loadConfigFile(path: string): Promise<ConfigFile> {
+  const file = Bun.file(path)
+  if (!(await file.exists())) {
+    throw new Error(`Config file not found: ${path}`)
+  }
+  const content = await file.json()
+  return content as ConfigFile
 }

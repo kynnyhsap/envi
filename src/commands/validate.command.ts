@@ -6,11 +6,9 @@ import { substituteVariables, hasUnresolvedVariables } from '../utils/variables'
 import {
   isSecretReference,
   parseSecretReference,
-  getDefaultProvider,
-  detectProvider,
-  getProvider,
   toNativeReference,
 } from '../providers'
+import { getProvider } from '../config'
 
 /**
  * Format a secret reference with colored parts.
@@ -66,9 +64,7 @@ function validateReferenceFormat(reference: string): { valid: boolean; error?: s
  */
 async function validateReferenceRemote(reference: string): Promise<{ valid: boolean; error?: string | undefined }> {
   try {
-    const defaultProvider = getDefaultProvider()
-    const providerId = detectProvider(reference)
-    const provider = providerId ? getProvider(providerId) : defaultProvider
+    const provider = getProvider()
 
     const nativeRef = toNativeReference(reference, provider.scheme)
     await provider.resolveSecret(nativeRef)
@@ -126,7 +122,7 @@ interface ValidateOptions {
 export async function validateCommand(options: ValidateOptions = {}): Promise<void> {
   const isRemote = options.remote ?? false
   const { environment } = getConfig()
-  const provider = getDefaultProvider()
+  const provider = getProvider()
 
   log.banner('Validate Secret References')
 

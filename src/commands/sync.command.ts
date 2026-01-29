@@ -20,7 +20,8 @@ import {
   type EnvFile,
 } from '../utils'
 import { createAutoBackup } from './backup.command'
-import { getDefaultProvider, detectProvider, getProvider, toNativeReference } from '../providers'
+import { toNativeReference } from '../providers'
+import { getProvider } from '../config'
 
 async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null> {
   const config = getConfig()
@@ -49,17 +50,7 @@ async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null
 
   const references = secretRefs.map((s) => s.reference)
 
-  // Route references to appropriate provider
-  const defaultProvider = getDefaultProvider()
-  const provider = (() => {
-    // Check the first reference to determine provider (all refs in a template should use same scheme)
-    const firstRef = references[0]
-    if (firstRef) {
-      const providerId = detectProvider(firstRef)
-      if (providerId) return getProvider(providerId)
-    }
-    return defaultProvider
-  })()
+  const provider = getProvider()
 
   // Convert envi:// references to native format
   const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))

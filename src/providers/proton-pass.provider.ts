@@ -7,12 +7,7 @@
  * Secret references use the `pass://vault/item/field` format.
  */
 
-import type { AuthInfo, Provider, ResolveSecretsResult } from './provider'
-
-export interface ProtonPassConfig {
-  /** Path to the pass-cli binary (default: "pass-cli") */
-  cliBinary?: string
-}
+import type { AuthInfo, AuthFailureHints, AvailabilityResult, Provider, ResolveSecretsResult } from './provider'
 
 export class ProtonPassProvider implements Provider {
   readonly id = 'proton-pass'
@@ -21,12 +16,40 @@ export class ProtonPassProvider implements Provider {
 
   private binary: string
 
-  constructor(config: ProtonPassConfig = {}) {
-    this.binary = config.cliBinary ?? 'pass-cli'
+  constructor(options: Record<string, string> = {}) {
+    this.binary = options['cliBinary'] ?? 'pass-cli'
   }
 
   getAuthInfo(): AuthInfo {
     return { type: 'cli', identifier: this.binary }
+  }
+
+  async checkAvailability(): Promise<AvailabilityResult> {
+    try {
+      const result = await Bun.$`which ${this.binary}`.quiet().nothrow()
+      if (result.exitCode === 0) {
+        return { available: true, statusLines: [`${this.binary}: installed`] }
+      }
+    } catch {
+      // fall through
+    }
+    return {
+      available: false,
+      statusLines: [`${this.binary}: not found`],
+      helpLines: [
+        `Install pass-cli from https://proton.me/pass/download`,
+        `Then run: pass-cli login`,
+      ],
+    }
+  }
+
+  getAuthFailureHints(): AuthFailureHints {
+    return {
+      lines: [
+        `Make sure ${this.binary} is installed and you are logged in`,
+        `Run: ${this.binary} login`,
+      ],
+    }
   }
 
   async verifyAuth(): Promise<{ success: boolean; error?: string }> {

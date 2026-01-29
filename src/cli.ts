@@ -28,6 +28,8 @@ import {
   DEFAULT_PROVIDER,
   setRuntimeConfig,
   parseOnlyFlag,
+  loadConfigFile,
+  type ConfigFile,
 } from './config'
 import { isValidEnvironment, VALID_ENVIRONMENTS, DEFAULT_ENVIRONMENT } from './utils/variables'
 import { VALID_PROVIDERS, type ProviderType } from './providers'
@@ -65,7 +67,10 @@ function showHelp(): void {
   console.info(
     `  ${pc.green('--provider')} ${pc.dim('<name>')}   Secret provider ${pc.dim(`(${VALID_PROVIDERS.join(', ')})`)}`,
   )
-  console.info(`  ${pc.green('--account')} ${pc.dim('<name>')}    1Password account name for desktop app auth`)
+  console.info(
+    `  ${pc.green('--provider-opt')} ${pc.dim('<k=v>')} Provider-specific option (repeatable)`,
+  )
+  console.info(`  ${pc.green('--config')} ${pc.dim('<path>')}    Load config from JSON file`)
   console.info(`  ${pc.green('--only')} ${pc.dim('<paths>')}      Only process specified paths (comma-separated)`)
   console.info(
     `  ${pc.green('--output')} ${pc.dim('<file>')}    Output file name ${pc.dim(`(default: ${DEFAULT_OUTPUT_FILE})`)}`,
@@ -140,44 +145,76 @@ interface GlobalOptions {
   quiet?: boolean
   env?: string
   provider?: string
-  account?: string
+  providerOpt?: string[]
+  config?: string
   only?: string
   output?: string
   template?: string
   backupDir?: string
 }
 
-function applyGlobalOptions(options: GlobalOptions): void {
-  // Validate environment
-  const env = options.env ?? DEFAULT_ENVIRONMENT
+/** Parse `--provider-opt key=value` entries into a record. */
+function parseProviderOpts(opts: string[] | undefined): Record<string, string> {
+  if (!opts) return {}
+  const result: Record<string, string> = {}
+  for (const entry of opts) {
+    const eq = entry.indexOf('=')
+    if (eq === -1) {
+      console.error(pc.red(`Invalid --provider-opt format: "${entry}" (expected key=value)`))
+      process.exit(1)
+    }
+    result[entry.slice(0, eq)] = entry.slice(eq + 1)
+  }
+  return result
+}
+
+async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
+  // Load config file if provided (base layer)
+  let fileConfig: ConfigFile = {}
+  if (options.config) {
+    try {
+      fileConfig = await loadConfigFile(options.config)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      console.error(pc.red(msg))
+      process.exit(1)
+    }
+  }
+
+  // Merge: config file ← CLI flags (CLI wins)
+  const env = options.env ?? fileConfig.environment ?? DEFAULT_ENVIRONMENT
   if (!isValidEnvironment(env)) {
     console.error(pc.red(`Invalid environment: ${env}`))
     console.error(pc.dim(`Valid environments: ${VALID_ENVIRONMENTS.join(', ')}`))
     process.exit(1)
   }
 
-  // Validate provider
-  const providerName = (options.provider ?? DEFAULT_PROVIDER) as ProviderType
+  const providerName = (options.provider ?? fileConfig.provider ?? DEFAULT_PROVIDER) as ProviderType
   if (!VALID_PROVIDERS.includes(providerName)) {
     console.error(pc.red(`Invalid provider: ${providerName}`))
     console.error(pc.dim(`Valid providers: ${VALID_PROVIDERS.join(', ')}`))
     process.exit(1)
   }
 
-  const paths = parseOnlyFlag(options.only) ?? ENV_PATHS
-  const config: Parameters<typeof setRuntimeConfig>[0] = {
+  // Provider options: config file ← CLI --provider-opt (CLI wins)
+  const cliProviderOpts = parseProviderOpts(options.providerOpt)
+  const providerOptions: Record<string, string> = {
+    ...fileConfig.providerOptions,
+    ...cliProviderOpts,
+  }
+
+  const paths = parseOnlyFlag(options.only) ?? fileConfig.paths ?? ENV_PATHS
+
+  setRuntimeConfig({
     paths,
-    outputFile: options.output ?? DEFAULT_OUTPUT_FILE,
-    templateFile: options.template ?? DEFAULT_TEMPLATE_FILE,
-    backupDir: options.backupDir ?? DEFAULT_BACKUP_DIR,
-    quiet: options.quiet ?? false,
+    outputFile: options.output ?? fileConfig.outputFile ?? DEFAULT_OUTPUT_FILE,
+    templateFile: options.template ?? fileConfig.templateFile ?? DEFAULT_TEMPLATE_FILE,
+    backupDir: options.backupDir ?? fileConfig.backupDir ?? DEFAULT_BACKUP_DIR,
+    quiet: options.quiet ?? fileConfig.quiet ?? false,
     environment: env,
     provider: providerName,
-  }
-  if (options.account) {
-    config.accountName = options.account
-  }
-  setRuntimeConfig(config)
+    providerOptions,
+  })
 }
 
 const program = new Command()
@@ -189,7 +226,8 @@ program
   .option('-q, --quiet', 'Suppress non-essential output')
   .option('-e, --env <name>', `Environment (${VALID_ENVIRONMENTS.join(', ')})`, DEFAULT_ENVIRONMENT)
   .option('--provider <name>', `Secret provider (${VALID_PROVIDERS.join(', ')})`, DEFAULT_PROVIDER)
-  .option('--account <name>', '1Password account name for desktop app auth')
+  .option('--provider-opt <key=value>', 'Provider-specific option (repeatable)', (val: string, acc: string[]) => { acc.push(val); return acc }, [] as string[])
+  .option('--config <path>', 'Load config from JSON file')
   .option('--only <paths>', 'Only process specified paths (comma-separated)')
   .option('--output <file>', `Output file name (default: ${DEFAULT_OUTPUT_FILE})`)
   .option('--template <file>', `Template file name (default: ${DEFAULT_TEMPLATE_FILE})`)
@@ -200,7 +238,7 @@ configureCommandHelp(program.command('status').description('Show .env status and
   description: 'Show .env status and auth',
   examples: ['envi status', 'envi status --only engine/api'],
 }).action(async () => {
-  applyGlobalOptions(program.opts())
+  await applyGlobalOptions(program.opts())
   await statusCommand()
 })
 
@@ -216,7 +254,7 @@ configureCommandHelp(
     examples: ['envi diff', 'envi diff --path engine/api'],
   },
 ).action(async (options) => {
-  applyGlobalOptions(program.opts())
+  await applyGlobalOptions(program.opts())
   await diffCommand({
     path: options.path,
   })
@@ -240,7 +278,7 @@ configureCommandHelp(
     examples: ['envi sync', 'envi sync -d', 'envi sync -f', 'envi sync --no-backup', 'envi sync --only engine/api'],
   },
 ).action(async (options) => {
-  applyGlobalOptions(program.opts())
+  await applyGlobalOptions(program.opts())
   await syncCommand({
     force: options.force ?? false,
     dryRun: options.dryRun ?? false,
@@ -266,7 +304,7 @@ configureCommandHelp(
     examples: ['envi backup', 'envi backup -d', 'envi backup -f', 'envi backup --list'],
   },
 ).action(async (options) => {
-  applyGlobalOptions(program.opts())
+  await applyGlobalOptions(program.opts())
   await backupCommand({
     force: options.force ?? false,
     dryRun: options.dryRun ?? false,
@@ -292,7 +330,7 @@ configureCommandHelp(
     examples: ['envi restore', 'envi restore --list', 'envi restore -f', 'envi restore -d'],
   },
 ).action(async (options) => {
-  applyGlobalOptions(program.opts())
+  await applyGlobalOptions(program.opts())
   await restoreCommand({
     force: options.force ?? false,
     dryRun: options.dryRun ?? false,
@@ -324,7 +362,7 @@ configureCommandHelp(runCmd, {
     'envi run -e prod -- node server.js',
   ],
 }).action(async (options, cmd) => {
-  applyGlobalOptions(program.opts())
+  await applyGlobalOptions(program.opts())
   // Everything after `--` ends up in cmd.args
   const childCommand = cmd.args
   await runCommand(childCommand, {
@@ -345,7 +383,7 @@ configureCommandHelp(
     examples: ['envi validate', 'envi validate --remote', 'envi validate --only engine/api'],
   },
 ).action(async (options) => {
-  applyGlobalOptions(program.opts())
+  await applyGlobalOptions(program.opts())
   await validateCommand({ remote: options.remote ?? false })
 })
 

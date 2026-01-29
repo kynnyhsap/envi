@@ -26,6 +26,21 @@ export interface AuthInfo {
   identifier: string
 }
 
+/** Pre-flight availability check result. */
+export interface AvailabilityResult {
+  available: boolean
+  /** Status lines to display (e.g., "OP_SERVICE_ACCOUNT_TOKEN: found"). */
+  statusLines?: string[]
+  /** Help lines to display when not available. */
+  helpLines?: string[]
+}
+
+/** Hints for the user when auth fails. */
+export interface AuthFailureHints {
+  /** Lines to display after auth failure. */
+  lines: string[]
+}
+
 /**
  * Secret provider interface.
  *
@@ -43,8 +58,17 @@ export interface Provider {
   /** Get the current authentication method info. */
   getAuthInfo(): AuthInfo
 
+  /**
+   * Check if the provider is available (e.g., app running, CLI installed).
+   * Called before verifyAuth. If not available, auth is skipped.
+   */
+  checkAvailability(): Promise<AvailabilityResult>
+
   /** Verify that authentication is working. */
   verifyAuth(): Promise<{ success: boolean; error?: string }>
+
+  /** Get hint messages to display when auth fails. */
+  getAuthFailureHints(): AuthFailureHints
 
   /** Resolve a single secret reference string (native format, e.g., "op://vault/item/field"). */
   resolveSecret(reference: string): Promise<string>

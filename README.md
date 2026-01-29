@@ -179,17 +179,18 @@ bun envi status --provider proton-pass
 | `-q, --quiet`         | Suppress non-essential output                               |
 | `-e, --env <name>`    | Environment (local, dev, staging, prod, sandbox, self-host) |
 | `--provider <name>`   | Secret provider (1password, proton-pass)                    |
-| `--account <name>`    | 1Password account name for desktop app auth                 |
+| `--provider-opt <k=v>`| Provider-specific option (repeatable)                       |
+| `--config <path>`     | Load config from JSON file                                  |
 | `--only <paths>`      | Filter which paths to process                               |
 
 ## How It Works
 
-### Templates (`.env.tpl`)
+### Templates (`.env.example`)
 
 Templates are checked into git and contain secret references. Use `${ENV}` for environment-specific vaults:
 
 ```bash
-# engine/api/.env.tpl
+# engine/api/.env.example
 NODE_ENV=development
 SECRET=envi://core-${ENV}/engine-api/SECRET
 DATABASE_URL=envi://core-${ENV}/engine-api/DATABASE_URL
@@ -197,7 +198,7 @@ DATABASE_URL=envi://core-${ENV}/engine-api/DATABASE_URL
 
 ### Sync Flow
 
-1. **Read template** - Parse `.env.tpl` file
+1. **Read template** - Parse `.env.example` file
 2. **Resolve secrets** - Use the configured provider to fetch secrets
 3. **Show changes** - Display table of NEW, UPDATED, UNCHANGED variables
 4. **Confirm** - Prompt for confirmation if there are changes (skip with `--force`)
@@ -252,10 +253,10 @@ Example:
 
 ## Adding New Templates
 
-1. Create a `.env.tpl` file in your package:
+1. Create a `.env.example` file in your package:
 
    ```bash
-   # my-package/.env.tpl
+   # my-package/.env.example
    NODE_ENV=development
    API_KEY=envi://core-${ENV}/my-package/API_KEY
    ```
@@ -285,7 +286,7 @@ The CLI supports multiple environments through the `-e, --env` flag. Use `${ENV}
 Use `${ENV}` anywhere in your secret references:
 
 ```bash
-# engine/api/.env.tpl
+# engine/api/.env.example
 
 # Static values (no substitution)
 NODE_ENV=development
@@ -454,6 +455,5 @@ bun run src/cli.ts validate
 ### Authentication Priority (1Password)
 
 1. `OP_SERVICE_ACCOUNT_TOKEN` env var → Service account auth (for CI/CD)
-2. `--account` CLI flag → Desktop app with specified account
-3. `OP_ACCOUNT_NAME` env var → Desktop app with env var account
-4. Error if none provided (account name is required for desktop app auth)
+2. `--provider-opt accountName=my-team` or `OP_ACCOUNT_NAME` env var → Desktop app auth
+3. Error if none provided (account name is required for desktop app auth)
