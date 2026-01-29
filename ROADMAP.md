@@ -45,6 +45,10 @@ Scan the codebase for env var usage and report all variables the project expects
 - Output as a list, or optionally generate/update the template file
 - Respect `.gitignore` and configurable include/exclude globs
 - Language-agnostic pattern matching (JS/TS, Python, Go, Ruby, etc.)
+- **Onboarding**: new dev clones the repo, runs `envi scan`, instantly sees every env var the app needs
+- **Catching drift**: someone adds `process.env.NEW_KEY` in code but forgets to update `.env.example` — `scan` catches it
+- **Cleanup**: finds vars in `.env.example` that are no longer referenced anywhere in code
+- **Pipeline with `setup`**: `scan` discovers what's needed, `setup` creates them in the provider
 
 ### Formatting & linting
 
