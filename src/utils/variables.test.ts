@@ -53,7 +53,22 @@ describe('substituteVariables', () => {
     expect(substituteVariables('op://${ENV}/${ENV}/field', 'dev')).toBe('op://dev/dev/field')
   })
 
-  it('does not substitute in non-op:// values', () => {
+  it('substitutes ${ENV} in envi:// references', () => {
+    expect(substituteVariables('envi://core-${ENV}/engine-api/SECRET', 'local')).toBe(
+      'envi://core-local/engine-api/SECRET',
+    )
+    expect(substituteVariables('envi://core-${ENV}/engine-api/SECRET', 'prod')).toBe(
+      'envi://core-prod/engine-api/SECRET',
+    )
+  })
+
+  it('substitutes ${ENV} in pass:// references', () => {
+    expect(substituteVariables('pass://core-${ENV}/engine-api/SECRET', 'local')).toBe(
+      'pass://core-local/engine-api/SECRET',
+    )
+  })
+
+  it('does not substitute in non-secret values', () => {
     expect(substituteVariables('${ENV}_value', 'prod')).toBe('${ENV}_value')
     expect(substituteVariables('some-${ENV}-string', 'dev')).toBe('some-${ENV}-string')
   })

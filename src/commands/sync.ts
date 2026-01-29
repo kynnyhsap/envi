@@ -20,7 +20,7 @@ import {
   type EnvFile,
 } from '../utils'
 import { createAutoBackup } from './backup'
-import { resolveSecrets } from '../sdk'
+import { getDefaultProvider, detectProvider, getProvider, toNativeReference } from '../providers'
 
 async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null> {
   const config = getConfig()
@@ -48,13 +48,36 @@ async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null
   }
 
   const references = secretRefs.map((s) => s.reference)
-  const { resolved, errors } = await resolveSecrets(references)
+
+  // Route references to appropriate provider
+  const defaultProvider = getDefaultProvider()
+  const provider = (() => {
+    // Check the first reference to determine provider (all refs in a template should use same scheme)
+    const firstRef = references[0]
+    if (firstRef) {
+      const providerId = detectProvider(firstRef)
+      if (providerId) return getProvider(providerId)
+    }
+    return defaultProvider
+  })()
+
+  // Convert envi:// references to native format
+  const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))
+  const { resolved, errors } = await provider.resolveSecrets(nativeRefs)
+
+  // Map native refs back to original refs for lookup
+  const nativeToOriginal = new Map<string, string>()
+  for (let i = 0; i < references.length; i++) {
+    nativeToOriginal.set(nativeRefs[i]!, references[i]!)
+  }
 
   // Report any errors with the specific references that failed
   if (errors.size > 0) {
     log.fail(`Failed to resolve ${errors.size} secret(s):`)
-    for (const { key, reference } of secretRefs) {
-      const error = errors.get(reference)
+    for (let i = 0; i < secretRefs.length; i++) {
+      const { key, reference } = secretRefs[i]!
+      const nativeRef = nativeRefs[i]!
+      const error = errors.get(nativeRef)
       if (error) {
         log.info(`    ${key}: ${reference}`)
         log.info(`    ${pc.dim(`Error: ${error}`)}`)
@@ -64,8 +87,10 @@ async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null
   }
 
   const resolvedVars = new Map(template.vars)
-  for (const { key, reference } of secretRefs) {
-    const value = resolved.get(reference)
+  for (let i = 0; i < secretRefs.length; i++) {
+    const { key } = secretRefs[i]!
+    const nativeRef = nativeRefs[i]!
+    const value = resolved.get(nativeRef)
     if (value !== undefined) {
       const existing = resolvedVars.get(key)!
       resolvedVars.set(key, { ...existing, value })
@@ -87,7 +112,8 @@ function formatValue(value: string, isSecret: boolean): string {
 }
 
 function isSecretValue(templateValue: string | undefined): boolean {
-  return templateValue?.startsWith('op://') ?? false
+  if (!templateValue) return false
+  return isSecretReference(templateValue)
 }
 
 function displayChanges(changes: Change[]): {
@@ -201,7 +227,7 @@ async function processEnvPath(
   log.detail(`Template has ${template.vars.size} variables`)
 
   log.info('')
-  log.info('  Resolving secrets from 1Password...')
+  log.info('  Resolving secrets...')
   const injected = await resolveTemplateSecrets(template)
   if (!injected) {
     return { success: false, changes: [] }

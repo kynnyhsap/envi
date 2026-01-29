@@ -1,28 +1,45 @@
 import pc from 'picocolors'
 import { getConfig } from '../config'
 import { log } from '../logger'
-import { parseEnvFile, isSecretReference, resolveAllEnvPaths, type EnvPathInfo } from '../utils'
+import { parseEnvFile, resolveAllEnvPaths, type EnvPathInfo } from '../utils'
 import { substituteVariables, hasUnresolvedVariables } from '../utils/variables'
-import { resolveSecret } from '../sdk'
+import {
+  isSecretReference,
+  parseSecretReference,
+  getDefaultProvider,
+  detectProvider,
+  getProvider,
+  toNativeReference,
+} from '../providers'
 
 /**
- * Format an op:// reference with colored parts.
- * op://vault/item/field -> op://vault/item/field with vault, item, field highlighted
+ * Format a secret reference with colored parts.
+ * envi://vault/item/field, op://vault/item/field, pass://vault/item/field
  */
-function formatOpReference(reference: string): string {
+function formatReference(reference: string): string {
   const trimmed = reference.trim()
-  if (!trimmed.startsWith('op://')) {
-    return trimmed
+
+  // Find the scheme
+  const schemes = ['envi://', 'op://', 'pass://']
+  for (const scheme of schemes) {
+    if (trimmed.startsWith(scheme)) {
+      const path = trimmed.slice(scheme.length)
+      const parts = path.split('/')
+      const [vault, item, ...rest] = parts
+      const field = rest.join('/')
+
+      return (
+        pc.dim(scheme) +
+        pc.blue(vault ?? '') +
+        pc.dim('/') +
+        pc.cyan(item ?? '') +
+        pc.dim('/') +
+        pc.yellow(field)
+      )
+    }
   }
 
-  const path = trimmed.slice(5) // Remove 'op://'
-  const parts = path.split('/')
-
-  // op://vault/item/field or op://vault/item/section/field
-  const [vault, item, ...rest] = parts
-  const field = rest.join('/')
-
-  return pc.dim('op://') + pc.blue(vault ?? '') + pc.dim('/') + pc.cyan(item ?? '') + pc.dim('/') + pc.yellow(field)
+  return trimmed
 }
 
 interface SecretToValidate {
@@ -32,47 +49,29 @@ interface SecretToValidate {
 }
 
 /**
- * Validate reference format using regex (fast, offline).
+ * Validate reference format (fast, offline).
  */
 function validateReferenceFormat(reference: string): { valid: boolean; error?: string | undefined } {
-  const trimmed = reference.trim()
-
-  if (!trimmed.startsWith('op://')) {
-    return { valid: false, error: 'Must start with op://' }
+  try {
+    parseSecretReference(reference)
+    return { valid: true }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return { valid: false, error: msg }
   }
-
-  const path = trimmed.slice(5) // Remove 'op://'
-  const parts = path.split('/')
-
-  if (parts.length < 3) {
-    return { valid: false, error: 'Must have at least 3 parts: vault/item/field' }
-  }
-
-  const [vault, item, ...rest] = parts
-  const field = rest.join('/')
-
-  if (!vault || vault.trim() === '') {
-    return { valid: false, error: 'Vault name is empty' }
-  }
-
-  if (!item || item.trim() === '') {
-    return { valid: false, error: 'Item name is empty' }
-  }
-
-  if (!field || field.trim() === '') {
-    return { valid: false, error: 'Field name is empty' }
-  }
-
-  return { valid: true }
 }
 
 /**
- * Validate reference by actually fetching from 1Password (slow, requires auth).
+ * Validate reference by actually fetching from the provider (slow, requires auth).
  */
 async function validateReferenceRemote(reference: string): Promise<{ valid: boolean; error?: string | undefined }> {
   try {
-    // Use SDK to resolve the secret (verifies it exists)
-    await resolveSecret(reference)
+    const defaultProvider = getDefaultProvider()
+    const providerId = detectProvider(reference)
+    const provider = providerId ? getProvider(providerId) : defaultProvider
+
+    const nativeRef = toNativeReference(reference, provider.scheme)
+    await provider.resolveSecret(nativeRef)
     return { valid: true }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -127,17 +126,19 @@ interface ValidateOptions {
 export async function validateCommand(options: ValidateOptions = {}): Promise<void> {
   const isRemote = options.remote ?? false
   const { environment } = getConfig()
+  const provider = getDefaultProvider()
 
-  log.banner('Validate 1Password References')
+  log.banner('Validate Secret References')
 
   const envPaths = resolveAllEnvPaths()
 
   log.info('')
   log.info(`  Environment: ${pc.cyan(environment)}`)
+  log.info(`  Provider: ${pc.cyan(provider.name)}`)
   if (isRemote) {
-    log.info('  Validating op:// references against 1Password...')
+    log.info('  Validating references against provider...')
   } else {
-    log.info('  Validating op:// reference format in templates...')
+    log.info('  Validating reference format in templates...')
   }
   log.info('')
 
@@ -163,13 +164,10 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
 
     log.header(pathInfo.templatePath)
 
-    // Validate each secret one by one
     for (const secret of secrets) {
-      // Show the resolved reference (with ${ENV} substituted)
-      const formattedRef = formatOpReference(secret.resolvedReference)
+      const formattedRef = formatReference(secret.resolvedReference)
       const line = `${secret.key}=${formattedRef}`
 
-      // Check for unresolved variables first (e.g., ${FOO} still in the reference)
       if (hasUnresolvedVariables(secret.resolvedReference)) {
         log.invalid(line)
         log.detail(pc.red('Error: Unresolved variables in reference'))
@@ -203,7 +201,7 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
     log.info(`  ${pc.green(String(totalValid))} reference(s) validated across ${totalTemplates} template(s)`)
     if (!isRemote) {
       log.info('')
-      log.info(`  ${pc.dim(`Use ${pc.cyan('--remote')} to check against 1Password`)}`)
+      log.info(`  ${pc.dim(`Use ${pc.cyan('--remote')} to check against provider`)}`)
     }
   } else {
     log.info(
@@ -211,7 +209,7 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
         `across ${totalTemplates} template(s)`,
     )
     log.info('')
-    log.info(`  ${pc.red('Fix invalid references before running setup')}`)
+    log.info(`  ${pc.red('Fix invalid references before running sync')}`)
   }
 
   log.info('')

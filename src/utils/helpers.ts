@@ -1,8 +1,7 @@
 import pc from 'picocolors'
 import { confirm } from '@inquirer/prompts'
 import { log } from '../logger'
-import { OP_ACCOUNT_URL } from '../config'
-import { getAuthMethod, verifyAuth } from '../sdk'
+import { getDefaultProvider, is1PasswordAppRunning, OP_ACCOUNT_URL } from '../providers'
 
 export async function promptConfirm(message: string, defaultValue = true): Promise<boolean> {
   try {
@@ -17,67 +16,69 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T
   return Promise.race([promise, timeout])
 }
 
-async function is1PasswordAppRunning(): Promise<boolean> {
-  try {
-    const result = await Bun.$`pgrep -x "1Password"`.quiet().nothrow()
-    return result.exitCode === 0
-  } catch {
-    return false
-  }
-}
-
 export async function checkPrerequisites(options: { quiet?: boolean } = {}): Promise<boolean> {
+  const provider = getDefaultProvider()
+
   if (!options.quiet) {
     log.info('')
     log.info('Checking prerequisites...')
   }
 
-  const authMethod = getAuthMethod()
-  const hasServiceToken = !!process.env['OP_SERVICE_ACCOUNT_TOKEN']
+  const authInfo = provider.getAuthInfo()
 
-  // Check if desktop app is running before attempting auth
-  if (authMethod.type === 'desktop-app') {
-    const appRunning = await is1PasswordAppRunning()
-    if (!appRunning) {
-      log.fail('No authentication method available')
-      if (!hasServiceToken) {
-        log.detail('OP_SERVICE_ACCOUNT_TOKEN: not set')
+  // Provider-specific pre-flight checks
+  if (provider.id === '1password') {
+    const hasServiceToken = !!process.env['OP_SERVICE_ACCOUNT_TOKEN']
+
+    if (authInfo.type === 'desktop-app') {
+      const appRunning = await is1PasswordAppRunning()
+      if (!appRunning) {
+        log.fail('No authentication method available')
+        if (!hasServiceToken) {
+          log.detail('OP_SERVICE_ACCOUNT_TOKEN: not set')
+        }
+        log.detail('1Password desktop app: not running')
+        log.info('')
+        log.info('  To authenticate, either:')
+        log.info(`  ${pc.cyan('1.')} Open the 1Password desktop app`)
+        log.info(`  ${pc.cyan('2.')} Set ${pc.cyan('OP_SERVICE_ACCOUNT_TOKEN')} env var`)
+        log.info(`  Create one at ${pc.cyan(`${OP_ACCOUNT_URL}/developer-tools`)}`)
+        return false
       }
-      log.detail('1Password desktop app: not running')
-      log.info('')
-      log.info('  To authenticate, either:')
-      log.info(`  ${pc.cyan('1.')} Open the 1Password desktop app`)
-      log.info(`  ${pc.cyan('2.')} Set ${pc.cyan('OP_SERVICE_ACCOUNT_TOKEN')} env var`)
-      log.info(`  Create one at ${pc.cyan(`${OP_ACCOUNT_URL}/developer-tools`)}`)
-      return false
+    }
+
+    if (!options.quiet) {
+      if (authInfo.type === 'service-account') {
+        log.info('  Authenticating via service account...')
+      } else {
+        log.info(`  Authenticating via desktop app (account: ${authInfo.identifier})...`)
+      }
+    }
+  } else if (provider.id === 'proton-pass') {
+    if (!options.quiet) {
+      log.info(`  Authenticating via ${provider.name} CLI...`)
     }
   }
 
-  if (!options.quiet) {
-    if (authMethod.type === 'service-account') {
-      log.info('  Authenticating via service account...')
-    } else {
-      log.info(`  Authenticating via desktop app (account: ${authMethod.identifier})...`)
-    }
-  }
-
-  const authResult = await verifyAuth()
+  const authResult = await provider.verifyAuth()
 
   if (!authResult.success) {
     log.fail('Authentication failed')
     if (authResult.error) {
       log.detail(authResult.error)
     }
-    if (authMethod.type === 'desktop-app') {
+    if (provider.id === '1password' && authInfo.type === 'desktop-app') {
       log.detail('Make sure "Integrate with other apps" is enabled in Settings > Developer')
-    } else {
+    } else if (provider.id === '1password') {
       log.detail('Check your OP_SERVICE_ACCOUNT_TOKEN value')
+    } else if (provider.id === 'proton-pass') {
+      log.detail(`Make sure ${pc.cyan('pass-cli')} is installed and you are logged in`)
     }
     return false
   }
 
   if (!options.quiet) {
-    log.success('1Password authentication verified')
+    log.success(`${provider.name} authentication verified`)
   }
 
   return true

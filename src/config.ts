@@ -1,20 +1,15 @@
 import packageJson from '../package.json'
 import { DEFAULT_ENVIRONMENT, type Environment } from './utils/variables'
+import { initProviders, type ProviderType, type ProvidersConfig } from './providers'
 
 export const VERSION = packageJson.version
-
-// Default 1Password account name (shown at top of sidebar in 1Password app)
-// Can be overridden with OP_ACCOUNT_NAME env var
-export const OP_ACCOUNT_NAME = 'Membrane'
-
-// 1Password account URL for service account creation
-export const OP_ACCOUNT_URL = 'https://getmembrane.1password.com'
 
 // Default values
 export const BACKUP_FOLDER_NAME = '.env-backup'
 export const DEFAULT_BACKUP_DIR = BACKUP_FOLDER_NAME
 export const DEFAULT_TEMPLATE_FILE = '.env.tpl'
 export const DEFAULT_OUTPUT_FILE = '.env'
+export const DEFAULT_PROVIDER: ProviderType = '1password'
 
 export const ENV_PATHS = [
   'dashboard-agent',
@@ -33,8 +28,9 @@ export interface RuntimeConfig {
   outputFile: string
   paths: string[]
   quiet: boolean
-  accountName?: string
   environment: Environment
+  provider: ProviderType
+  accountName?: string
 }
 
 let runtimeConfig: RuntimeConfig = {
@@ -44,10 +40,19 @@ let runtimeConfig: RuntimeConfig = {
   paths: ENV_PATHS,
   quiet: false,
   environment: DEFAULT_ENVIRONMENT,
+  provider: DEFAULT_PROVIDER,
 }
 
 export function setRuntimeConfig(config: Partial<RuntimeConfig>): void {
   runtimeConfig = { ...runtimeConfig, ...config }
+
+  // Initialize providers based on config
+  const providersConfig: ProvidersConfig = {
+    default: runtimeConfig.provider,
+    '1password': runtimeConfig.accountName ? { accountName: runtimeConfig.accountName } : {},
+  }
+
+  initProviders(providersConfig)
 }
 
 export function getConfig(): RuntimeConfig {

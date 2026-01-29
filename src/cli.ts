@@ -25,10 +25,12 @@ import {
   DEFAULT_BACKUP_DIR,
   DEFAULT_OUTPUT_FILE,
   DEFAULT_TEMPLATE_FILE,
+  DEFAULT_PROVIDER,
   setRuntimeConfig,
   parseOnlyFlag,
 } from './config'
 import { isValidEnvironment, VALID_ENVIRONMENTS, DEFAULT_ENVIRONMENT } from './utils/variables'
+import { VALID_PROVIDERS, type ProviderType } from './providers'
 import { statusCommand, diffCommand, syncCommand, backupCommand, restoreCommand, validateCommand } from './commands'
 
 function showHelp(): void {
@@ -50,6 +52,9 @@ function showHelp(): void {
   console.info(`  ${pc.green('-q, --quiet')}         Suppress non-essential output`)
   console.info(
     `  ${pc.green('-e, --env')} ${pc.dim('<name>')}    Environment ${pc.dim(`(${VALID_ENVIRONMENTS.join(', ')})`)}`,
+  )
+  console.info(
+    `  ${pc.green('--provider')} ${pc.dim('<name>')}   Secret provider ${pc.dim(`(${VALID_PROVIDERS.join(', ')})`)}`,
   )
   console.info(`  ${pc.green('--account')} ${pc.dim('<name>')}    1Password account name for desktop app auth`)
   console.info(`  ${pc.green('--only')} ${pc.dim('<paths>')}      Only process specified paths (comma-separated)`)
@@ -125,6 +130,7 @@ function configureCommandHelp(cmd: Command, help: CommandHelp): Command {
 interface GlobalOptions {
   quiet?: boolean
   env?: string
+  provider?: string
   account?: string
   only?: string
   output?: string
@@ -141,6 +147,14 @@ function applyGlobalOptions(options: GlobalOptions): void {
     process.exit(1)
   }
 
+  // Validate provider
+  const providerName = (options.provider ?? DEFAULT_PROVIDER) as ProviderType
+  if (!VALID_PROVIDERS.includes(providerName)) {
+    console.error(pc.red(`Invalid provider: ${providerName}`))
+    console.error(pc.dim(`Valid providers: ${VALID_PROVIDERS.join(', ')}`))
+    process.exit(1)
+  }
+
   const paths = parseOnlyFlag(options.only) ?? ENV_PATHS
   const config: Parameters<typeof setRuntimeConfig>[0] = {
     paths,
@@ -149,6 +163,7 @@ function applyGlobalOptions(options: GlobalOptions): void {
     backupDir: options.backupDir ?? DEFAULT_BACKUP_DIR,
     quiet: options.quiet ?? false,
     environment: env,
+    provider: providerName,
   }
   if (options.account) {
     config.accountName = options.account
@@ -164,6 +179,7 @@ program
   .version(VERSION, '-v, --version', 'Show version number')
   .option('-q, --quiet', 'Suppress non-essential output')
   .option('-e, --env <name>', `Environment (${VALID_ENVIRONMENTS.join(', ')})`, DEFAULT_ENVIRONMENT)
+  .option('--provider <name>', `Secret provider (${VALID_PROVIDERS.join(', ')})`, DEFAULT_PROVIDER)
   .option('--account <name>', '1Password account name for desktop app auth')
   .option('--only <paths>', 'Only process specified paths (comma-separated)')
   .option('--output <file>', `Output file name (default: ${DEFAULT_OUTPUT_FILE})`)

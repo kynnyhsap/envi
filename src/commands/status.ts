@@ -2,7 +2,7 @@ import pc from 'picocolors'
 import { log } from '../logger'
 import { getConfig } from '../config'
 import { formatBackupTimestamp, parseEnvFile, resolveAllEnvPaths, getBackupRootDir, type EnvPathInfo } from '../utils'
-import { getAuthMethod, verifyAuth, listVaults } from '../sdk'
+import { getDefaultProvider, is1PasswordAppRunning, OP_ACCOUNT_URL } from '../providers'
 
 interface PathStatus {
   pathInfo: EnvPathInfo
@@ -16,7 +16,7 @@ interface PathStatus {
 
 interface AuthStatus {
   authenticated: boolean
-  authMethod?: 'service_account' | 'desktop_app' | undefined
+  authMethod?: string | undefined
   accountName?: string | undefined
   vaultCount?: number | undefined
 }
@@ -46,7 +46,6 @@ async function getPathStatus(pathInfo: EnvPathInfo): Promise<PathStatus> {
       const env = parseEnvFile(envContent)
       envVarCount = env.vars.size
 
-      // Check if all template vars exist in env
       let allPresent = true
       for (const key of template.order) {
         if (!env.vars.has(key)) {
@@ -103,38 +102,29 @@ async function getBackupInfo(): Promise<BackupInfo> {
   return { count, latestTimestamp }
 }
 
-async function is1PasswordAppRunning(): Promise<boolean> {
-  try {
-    const result = await Bun.$`pgrep -x "1Password"`.quiet().nothrow()
-    return result.exitCode === 0
-  } catch {
-    return false
-  }
-}
-
 async function getAuthStatus(): Promise<AuthStatus> {
-  const authMethod = getAuthMethod()
+  const provider = getDefaultProvider()
+  const authInfo = provider.getAuthInfo()
 
   const status: AuthStatus = {
     authenticated: false,
-    authMethod: authMethod.type === 'service-account' ? 'service_account' : 'desktop_app',
-    accountName: authMethod.type === 'desktop-app' ? authMethod.identifier : undefined,
+    authMethod: authInfo.type,
+    accountName: authInfo.type === 'desktop-app' ? authInfo.identifier : undefined,
   }
 
-  // Check if desktop app is running (for desktop auth)
-  if (authMethod.type === 'desktop-app') {
+  // Provider-specific pre-flight checks
+  if (provider.id === '1password' && authInfo.type === 'desktop-app') {
     const appRunning = await is1PasswordAppRunning()
     if (!appRunning) {
       return status
     }
   }
 
-  // Verify authentication by listing vaults
-  const authResult = await verifyAuth()
+  const authResult = await provider.verifyAuth()
   if (authResult.success) {
     status.authenticated = true
     try {
-      const vaults = await listVaults()
+      const vaults = await provider.listVaults()
       status.vaultCount = vaults.length
     } catch {
       // Ignore vault listing errors
@@ -146,65 +136,81 @@ async function getAuthStatus(): Promise<AuthStatus> {
 
 export async function statusCommand(): Promise<void> {
   const config = getConfig()
+  const provider = getDefaultProvider()
 
   log.banner('Environment Status')
   log.info(`  Environment: ${pc.cyan(config.environment)}`)
+  log.info(`  Provider: ${pc.cyan(provider.name)}`)
 
   // Auth status section
-  log.header('1Password')
+  log.header(provider.name)
   log.info('')
 
-  const hasServiceToken = !!process.env['OP_SERVICE_ACCOUNT_TOKEN']
-  const appRunning = await is1PasswordAppRunning()
-  const authMethod = getAuthMethod()
+  if (provider.id === '1password') {
+    const hasServiceToken = !!process.env['OP_SERVICE_ACCOUNT_TOKEN']
+    const appRunning = await is1PasswordAppRunning()
+    const authInfo = provider.getAuthInfo()
 
-  // Show what was checked
-  if (hasServiceToken) {
-    log.detail(`OP_SERVICE_ACCOUNT_TOKEN: ${pc.green('found')}`)
-  } else {
-    log.detail(`OP_SERVICE_ACCOUNT_TOKEN: ${pc.dim('not set')}`)
-  }
-
-  if (appRunning) {
-    log.detail(`1Password desktop app: ${pc.green('running')}`)
-  } else {
-    log.detail(`1Password desktop app: ${pc.dim('not running')}`)
-  }
-
-  log.info('')
-
-  if (!hasServiceToken && !appRunning) {
-    log.fail('No authentication method available')
-    log.info('')
-    log.info('  To authenticate, either:')
-    log.info(`  ${pc.cyan('1.')} Open the 1Password desktop app`)
-    log.info(`  ${pc.cyan('2.')} Set ${pc.cyan('OP_SERVICE_ACCOUNT_TOKEN')} env var`)
-  } else {
-    // Authenticate with the available method
-    if (authMethod.type === 'service-account') {
-      log.info('  Authenticating via service account...')
+    if (hasServiceToken) {
+      log.detail(`OP_SERVICE_ACCOUNT_TOKEN: ${pc.green('found')}`)
     } else {
-      log.info(`  Authenticating via desktop app (account: ${authMethod.identifier})...`)
+      log.detail(`OP_SERVICE_ACCOUNT_TOKEN: ${pc.dim('not set')}`)
     }
 
+    if (appRunning) {
+      log.detail(`1Password desktop app: ${pc.green('running')}`)
+    } else {
+      log.detail(`1Password desktop app: ${pc.dim('not running')}`)
+    }
+
+    log.info('')
+
+    if (!hasServiceToken && !appRunning) {
+      log.fail('No authentication method available')
+      log.info('')
+      log.info('  To authenticate, either:')
+      log.info(`  ${pc.cyan('1.')} Open the 1Password desktop app`)
+      log.info(`  ${pc.cyan('2.')} Set ${pc.cyan('OP_SERVICE_ACCOUNT_TOKEN')} env var`)
+      log.info(`  Create one at ${pc.cyan(`${OP_ACCOUNT_URL}/developer-tools`)}`)
+    } else {
+      if (authInfo.type === 'service-account') {
+        log.info('  Authenticating via service account...')
+      } else {
+        log.info(`  Authenticating via desktop app (account: ${authInfo.identifier})...`)
+      }
+
+      const auth = await getAuthStatus()
+
+      if (auth.authenticated) {
+        const method = auth.authMethod === 'service-account' ? 'service account' : 'desktop app'
+        log.success(`Authenticated via ${method}`)
+        if (auth.accountName) {
+          log.detail(`Account: ${auth.accountName}`)
+        }
+        if (auth.vaultCount !== undefined) {
+          log.detail(`${auth.vaultCount} vault(s) accessible`)
+        }
+      } else {
+        log.fail('Authentication failed')
+        if (authInfo.type === 'desktop-app') {
+          log.detail('Make sure "Integrate with other apps" is enabled in Settings > Developer')
+        } else {
+          log.detail('Check your OP_SERVICE_ACCOUNT_TOKEN value')
+        }
+      }
+    }
+  } else if (provider.id === 'proton-pass') {
+    log.info('  Authenticating via Proton Pass CLI...')
     const auth = await getAuthStatus()
 
     if (auth.authenticated) {
-      const method = auth.authMethod === 'service_account' ? 'service account' : 'desktop app'
-      log.success(`Authenticated via ${method}`)
-      if (auth.accountName) {
-        log.detail(`Account: ${auth.accountName}`)
-      }
+      log.success('Authenticated via Proton Pass CLI')
       if (auth.vaultCount !== undefined) {
         log.detail(`${auth.vaultCount} vault(s) accessible`)
       }
     } else {
       log.fail('Authentication failed')
-      if (authMethod.type === 'desktop-app') {
-        log.detail('Make sure "Integrate with other apps" is enabled in Settings > Developer')
-      } else {
-        log.detail('Check your OP_SERVICE_ACCOUNT_TOKEN value')
-      }
+      log.detail(`Make sure ${pc.cyan('pass-cli')} is installed and you are logged in`)
     }
   }
 
@@ -272,7 +278,7 @@ export async function statusCommand(): Promise<void> {
 
   if (missing > 0 || outdated > 0) {
     log.info('')
-    log.info(`  Run ${pc.cyan('envi sync')} to sync from 1Password`)
+    log.info(`  Run ${pc.cyan('envi sync')} to sync secrets`)
   }
 
   log.info('')

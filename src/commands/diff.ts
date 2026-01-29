@@ -14,7 +14,7 @@ import {
   type EnvPathInfo,
   type EnvFile,
 } from '../utils'
-import { resolveSecrets } from '../sdk'
+import { getDefaultProvider, detectProvider, getProvider, toNativeReference } from '../providers'
 
 interface DiffResult {
   pathInfo: EnvPathInfo
@@ -42,7 +42,7 @@ async function diffEnvPath(pathInfo: EnvPathInfo): Promise<DiffResult> {
   const templateContent = await templateFile.text()
   const template = parseEnvFile(templateContent)
 
-  // Resolve secrets from 1Password using SDK
+  // Resolve secrets using the configured provider
   let injected: EnvFile
 
   // Collect all secret references
@@ -50,10 +50,8 @@ async function diffEnvPath(pathInfo: EnvPathInfo): Promise<DiffResult> {
   for (const [key, envVar] of template.vars) {
     if (isSecretReference(envVar.value)) {
       const originalRef = envVar.value.trim()
-      // Substitute ${ENV} in the reference
       const substituted = substituteVariables(originalRef, env)
 
-      // Check for unresolved variables
       if (hasUnresolvedVariables(substituted)) {
         return { pathInfo, hasTemplate, hasEnv, changes: [], error: `Unresolved variable in ${key}: ${substituted}` }
       }
@@ -63,26 +61,37 @@ async function diffEnvPath(pathInfo: EnvPathInfo): Promise<DiffResult> {
   }
 
   if (secretRefs.length === 0) {
-    // No secrets to resolve
     injected = template
   } else {
-    // Resolve all secrets
     const references = secretRefs.map((s) => s.reference)
-    const { resolved, errors } = await resolveSecrets(references)
 
-    // Check for resolution errors
+    // Route to appropriate provider
+    const defaultProvider = getDefaultProvider()
+    const provider = (() => {
+      const firstRef = references[0]
+      if (firstRef) {
+        const providerId = detectProvider(firstRef)
+        if (providerId) return getProvider(providerId)
+      }
+      return defaultProvider
+    })()
+
+    const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))
+    const { resolved, errors } = await provider.resolveSecrets(nativeRefs)
+
     if (errors.size > 0) {
       const failedRefs = secretRefs
-        .filter((s) => errors.has(s.reference))
+        .filter((_, i) => errors.has(nativeRefs[i]!))
         .map((s) => `${s.key}: ${s.reference}`)
         .join(', ')
       return { pathInfo, hasTemplate, hasEnv, changes: [], error: `Failed to resolve: ${failedRefs}` }
     }
 
-    // Create a new EnvFile with resolved values
     const resolvedVars = new Map(template.vars)
-    for (const { key, reference } of secretRefs) {
-      const value = resolved.get(reference)
+    for (let i = 0; i < secretRefs.length; i++) {
+      const { key } = secretRefs[i]!
+      const nativeRef = nativeRefs[i]!
+      const value = resolved.get(nativeRef)
       if (value !== undefined) {
         const existing = resolvedVars.get(key)!
         resolvedVars.set(key, { ...existing, value })

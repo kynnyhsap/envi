@@ -1,11 +1,14 @@
 # envi
 
-Manage `.env` files with secret providers. Sync secrets from 1Password into local `.env` files while preserving your local customizations.
+Manage `.env` files with secret providers. Sync secrets from 1Password, Proton Pass, or other providers into local `.env` files while preserving your local customizations.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [Prerequisites](#prerequisites)
+- [Secret References](#secret-references)
+- [Providers](#providers)
+  - [1Password](#1password)
+  - [Proton Pass](#proton-pass)
 - [Commands](#commands)
 - [How It Works](#how-it-works)
   - [Templates](#templates-envtpl)
@@ -16,10 +19,9 @@ Manage `.env` files with secret providers. Sync secrets from 1Password into loca
 - [Environments](#environments)
   - [Supported Environments](#supported-environments)
   - [Template Syntax](#template-syntax)
-  - [1Password Vault Structure](#1password-vault-structure)
+  - [Vault Structure](#vault-structure)
   - [Usage](#usage)
   - [Flexible Patterns](#flexible-patterns)
-- [1Password Secret References](#1password-secret-references)
 - [Configured Paths](#configured-paths)
 - [CI/CD Integration](#cicd-integration)
 - [Backup System](#backup-system)
@@ -49,9 +51,46 @@ bun envi sync -d
 
 # Validate all secret references
 bun envi validate
+
+# Use a specific provider
+bun envi sync --provider proton-pass
 ```
 
-## Prerequisites
+## Secret References
+
+Envi supports three URI schemes for secret references in templates:
+
+| Scheme     | Description                                      | Example                                  |
+| ---------- | ------------------------------------------------ | ---------------------------------------- |
+| `envi://`  | Universal format, routes to the default provider  | `envi://vault/item/field`                |
+| `op://`    | 1Password native format (auto-routes to 1Password)| `op://vault/item/field`                  |
+| `pass://`  | Proton Pass native format (auto-routes to Proton Pass) | `pass://vault/item/field`           |
+
+### Universal Format (`envi://`)
+
+The `envi://` scheme is provider-agnostic. It maps to the configured default provider's native format:
+
+```bash
+# With --provider 1password (default):
+# envi://core-local/engine-api/SECRET → op://core-local/engine-api/SECRET
+
+# With --provider proton-pass:
+# envi://core-local/engine-api/SECRET → pass://core-local/engine-api/SECRET
+```
+
+Format: `envi://vault/item/field`
+
+### Backward Compatibility
+
+Existing templates using `op://` references continue to work. They are automatically routed to the 1Password provider regardless of the default provider setting.
+
+Similarly, `pass://` references always route to the Proton Pass provider.
+
+## Providers
+
+### 1Password
+
+The recommended provider. Uses the [1Password JavaScript SDK](https://github.com/1Password/onepassword-sdk-js) directly.
 
 **Authentication** - Choose one:
 
@@ -64,47 +103,98 @@ bun envi validate
    - Set `OP_SERVICE_ACCOUNT_TOKEN` environment variable
    - See: [Service Accounts](https://developer.1password.com/docs/service-accounts/)
 
-> **Note:** This CLI uses the [1Password JavaScript SDK](https://github.com/1Password/onepassword-sdk-js) directly, not the 1Password CLI tool.
+**Secret reference format:** `op://vault/item[/section]/field`
+
+```bash
+# Simple field
+SECRET=op://core-local/engine-api/SECRET
+
+# With environment variable
+SECRET=op://core-${ENV}/engine-api/SECRET
+
+# Section field
+DB_PASSWORD=op://core-local/engine-api/database/password
+```
+
+**Resources:**
+
+- [1Password JavaScript SDK](https://developer.1password.com/docs/sdks/)
+- [Service Accounts](https://developer.1password.com/docs/service-accounts/)
+- [Desktop App Integration](https://developer.1password.com/docs/sdks/desktop-app-integrations/)
+- [Secret Reference Syntax](https://developer.1password.com/docs/cli/secret-reference-syntax/)
+
+### Proton Pass
+
+Uses the [Proton Pass CLI](https://proton.me/pass/download) (`pass-cli`) to resolve secrets.
+
+**Prerequisites:**
+
+1. Install `pass-cli` from [Proton Pass downloads](https://proton.me/pass/download)
+2. Log in: `pass-cli login`
+3. Verify: `pass-cli test`
+
+**Secret reference format:** `pass://vault/item/field`
+
+```bash
+# Simple field
+SECRET=pass://Production/engine-api/password
+
+# With environment variable
+SECRET=pass://core-${ENV}/engine-api/SECRET
+```
+
+**Field names:** `username`, `password`, `email`, `url`, `note`, `totp`, or any custom field name (case-sensitive).
+
+**Usage:**
+
+```bash
+# Use Proton Pass as provider
+bun envi sync --provider proton-pass
+
+# Check auth status
+bun envi status --provider proton-pass
+```
 
 ## Commands
 
-| Command    | Description                                                          |
-| ---------- | -------------------------------------------------------------------- |
-| `status`   | Show status and auth check                                           |
-| `diff`     | Show differences between local `.env` and provider                   |
-| `sync`     | Sync `.env` files from templates                                     |
-| `backup`   | Backup all `.env` files (timestamped snapshots)                      |
-| `restore`  | Restore `.env` files from backup (interactive)                       |
-| `validate` | Validate `op://` reference format (use `--remote` to check provider) |
+| Command    | Description                                                      |
+| ---------- | ---------------------------------------------------------------- |
+| `status`   | Show status and auth check                                       |
+| `diff`     | Show differences between local `.env` and provider               |
+| `sync`     | Sync `.env` files from templates                                 |
+| `backup`   | Backup all `.env` files (timestamped snapshots)                  |
+| `restore`  | Restore `.env` files from backup (interactive)                   |
+| `validate` | Validate secret reference format (use `--remote` to check provider) |
 
 ### Common Options
 
-| Option             | Description                                                 |
-| ------------------ | ----------------------------------------------------------- |
-| `-d, --dry-run`    | Preview changes without writing files                       |
-| `-f, --force`      | Skip confirmation prompts                                   |
-| `-q, --quiet`      | Suppress non-essential output                               |
-| `-e, --env <name>` | Environment (local, dev, staging, prod, sandbox, self-host) |
-| `--account <name>` | 1Password account name for desktop app auth                 |
-| `--only <paths>`   | Filter which paths to process                               |
+| Option                | Description                                                 |
+| --------------------- | ----------------------------------------------------------- |
+| `-d, --dry-run`       | Preview changes without writing files                       |
+| `-f, --force`         | Skip confirmation prompts                                   |
+| `-q, --quiet`         | Suppress non-essential output                               |
+| `-e, --env <name>`    | Environment (local, dev, staging, prod, sandbox, self-host) |
+| `--provider <name>`   | Secret provider (1password, proton-pass)                    |
+| `--account <name>`    | 1Password account name for desktop app auth                 |
+| `--only <paths>`      | Filter which paths to process                               |
 
 ## How It Works
 
 ### Templates (`.env.tpl`)
 
-Templates are checked into git and contain `op://` references for secrets. Use `${ENV}` for environment-specific vaults:
+Templates are checked into git and contain secret references. Use `${ENV}` for environment-specific vaults:
 
 ```bash
 # engine/api/.env.tpl
 NODE_ENV=development
-SECRET=op://core-${ENV}/engine-api/SECRET
-DATABASE_URL=op://core-${ENV}/engine-api/DATABASE_URL
+SECRET=envi://core-${ENV}/engine-api/SECRET
+DATABASE_URL=envi://core-${ENV}/engine-api/DATABASE_URL
 ```
 
 ### Sync Flow
 
 1. **Read template** - Parse `.env.tpl` file
-2. **Resolve secrets** - Use 1Password SDK to fetch secrets
+2. **Resolve secrets** - Use the configured provider to fetch secrets
 3. **Show changes** - Display table of NEW, UPDATED, UNCHANGED variables
 4. **Confirm** - Prompt for confirmation if there are changes (skip with `--force`)
 5. **Smart merge** - Combine with existing `.env`, preserving your customizations
@@ -163,7 +253,7 @@ Example:
    ```bash
    # my-package/.env.tpl
    NODE_ENV=development
-   API_KEY=op://core-${ENV}/my-package/API_KEY
+   API_KEY=envi://core-${ENV}/my-package/API_KEY
    ```
 
 2. Add the path to `ENV_PATHS` in `envi/src/config.ts`:
@@ -176,11 +266,11 @@ Example:
    ]
    ```
 
-3. Create the 1Password item with required secrets
+3. Create the corresponding item in your secret provider
 
 ## Environments
 
-The CLI supports multiple environments through the `-e, --env` flag. Use `${ENV}` in your op:// references to create environment-aware templates.
+The CLI supports multiple environments through the `-e, --env` flag. Use `${ENV}` in your secret references to create environment-aware templates.
 
 ### Supported Environments
 
@@ -188,7 +278,7 @@ The CLI supports multiple environments through the `-e, --env` flag. Use `${ENV}
 
 ### Template Syntax
 
-Use `${ENV}` anywhere in your op:// references:
+Use `${ENV}` anywhere in your secret references:
 
 ```bash
 # engine/api/.env.tpl
@@ -198,12 +288,12 @@ NODE_ENV=development
 PORT=3000
 
 # Environment-specific secrets
-SECRET=op://core-${ENV}/engine-api/SECRET
-API_KEY=op://core-${ENV}/engine-api/API_KEY
-DATABASE_URL=op://core-${ENV}/engine-api/DATABASE_URL
+SECRET=envi://core-${ENV}/engine-api/SECRET
+API_KEY=envi://core-${ENV}/engine-api/API_KEY
+DATABASE_URL=envi://core-${ENV}/engine-api/DATABASE_URL
 ```
 
-### 1Password Vault Structure
+### Vault Structure
 
 Create separate vaults per environment with a consistent prefix:
 
@@ -233,8 +323,11 @@ bun envi sync
 bun envi sync -e dev
 bun envi sync -e prod
 
-# CI/CD
+# CI/CD (1Password)
 OP_SERVICE_ACCOUNT_TOKEN="..." bun envi sync -e prod -f -q
+
+# Different provider
+bun envi sync --provider proton-pass -e prod
 ```
 
 ### Flexible Patterns
@@ -243,36 +336,17 @@ The `${ENV}` substitution is flexible - use it wherever makes sense for your vau
 
 ```bash
 # Env-prefixed vault (recommended)
-op://core-${ENV}/engine-api/SECRET → op://core-prod/engine-api/SECRET
+envi://core-${ENV}/engine-api/SECRET → envi://core-prod/engine-api/SECRET
 
 # Env-only vault
-op://${ENV}/engine-api/SECRET → op://prod/engine-api/SECRET
+envi://${ENV}/engine-api/SECRET → envi://prod/engine-api/SECRET
 
 # Env-prefixed item
-op://core/${ENV}-engine-api/SECRET → op://core/prod-engine-api/SECRET
+envi://core/${ENV}-engine-api/SECRET → envi://core/prod-engine-api/SECRET
 
 # Env in section
-op://core/engine-api/${ENV}/SECRET → op://core/engine-api/prod/SECRET
+envi://core/engine-api/${ENV}/SECRET → envi://core/engine-api/prod/SECRET
 ```
-
-## 1Password Secret References
-
-Format: `op://vault/item[/section]/field`
-
-Examples:
-
-```bash
-# Simple field
-SECRET=op://core-local/engine-api/SECRET
-
-# With environment variable
-SECRET=op://core-${ENV}/engine-api/SECRET
-
-# Section field
-DB_PASSWORD=op://core-local/engine-api/database/password
-```
-
-See: [Secret Reference Syntax](https://developer.1password.com/docs/cli/secret-reference-syntax/)
 
 ## Configured Paths
 
@@ -286,16 +360,16 @@ To add more packages, see [Adding New Templates](#adding-new-templates).
 
 ## CI/CD Integration
 
-For automated environments, use a 1Password Service Account.
+For automated environments, configure the appropriate provider credentials.
 
-### Local CI Testing
+### 1Password (Service Account)
 
 ```bash
 export OP_SERVICE_ACCOUNT_TOKEN="your-token"
 bun envi sync --force
 ```
 
-### GitHub Actions
+### GitHub Actions (1Password)
 
 ```yaml
 name: Setup Environment
@@ -317,11 +391,13 @@ jobs:
         run: bun envi sync -e prod -f -q
 ```
 
-### Resources
+### Proton Pass (CI/CD)
 
-- [1Password JavaScript SDK](https://developer.1password.com/docs/sdks/) - SDK documentation
-- [Service Accounts](https://developer.1password.com/docs/service-accounts/) - Create and manage service accounts
-- [Desktop App Integration](https://developer.1password.com/docs/sdks/desktop-app-integrations/) - Local development setup
+```bash
+# Log in via CLI first
+pass-cli login
+bun envi sync --provider proton-pass --force
+```
 
 ## Backup System
 
@@ -368,12 +444,10 @@ bun run src/cli.ts validate
 
 | Variable                   | Description                                    |
 | -------------------------- | ---------------------------------------------- |
-| `OP_SERVICE_ACCOUNT_TOKEN` | Service account token (overrides desktop auth) |
+| `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service account token (overrides desktop auth) |
 | `OP_ACCOUNT_NAME`          | 1Password account name (default: "Membrane")   |
 
-### Authentication Priority
-
-When authenticating with 1Password, the CLI uses this priority:
+### Authentication Priority (1Password)
 
 1. `OP_SERVICE_ACCOUNT_TOKEN` env var → Service account auth (for CI/CD)
 2. `--account` CLI flag → Desktop app with specified account

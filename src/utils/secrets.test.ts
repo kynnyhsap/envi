@@ -8,6 +8,18 @@ describe('isSecretReference', () => {
     expect(isSecretReference('  op://vault/item/field  ')).toBe(true)
   })
 
+  it('should identify envi:// references as secrets', () => {
+    expect(isSecretReference('envi://vault/item/field')).toBe(true)
+    expect(isSecretReference('envi://core-local/engine-api/SECRET')).toBe(true)
+    expect(isSecretReference('  envi://vault/item/field  ')).toBe(true)
+  })
+
+  it('should identify pass:// references as secrets', () => {
+    expect(isSecretReference('pass://vault/item/field')).toBe(true)
+    expect(isSecretReference('pass://Work/GitHub/password')).toBe(true)
+    expect(isSecretReference('  pass://vault/item/field  ')).toBe(true)
+  })
+
   it('should not identify regular values as secrets', () => {
     expect(isSecretReference('development')).toBe(false)
     expect(isSecretReference('http://localhost:3000')).toBe(false)
@@ -15,8 +27,9 @@ describe('isSecretReference', () => {
     expect(isSecretReference('')).toBe(false)
   })
 
-  it('should not identify values containing op:// that are not at the start', () => {
-    const value = 'some text op://vault/item/field more text'
-    expect(isSecretReference(value)).toBe(false)
+  it('should not identify values containing scheme that are not at the start', () => {
+    expect(isSecretReference('some text op://vault/item/field more text')).toBe(false)
+    expect(isSecretReference('some text envi://vault/item/field more text')).toBe(false)
+    expect(isSecretReference('some text pass://vault/item/field more text')).toBe(false)
   })
 })

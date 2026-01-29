@@ -7,11 +7,12 @@ export function isValidEnvironment(env: string): env is Environment {
 }
 
 /**
- * Substitute ${ENV} in op:// references
- * Example: op://core-${ENV}/item/field → op://core-local/item/field
+ * Substitute ${ENV} in secret references (envi://, op://, pass://)
+ * Example: envi://core-${ENV}/item/field → envi://core-local/item/field
  */
 export function substituteVariables(value: string, env: Environment): string {
-  if (!value.trim().startsWith('op://')) return value
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('op://') && !trimmed.startsWith('envi://') && !trimmed.startsWith('pass://')) return value
   return value.replace(/\$\{ENV\}/g, env)
 }
 
