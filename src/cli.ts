@@ -31,7 +31,15 @@ import {
 } from './config'
 import { isValidEnvironment, VALID_ENVIRONMENTS, DEFAULT_ENVIRONMENT } from './utils/variables'
 import { VALID_PROVIDERS, type ProviderType } from './providers'
-import { statusCommand, diffCommand, syncCommand, backupCommand, restoreCommand, validateCommand } from './commands'
+import {
+  statusCommand,
+  diffCommand,
+  syncCommand,
+  runCommand,
+  backupCommand,
+  restoreCommand,
+  validateCommand,
+} from './commands'
 
 function showHelp(): void {
   console.info('')
@@ -46,6 +54,7 @@ function showHelp(): void {
   console.info(`  ${pc.yellow('sync')}                Sync .env files from templates`)
   console.info(`  ${pc.yellow('backup')}              Backup current .env files (timestamped)`)
   console.info(`  ${pc.yellow('restore')}             Restore .env files from backup`)
+  console.info(`  ${pc.yellow('run')}                 Run a command with secrets as env vars`)
   console.info(`  ${pc.yellow('validate')}            Validate all secret references in templates`)
   console.info('')
   console.info(pc.bold('GLOBAL OPTIONS'))
@@ -288,6 +297,39 @@ configureCommandHelp(
     force: options.force ?? false,
     dryRun: options.dryRun ?? false,
     list: options.list ?? false,
+  })
+})
+
+// The run command uses allowUnknownOption + passThroughOptions so everything after `--` is captured
+const runCmd = program
+  .command('run')
+  .description('Run a command with secrets injected as environment variables')
+  .option('--env-file <files...>', 'Load additional .env files (may contain secret refs)')
+  .option('--no-template', 'Skip loading templates')
+  .allowUnknownOption(true)
+  .allowExcessArguments(true)
+
+configureCommandHelp(runCmd, {
+  name: 'run',
+  description: 'Run a command with secrets injected as environment variables',
+  options: [
+    { flags: '--env-file <files...>', description: 'Load additional .env files (may contain secret refs)' },
+    { flags: '--no-template', description: 'Skip loading templates, use --env-file only' },
+  ],
+  examples: [
+    'envi run -- node index.js',
+    'envi run -- npm start',
+    'envi run --env-file .env.local -- node index.js',
+    'envi run --no-template --env-file .env.secrets -- ./deploy.sh',
+    'envi run -e prod -- node server.js',
+  ],
+}).action(async (options, cmd) => {
+  applyGlobalOptions(program.opts())
+  // Everything after `--` ends up in cmd.args
+  const childCommand = cmd.args
+  await runCommand(childCommand, {
+    envFile: options.envFile,
+    noTemplate: options.template === false,
   })
 })
 

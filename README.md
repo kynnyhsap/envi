@@ -52,6 +52,9 @@ bun envi sync -d
 # Validate all secret references
 bun envi validate
 
+# Run a command with secrets as env vars
+bun envi run -- node index.js
+
 # Use a specific provider
 bun envi sync --provider proton-pass
 ```
@@ -162,6 +165,7 @@ bun envi status --provider proton-pass
 | `status`   | Show status and auth check                                       |
 | `diff`     | Show differences between local `.env` and provider               |
 | `sync`     | Sync `.env` files from templates                                 |
+| `run`      | Run a command with secrets injected as env vars                  |
 | `backup`   | Backup all `.env` files (timestamped snapshots)                  |
 | `restore`  | Restore `.env` files from backup (interactive)                   |
 | `validate` | Validate secret reference format (use `--remote` to check provider) |
