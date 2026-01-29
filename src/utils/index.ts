@@ -10,8 +10,7 @@ export { LOCAL_ENVS_SEPARATOR, ENV_MARKER_PREFIX } from './types'
 export { parseEnvFile, serializeEnvFile } from './parse'
 
 // Variables
-export { substituteVariables, hasUnresolvedVariables, isValidEnvironment, VALID_ENVIRONMENTS } from './variables'
-export type { Environment } from './variables'
+export { substituteVariables, hasUnresolvedVariables } from './variables'
 
 // Diff
 export { computeChanges } from './diff'

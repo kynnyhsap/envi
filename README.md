@@ -177,7 +177,7 @@ bun envi status --provider proton-pass
 | `-d, --dry-run`       | Preview changes without writing files                       |
 | `-f, --force`         | Skip confirmation prompts                                   |
 | `-q, --quiet`         | Suppress non-essential output                               |
-| `-e, --env <name>`    | Environment (local, dev, staging, prod, sandbox, self-host) |
+| `-e, --env <name>`    | Environment name for `${ENV}` substitution (default: `default`) |
 | `--provider <name>`   | Secret provider (1password, proton-pass)                    |
 | `--provider-opt <k=v>`| Provider-specific option (repeatable)                       |
 | `--config <path>`     | Load config from JSON file                                  |

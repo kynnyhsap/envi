@@ -1,9 +1,9 @@
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { $ } from 'bun'
 import { join } from 'path'
-import { BACKUP_FOLDER_NAME } from '../config'
+import { BACKUP_FOLDER_NAME } from './config'
 
-const CLI_PATH = join(import.meta.dir, '../cli.ts')
+const CLI_PATH = join(import.meta.dir, 'cli.ts')
 const TEST_DIR = join(import.meta.dir, '.test-workspace')
 const BACKUP_DIR = join(TEST_DIR, BACKUP_FOLDER_NAME)
 
@@ -118,7 +118,7 @@ describe('CLI e2e tests', () => {
       expect(stdout).toContain('Summary')
     })
 
-    it('should show no-template status for paths without .env.tpl', async () => {
+    it('should show no-template status for paths without .env.example', async () => {
       const { stdout, exitCode } = await runCli('status')
 
       expect(exitCode).toBe(0)
@@ -355,45 +355,21 @@ describe('CLI e2e tests', () => {
 
       expect(exitCode).toBe(0)
       expect(stdout).toContain('--env')
-      expect(stdout).toContain('local')
-      expect(stdout).toContain('dev')
-      expect(stdout).toContain('prod')
     })
 
-    it('should accept valid environment values', async () => {
-      // These should not error on the --env parsing
-      // (they may error on 1Password auth, but that's separate)
-      for (const env of ['local', 'dev', 'staging', 'prod', 'sandbox', 'self-host']) {
+    it('should accept any environment name', async () => {
+      for (const env of ['local', 'prod', 'my-custom-env', 'anything-goes']) {
         const { stderr } = await runCli('--env', env, 'backup', '-f')
         expect(stderr).not.toContain('Invalid environment')
       }
     })
 
-    it('should reject invalid environment values', async () => {
-      const { stdout, stderr, exitCode } = await runCli('--env', 'invalid-env', 'backup', '-f')
-
-      expect(exitCode).toBe(1)
-      // Error could be in stdout or stderr depending on how console.error is captured
-      const output = stdout + stderr
-      expect(output).toContain('Invalid environment')
-      expect(output).toContain('invalid-env')
-    })
-
-    it('should default to local environment', async () => {
+    it('should default to "default" environment', async () => {
       await Bun.write(join(TEST_DIR, 'test-app/.env'), 'VAR=value\n')
 
       const { exitCode } = await runCli('backup', '-f')
 
       expect(exitCode).toBe(0)
-      // backup command doesn't show environment, but it should work without --env
-    })
-
-    it('should show environment in status output', async () => {
-      // Status command shows environment - but it requires 1Password
-      // So we just test that --env is accepted
-      const result = await runCli('--env', 'prod', 'backup', '-d')
-
-      expect(result.stdout).not.toContain('Invalid environment')
     })
   })
 

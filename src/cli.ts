@@ -31,7 +31,7 @@ import {
   loadConfigFile,
   type ConfigFile,
 } from './config'
-import { isValidEnvironment, VALID_ENVIRONMENTS, DEFAULT_ENVIRONMENT } from './utils/variables'
+import { DEFAULT_ENVIRONMENT } from './utils/variables'
 import { VALID_PROVIDERS, type ProviderType } from './providers'
 import {
   statusCommand,
@@ -62,7 +62,7 @@ function showHelp(): void {
   console.info(pc.bold('GLOBAL OPTIONS'))
   console.info(`  ${pc.green('-q, --quiet')}         Suppress non-essential output`)
   console.info(
-    `  ${pc.green('-e, --env')} ${pc.dim('<name>')}    Environment ${pc.dim(`(${VALID_ENVIRONMENTS.join(', ')})`)}`,
+    `  ${pc.green('-e, --env')} ${pc.dim('<name>')}    Environment name for ${'${ENV}'} substitution ${pc.dim(`(default: ${DEFAULT_ENVIRONMENT})`)}`,
   )
   console.info(
     `  ${pc.green('--provider')} ${pc.dim('<name>')}   Secret provider ${pc.dim(`(${VALID_PROVIDERS.join(', ')})`)}`,
@@ -183,11 +183,6 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
 
   // Merge: config file ← CLI flags (CLI wins)
   const env = options.env ?? fileConfig.environment ?? DEFAULT_ENVIRONMENT
-  if (!isValidEnvironment(env)) {
-    console.error(pc.red(`Invalid environment: ${env}`))
-    console.error(pc.dim(`Valid environments: ${VALID_ENVIRONMENTS.join(', ')}`))
-    process.exit(1)
-  }
 
   const providerName = (options.provider ?? fileConfig.provider ?? DEFAULT_PROVIDER) as ProviderType
   if (!VALID_PROVIDERS.includes(providerName)) {
@@ -224,7 +219,7 @@ program
   .description('Manage .env files with secret providers')
   .version(VERSION, '-v, --version', 'Show version number')
   .option('-q, --quiet', 'Suppress non-essential output')
-  .option('-e, --env <name>', `Environment (${VALID_ENVIRONMENTS.join(', ')})`, DEFAULT_ENVIRONMENT)
+  .option('-e, --env <name>', `Environment name for \${ENV} substitution`, DEFAULT_ENVIRONMENT)
   .option('--provider <name>', `Secret provider (${VALID_PROVIDERS.join(', ')})`, DEFAULT_PROVIDER)
   .option('--provider-opt <key=value>', 'Provider-specific option (repeatable)', (val: string, acc: string[]) => { acc.push(val); return acc }, [] as string[])
   .option('--config <path>', 'Load config from JSON file')

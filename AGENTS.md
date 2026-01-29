@@ -16,7 +16,7 @@ Envi has a name — use it. All user-facing text (CLI output, logs, errors, docs
 - **Templates**: `.env.template` files containing `op://` secret references
 - **Secret references**: `op://vault/item/field` format resolved via 1Password
 - **Environment substitution**: `${ENV}` in paths/values replaced at runtime
-- **Environments**: local, dev, staging, prod, sandbox, self-host
+- **Environments**: any string (used for `${ENV}` substitution in templates, default: `default`)
 - **3-way merge**: Template + resolved secrets + local overrides
 
 ## Maintaining This File

@@ -1,5 +1,5 @@
 import packageJson from '../package.json'
-import { DEFAULT_ENVIRONMENT, type Environment } from './utils/variables'
+import { DEFAULT_ENVIRONMENT } from './utils/variables'
 import { createProvider, type Provider, type ProviderType } from './providers'
 
 export const VERSION = packageJson.version
@@ -28,7 +28,7 @@ export interface RuntimeConfig {
   outputFile: string
   paths: string[]
   quiet: boolean
-  environment: Environment
+  environment: string
   provider: ProviderType
   providerOptions: Record<string, string>
 }
