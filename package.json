@@ -11,7 +11,10 @@
     "cli": "bun run src/cli.ts",
     "envi": "bun run src/cli.ts",
     "test": "bun test",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit",
+    "fmt": "oxfmt --write .",
+    "lint": "oxlint .",
+    "compile": "bun build --compile --minify src/cli.ts --outfile dist/envi"
   },
   "dependencies": {
     "@1password/sdk": "0.4.0-beta.2",
