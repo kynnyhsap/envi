@@ -6,8 +6,8 @@ import {
 } from './variables'
 
 describe('DEFAULT_ENVIRONMENT', () => {
-  it('defaults to "default"', () => {
-    expect(DEFAULT_ENVIRONMENT).toBe('default')
+  it('defaults to "local"', () => {
+    expect(DEFAULT_ENVIRONMENT).toBe('local')
   })
 })
 

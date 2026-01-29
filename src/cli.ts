@@ -21,7 +21,6 @@ import { Command } from 'commander'
 import pc from 'picocolors'
 import {
   VERSION,
-  ENV_PATHS,
   DEFAULT_BACKUP_DIR,
   DEFAULT_OUTPUT_FILE,
   DEFAULT_TEMPLATE_FILE,
@@ -198,7 +197,7 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
     ...cliProviderOpts,
   }
 
-  const paths = parseOnlyFlag(options.only) ?? fileConfig.paths ?? ENV_PATHS
+  const paths = parseOnlyFlag(options.only) ?? fileConfig.paths ?? []
 
   setRuntimeConfig({
     paths,

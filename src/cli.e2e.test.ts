@@ -364,7 +364,7 @@ describe('CLI e2e tests', () => {
       }
     })
 
-    it('should default to "default" environment', async () => {
+    it('should default to "local" environment', async () => {
       await Bun.write(join(TEST_DIR, 'test-app/.env'), 'VAR=value\n')
 
       const { exitCode } = await runCli('backup', '-f')

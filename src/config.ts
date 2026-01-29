@@ -11,21 +11,12 @@ export const DEFAULT_TEMPLATE_FILE = '.env.example'
 export const DEFAULT_OUTPUT_FILE = '.env'
 export const DEFAULT_PROVIDER: ProviderType = '1password'
 
-export const ENV_PATHS = [
-  'dashboard-agent',
-
-  // 'engine/api',
-  // 'console',
-  // 'ui',
-
-  // TODO: add all other paths here
-]
-
 // Runtime configuration (set by CLI)
 export interface RuntimeConfig {
   backupDir: string
   templateFile: string
   outputFile: string
+  /** Explicit paths to process. If empty, auto-discover from template files. */
   paths: string[]
   quiet: boolean
   environment: string
@@ -37,7 +28,7 @@ let runtimeConfig: RuntimeConfig = {
   backupDir: DEFAULT_BACKUP_DIR,
   templateFile: DEFAULT_TEMPLATE_FILE,
   outputFile: DEFAULT_OUTPUT_FILE,
-  paths: ENV_PATHS,
+  paths: [],
   quiet: false,
   environment: DEFAULT_ENVIRONMENT,
   provider: DEFAULT_PROVIDER,

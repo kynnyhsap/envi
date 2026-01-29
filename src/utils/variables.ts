@@ -1,4 +1,4 @@
-export const DEFAULT_ENVIRONMENT = 'default'
+export const DEFAULT_ENVIRONMENT = 'local'
 
 /**
  * Substitute ${ENV} in secret references (envi://, op://, pass://)
