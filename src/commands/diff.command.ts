@@ -66,7 +66,6 @@ async function diffEnvPath(pathInfo: EnvPathInfo): Promise<DiffResult> {
   } else {
     const references = secretRefs.map((s) => s.reference)
 
-    // Route to appropriate provider
     const provider = getProvider()
 
     const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))
@@ -98,10 +97,7 @@ async function diffEnvPath(pathInfo: EnvPathInfo): Promise<DiffResult> {
     }
   }
 
-  // Parse local if exists
   const local = hasEnv ? parseEnvFile(await outputFile.text()) : null
-
-  // Compute changes
   const changes = computeChanges(template, injected, local)
 
   return { pathInfo, hasTemplate, hasEnv, changes }

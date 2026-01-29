@@ -31,10 +31,8 @@ async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null
   for (const [key, envVar] of template.vars) {
     if (isSecretReference(envVar.value)) {
       const originalRef = envVar.value.trim()
-      // Substitute ${ENV} in the reference
       const substituted = substituteVariables(originalRef, env)
 
-      // Check for unresolved variables
       if (hasUnresolvedVariables(substituted)) {
         log.fail(`Unresolved variable in ${key}: ${substituted}`)
         return null
@@ -52,8 +50,7 @@ async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null
 
   const provider = getProvider()
 
-  // Convert envi:// references to native format
-  const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))
+    const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))
   const { resolved, errors } = await provider.resolveSecrets(nativeRefs)
 
   // Map native refs back to original refs for lookup

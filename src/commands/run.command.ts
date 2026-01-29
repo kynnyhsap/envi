@@ -48,7 +48,6 @@ async function resolveTemplateEnvVars(): Promise<Map<string, string> | null> {
     const templateContent = await templateFile.text()
     const template = parseEnvFile(templateContent)
 
-    // Separate secrets from plain values
     const secretRefs: { key: string; reference: string }[] = []
 
     for (const [key, envVar] of template.vars) {
@@ -62,7 +61,6 @@ async function resolveTemplateEnvVars(): Promise<Map<string, string> | null> {
 
         secretRefs.push({ key, reference: substituted })
       } else {
-        // Plain value — use directly
         allVars.set(key, envVar.value)
       }
     }

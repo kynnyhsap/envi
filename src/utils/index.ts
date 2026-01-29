@@ -1,7 +1,3 @@
-/**
- * Barrel export for env-cli utilities.
- */
-
 // Types
 export type { EnvVar, EnvFile, ChangeType, Change } from './types'
 export { LOCAL_ENVS_SEPARATOR, ENV_MARKER_PREFIX } from './types'
