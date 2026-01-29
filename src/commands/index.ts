@@ -1,0 +1,6 @@
+export { statusCommand } from './status'
+export { diffCommand } from './diff'
+export { syncCommand } from './sync'
+export { backupCommand } from './backup'
+export { restoreCommand } from './restore'
+export { validateCommand } from './validate'

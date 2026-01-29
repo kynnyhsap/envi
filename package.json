@@ -1,0 +1,29 @@
+{
+  "name": "@membranehq/envi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CLI for managing .env files with secret providers",
+  "bin": {
+    "envi": "./src/cli.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "cli": "bun run src/cli.ts",
+    "envi": "bun run src/cli.ts",
+    "test": "bun test",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@1password/sdk": "0.4.0-beta.2",
+    "@inquirer/prompts": "^8.2.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260129.1",
+    "commander": "^14.0.2",
+    "console-table-printer": "^2.15.0",
+    "picocolors": "^1.1.1",
+    "timeago.js": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.6",
+    "typescript": "^5.0.0"
+  }
+}
