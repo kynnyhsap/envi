@@ -10,19 +10,24 @@
 import { exec } from '../runtime/exec'
 import type { AuthInfo, AuthFailureHints, AvailabilityResult, Provider, ResolveSecretsResult } from './provider'
 
+type ProtonPassBackend = 'cli'
+
 export class ProtonPassProvider implements Provider {
   readonly id = 'proton-pass'
   readonly name = 'Proton Pass'
   readonly scheme = 'pass://'
 
+  private backend: ProtonPassBackend
   private binary: string
 
   constructor(options: Record<string, string> = {}) {
+    const rawBackend = (options['backend'] ?? 'cli').trim()
+    this.backend = rawBackend === 'cli' || rawBackend === 'auto' ? 'cli' : 'cli'
     this.binary = options['cliBinary'] ?? 'pass-cli'
   }
 
   getAuthInfo(): AuthInfo {
-    return { type: 'cli', identifier: this.binary }
+    return { type: this.backend, identifier: this.binary }
   }
 
   async checkAvailability(): Promise<AvailabilityResult> {

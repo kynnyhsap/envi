@@ -199,6 +199,12 @@ SECRET=pass://core-${ENV}/engine-api/SECRET
 # Use Proton Pass as provider
 bun envi sync --provider proton-pass
 
+# Optional: explicit backend (only "cli" is supported today)
+bun envi sync --provider proton-pass --provider-opt backend=cli
+
+# Optional: use a specific pass-cli binary
+bun envi sync --provider proton-pass --provider-opt cliBinary=/usr/local/bin/pass-cli
+
 # Check auth status
 bun envi status --provider proton-pass
 ```
