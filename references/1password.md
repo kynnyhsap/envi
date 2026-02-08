@@ -360,11 +360,21 @@ await client.items.archive(vaultId, itemId)
 - Use `OP_SERVICE_ACCOUNT_TOKEN` env var or pass directly to `createClient({ auth })`
 
 ### Envi integration
-Envi uses the SDK via `@1password/sdk` in `src/providers/1password.provider.ts`:
-- `createClient()` with `DesktopAuth` (app integration) or service account token
-- `client.secrets.resolve(reference)` for individual secrets
-- `client.vaults.list()` for vault enumeration
-- Client instance is cached (`cachedClient`) for reuse across calls
+Envi supports two 1Password backends in `src/providers/1password.provider.ts`:
+
+1. **1Password CLI (`op`)** (preferred when installed)
+   - Auth check: `op whoami --format json`
+   - Resolve secrets: `op read "op://..."`
+   - List vaults: `op vault list --format json`
+   - Caching: CLI daemon caching is enabled by default on UNIX-like systems. Control it via `OP_CACHE=false` or `--cache=false` on the CLI.
+
+2. **JavaScript SDK (`@1password/sdk`)** (automatic fallback)
+   - Uses service account token (`OP_SERVICE_ACCOUNT_TOKEN`) when set
+   - Otherwise uses desktop app integration via `DesktopAuth(OP_ACCOUNT_NAME)`
+   - Resolve secrets: `client.secrets.resolve(reference)`
+   - List vaults: `client.vaults.list()`
+
+By default, Envi runs in `backend=auto` mode: try CLI first, then fall back to the SDK if CLI auth fails.
 
 ---
 

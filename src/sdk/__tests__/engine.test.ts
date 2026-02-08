@@ -88,4 +88,58 @@ describe('sdk engine (smoke)', () => {
     const full = await engine.resolveRunEnvironment({ includeSecrets: true })
     expect(full.data.env['API_KEY']).toContain('resolved(')
   })
+
+  it('status captures authInfo after verifyAuth', async () => {
+    const cwd = '/repo'
+    const runtime = createMemoryRuntime({
+      cwd,
+      files: {
+        '/repo/.env.example': 'API_KEY=envi://vault/item/API_KEY\n',
+      },
+      templateMatches: ['.env.example'],
+    })
+
+    let mode: 'pre' | 'post' = 'pre'
+
+    const provider = {
+      id: 'test',
+      name: 'Test Provider',
+      scheme: 'op://',
+      getAuthInfo() {
+        return { type: mode, identifier: mode }
+      },
+      async checkAvailability() {
+        return { available: true, statusLines: [], helpLines: [] }
+      },
+      async verifyAuth() {
+        mode = 'post'
+        return { success: true }
+      },
+      getAuthFailureHints() {
+        return { lines: [] }
+      },
+      async resolveSecret() {
+        return ''
+      },
+      async resolveSecrets() {
+        return { resolved: new Map(), errors: new Map() }
+      },
+      async listVaults() {
+        return []
+      },
+    } as any
+
+    const engine = createEnviEngine({
+      runtime,
+      provider,
+      options: {
+        rootDir: cwd,
+        provider: '1password',
+        environment: 'local',
+      },
+    })
+
+    const result = await engine.status()
+    expect(result.data.provider.auth.type).toBe('post')
+  })
 })

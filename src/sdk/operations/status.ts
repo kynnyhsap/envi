@@ -64,10 +64,10 @@ export async function statusOperation(ctx: ExecutionContext): Promise<StatusResu
   const issues: Issue[] = []
 
   const availability = await ctx.provider.checkAvailability()
-  const authInfo = ctx.provider.getAuthInfo()
   const authResult = availability.available
     ? await ctx.provider.verifyAuth()
     : { success: false, error: 'Provider unavailable' }
+  const authInfo = ctx.provider.getAuthInfo()
   const hints = authResult.success ? { lines: [] } : ctx.provider.getAuthFailureHints()
 
   if (!availability.available) {

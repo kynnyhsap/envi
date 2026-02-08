@@ -44,8 +44,8 @@ export async function checkPrerequisites(options: { quiet?: boolean } = {}): Pro
     return false
   }
 
-  const authInfo = provider.getAuthInfo()
   if (!options.quiet) {
+    const authInfo = provider.getAuthInfo()
     log.info(`  Authenticating via ${provider.name} (${authInfo.type})...`)
   }
 
@@ -64,7 +64,9 @@ export async function checkPrerequisites(options: { quiet?: boolean } = {}): Pro
   }
 
   if (!options.quiet) {
-    log.success(`${provider.name} authentication verified`)
+    const authInfo = provider.getAuthInfo()
+    log.success(`${provider.name} authentication verified (${authInfo.type})`)
+    return true
   }
 
   return true

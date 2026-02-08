@@ -122,7 +122,7 @@ Similarly, `pass://` references always route to the Proton Pass provider.
 
 ### 1Password
 
-The recommended provider. Uses the [1Password JavaScript SDK](https://github.com/1Password/onepassword-sdk-js) directly.
+The recommended provider. Envi prefers the 1Password CLI (`op`) when it's installed, and falls back to the JavaScript SDK when CLI auth isn't available.
 
 **Authentication** - Choose one:
 
@@ -134,6 +134,22 @@ The recommended provider. Uses the [1Password JavaScript SDK](https://github.com
 2. **Service Account** (for CI/CD):
    - Set `OP_SERVICE_ACCOUNT_TOKEN` environment variable
    - See: [Service Accounts](https://developer.1password.com/docs/service-accounts/)
+
+**Backend selection** (optional):
+
+```bash
+# Default (CLI-first, then SDK fallback)
+bun envi status --provider 1password
+
+# Force CLI only
+bun envi status --provider 1password --provider-opt backend=cli
+
+# Force SDK only
+bun envi status --provider 1password --provider-opt backend=sdk
+
+# Use a specific op binary
+bun envi status --provider 1password --provider-opt cliBinary=/usr/local/bin/op
+```
 
 **Secret reference format:** `op://vault/item[/section]/field`
 
@@ -488,9 +504,14 @@ bun run src/cli.ts validate
 | -------------------------- | -------------------------------------------------------- |
 | `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service account token (overrides desktop auth) |
 | `OP_ACCOUNT_NAME`          | 1Password account name for desktop app auth              |
+| `OP_CACHE`                 | 1Password CLI cache toggle (`true`/`false`, default `true`) |
 
 ### Authentication Priority (1Password)
 
-1. `OP_SERVICE_ACCOUNT_TOKEN` env var → Service account auth (for CI/CD)
-2. `--provider-opt accountName=my-team` or `OP_ACCOUNT_NAME` env var → Desktop app auth
-3. Error if none provided (account name is required for desktop app auth)
+Default behavior (`--provider-opt backend=auto`):
+
+1. 1Password CLI (`op`) if installed and authenticated
+2. `OP_SERVICE_ACCOUNT_TOKEN` env var → SDK service account auth (for CI/CD)
+3. `--provider-opt accountName=my-team` or `OP_ACCOUNT_NAME` env var + desktop app running → SDK desktop app auth
+
+You can force a backend with `--provider-opt backend=cli` or `--provider-opt backend=sdk`.
