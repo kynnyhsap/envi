@@ -30,11 +30,29 @@ Envi has a name — use it. All user-facing text (CLI output, logs, errors, docs
 - Zero config file required — works like any Unix tool with just flags + env vars.
 - `references/` contains provider API docs (CLI commands, SDK usage, auth methods). Consult before implementing or modifying provider integrations.
 
+## SDK & JSON Parity
+
+- Core CLI commands (`status`, `diff`, `sync`, `validate`, `run`) are SDK-backed; avoid re-implementing business logic in `src/commands/*.command.ts`.
+- `--json` output is the SDK JSON envelope via `src/sdk/json.ts` (`stringifyEnvelope`) and should not be reshaped in the CLI.
+- SDK outputs redact secrets by default; CLI text mode opts into secrets via `includeSecrets: true` where needed.
+
+## Packaging
+
+- The published SDK is exported from `envi/sdk` and built via `bun run build:sdk` (Bun bundles JS to `dist/sdk/`, then `tsc -p tsconfig.build.json` emits declarations).
+
 ## Code Style
 
 - Be surgical with comments. Keep JSDoc on exports, "why" comments, and anything non-obvious. Only remove comments that literally restate the next line of code.
 - Format with oxfmt (`.oxfmtrc.json`): no semis, single quotes, trailing commas, spaces, printWidth 120.
 - Lint with oxlint (`.oxlintrc.json`): import + typescript plugins.
+
+## Runtime & Filesystem Patterns
+
+- Prefer async filesystem APIs. Avoid Node sync fs calls.
+- Avoid TOCTOU patterns like `existsSync(path)` then `statSync(path)`; use a single operation and handle `ENOENT` via `try/catch`.
+- Avoid `readFileSync(path).slice(0, max)` patterns; it reads the whole file into memory.
+- For deletions, prefer `rm(path, { recursive: true, force: true })` over `readdirSync(...).map(unlinkSync)`-style loops.
+- A conventions test (`src/conventions/fs-usage.test.ts`) enforces that sync node:fs anti-patterns aren’t introduced.
 
 ## Maintaining This File
 
