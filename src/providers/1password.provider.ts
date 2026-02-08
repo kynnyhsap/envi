@@ -8,6 +8,7 @@
 import { createClient, DesktopAuth, type Client } from '@1password/sdk'
 
 import { VERSION } from '../config'
+import { exec } from '../runtime/exec'
 import type { AuthInfo, AuthFailureHints, AvailabilityResult, Provider, ResolveSecretsResult } from './provider'
 
 let cachedClient: Client | null = null
@@ -26,7 +27,7 @@ export class OnePasswordProvider implements Provider {
   getAuthInfo(): AuthInfo {
     const serviceAccountToken = process.env['OP_SERVICE_ACCOUNT_TOKEN']
     if (serviceAccountToken) {
-      return { type: 'service-account', identifier: serviceAccountToken }
+      return { type: 'service-account', identifier: 'OP_SERVICE_ACCOUNT_TOKEN' }
     }
     return { type: 'desktop-app', identifier: this.accountName ?? 'unknown' }
   }
@@ -137,6 +138,6 @@ export class OnePasswordProvider implements Provider {
 
 /** Check if the 1Password desktop app process is running. */
 async function is1PasswordAppRunning(): Promise<boolean> {
-  const result = await Bun.$`pgrep -x "1Password"`.quiet().nothrow()
+  const result = await exec('pgrep', ['-x', '1Password'])
   return result.exitCode === 0
 }

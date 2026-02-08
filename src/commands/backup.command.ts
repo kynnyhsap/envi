@@ -3,6 +3,7 @@ import pc from 'picocolors'
 
 import { getConfig, generateBackupTimestamp } from '../config'
 import { log } from '../logger'
+import { stringifyEnvelope } from '../sdk'
 import { promptConfirm, formatBackupTimestamp } from '../utils'
 
 /**
@@ -92,9 +93,34 @@ async function findBackupSnapshots(): Promise<BackupSnapshot[]> {
 }
 
 export async function listBackupsCommand(): Promise<void> {
+  const config = getConfig()
+  if (config.json) {
+    const snapshots = await findBackupSnapshots()
+    const envelope = {
+      schemaVersion: 1,
+      command: 'backup.list',
+      ok: true,
+      data: {
+        backupDir: config.backupDir,
+        snapshots: snapshots.map((s) => ({
+          timestamp: s.timestamp,
+          path: s.path,
+          files: s.files,
+        })),
+      },
+      issues: [],
+      meta: {
+        environment: config.environment,
+        provider: config.provider,
+        timestamp: new Date().toISOString(),
+      },
+    }
+    process.stdout.write(stringifyEnvelope(envelope))
+    return
+  }
+
   log.banner('Available Backups')
 
-  const config = getConfig()
   const snapshots = await findBackupSnapshots()
 
   if (snapshots.length === 0) {
@@ -102,7 +128,7 @@ export async function listBackupsCommand(): Promise<void> {
     log.warn(`No backups found in ${config.backupDir}/`)
     log.info('')
     log.info('  Create a backup with:')
-    log.info(`  ${pc.cyan('env-cli backup')}`)
+    log.info(`  ${pc.cyan('envi backup')}`)
     log.info('')
     return
   }
@@ -125,8 +151,145 @@ export async function listBackupsCommand(): Promise<void> {
 }
 
 export async function backupCommand(options: { force: boolean; dryRun: boolean; list: boolean }): Promise<void> {
+  const config = getConfig()
+
   if (options.list) {
     await listBackupsCommand()
+    return
+  }
+
+  if (config.json) {
+    const envFiles: string[] = []
+
+    const glob = new Bun.Glob('**/.env')
+    for await (const entry of glob.scan({ cwd: '.', dot: true })) {
+      if (!entry.includes('node_modules') && !entry.startsWith(config.backupDir)) {
+        envFiles.push(entry)
+      }
+    }
+
+    if (envFiles.length === 0) {
+      const envelope = {
+        schemaVersion: 1,
+        command: 'backup',
+        ok: true,
+        data: {
+          dryRun: options.dryRun,
+          force: options.force,
+          found: 0,
+          backupRoot: null as string | null,
+          files: [],
+          backedUp: 0,
+        },
+        issues: [{ code: 'NO_FILES', message: 'No .env files found to backup' }],
+        meta: {
+          environment: config.environment,
+          provider: config.provider,
+          timestamp: new Date().toISOString(),
+        },
+      }
+      process.stdout.write(stringifyEnvelope(envelope))
+      return
+    }
+
+    const timestamp = generateBackupTimestamp()
+    const backupRoot = `${config.backupDir}/${timestamp}`
+
+    if (!options.dryRun && !options.force) {
+      const envelope = {
+        schemaVersion: 1,
+        command: 'backup',
+        ok: false,
+        data: {
+          dryRun: options.dryRun,
+          force: options.force,
+          found: envFiles.length,
+          backupRoot,
+          files: envFiles,
+          backedUp: 0,
+        },
+        issues: [
+          {
+            code: 'PROMPT_REQUIRED',
+            message: 'Backup requires confirmation. Re-run with --force or --dry-run when using --json.',
+          },
+        ],
+        meta: {
+          environment: config.environment,
+          provider: config.provider,
+          timestamp: new Date().toISOString(),
+        },
+      }
+      process.stdout.write(stringifyEnvelope(envelope))
+      process.exitCode = 1
+      return
+    }
+
+    if (options.dryRun) {
+      const envelope = {
+        schemaVersion: 1,
+        command: 'backup',
+        ok: true,
+        data: {
+          dryRun: true,
+          force: options.force,
+          found: envFiles.length,
+          backupRoot,
+          files: envFiles,
+          backedUp: 0,
+        },
+        issues: [],
+        meta: {
+          environment: config.environment,
+          provider: config.provider,
+          timestamp: new Date().toISOString(),
+        },
+      }
+      process.stdout.write(stringifyEnvelope(envelope))
+      return
+    }
+
+    let successCount = 0
+    const errors: Array<{ path: string; error: string }> = []
+
+    for (const file of envFiles) {
+      const backupPath = `${backupRoot}/${file}`
+      const backupDirPath = backupPath.substring(0, backupPath.lastIndexOf('/'))
+
+      try {
+        await $`mkdir -p ${backupDirPath}`.quiet()
+        const content = await Bun.file(file).text()
+        await Bun.write(backupPath, content)
+        successCount++
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        errors.push({ path: file, error: msg })
+      }
+    }
+
+    const envelope = {
+      schemaVersion: 1,
+      command: 'backup',
+      ok: errors.length === 0,
+      data: {
+        dryRun: false,
+        force: true,
+        found: envFiles.length,
+        backupRoot,
+        files: envFiles,
+        backedUp: successCount,
+        errors,
+      },
+      issues: errors.map((e) => ({ code: 'BACKUP_FAILED', message: e.error, path: e.path })),
+      meta: {
+        environment: config.environment,
+        provider: config.provider,
+        timestamp: new Date().toISOString(),
+      },
+    }
+
+    process.stdout.write(stringifyEnvelope(envelope))
+    process.exitCode = errors.length === 0 ? 0 : 1
     return
   }
 
@@ -136,7 +299,6 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
     log.info(pc.yellow('  Running in dry-run mode'))
   }
 
-  const config = getConfig()
   const envFiles: string[] = []
 
   const glob = new Bun.Glob('**/.env')

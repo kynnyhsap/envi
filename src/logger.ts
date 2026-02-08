@@ -3,7 +3,8 @@ import pc from 'picocolors'
 import { getConfig } from './config'
 
 function shouldLog(): boolean {
-  return !getConfig().quiet
+  const config = getConfig()
+  return !config.quiet && !config.json
 }
 
 /** Create a log method that only prints when not in quiet mode. */

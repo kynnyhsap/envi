@@ -5,6 +5,7 @@ Manage `.env` files with secret providers. Sync secrets from 1Password, Proton P
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [SDK](#sdk)
 - [Secret References](#secret-references)
 - [Providers](#providers)
   - [1Password](#1password)
@@ -57,7 +58,35 @@ bun envi run -- node index.js
 
 # Use a specific provider
 bun envi sync --provider proton-pass
+
+# Machine-readable output (same envelope as SDK)
+bun envi --json diff
 ```
+
+## SDK
+
+Envi also ships an SDK so you can reuse the exact same engine that powers the CLI.
+
+- CLI `--json` output and SDK results share the same JSON envelope.
+- SDK supports Bun + Node (auto-detected).
+- By default, SDK results redact secret values in outputs intended for logging/automation.
+
+```ts
+import { createEnviEngine, createRuntimeAdapter, stringifyEnvelope } from 'envi/sdk'
+
+const engine = createEnviEngine({
+  runtime: createRuntimeAdapter(),
+  options: {
+    environment: 'local',
+    provider: '1password',
+  },
+})
+
+const result = await engine.diff()
+process.stdout.write(stringifyEnvelope(result))
+```
+
+If you need secret values in SDK outputs (unsafe), pass `includeSecrets: true` to supported operations.
 
 ## Secret References
 
@@ -172,16 +201,17 @@ bun envi status --provider proton-pass
 
 ### Common Options
 
-| Option                 | Description                                                     |
-| ---------------------- | --------------------------------------------------------------- |
-| `-d, --dry-run`        | Preview changes without writing files                           |
-| `-f, --force`          | Skip confirmation prompts                                       |
-| `-q, --quiet`          | Suppress non-essential output                                   |
-| `-e, --env <name>`     | Environment name for `${ENV}` substitution (default: `default`) |
-| `--provider <name>`    | Secret provider (1password, proton-pass)                        |
-| `--provider-opt <k=v>` | Provider-specific option (repeatable)                           |
-| `--config <path>`      | Load config from JSON file                                      |
-| `--only <paths>`       | Filter which paths to process                                   |
+| Option                 | Description                                                   |
+| ---------------------- | ------------------------------------------------------------- |
+| `-d, --dry-run`        | Preview changes without writing files                         |
+| `-f, --force`          | Skip confirmation prompts                                     |
+| `-q, --quiet`          | Suppress non-essential output                                 |
+| `--json`               | Output machine-readable JSON (same envelope as SDK)           |
+| `-e, --env <name>`     | Environment name for `${ENV}` substitution (default: `local`) |
+| `--provider <name>`    | Secret provider (1password, proton-pass)                      |
+| `--provider-opt <k=v>` | Provider-specific option (repeatable)                         |
+| `--config <path>`      | Load config from JSON file                                    |
+| `--only <paths>`       | Filter which paths to process                                 |
 
 ## How It Works
 
@@ -204,6 +234,13 @@ DATABASE_URL=envi://core-${ENV}/engine-api/DATABASE_URL
 4. **Confirm** - Prompt for confirmation if there are changes (skip with `--force`)
 5. **Smart merge** - Combine with existing `.env`, preserving your customizations
 6. **Write output** - Save merged result to `.env`
+
+### JSON Output
+
+When `--json` is enabled, Envi prints a stable JSON envelope intended for scripting.
+
+- Core commands (`status`, `diff`, `sync`, `validate`, `run`) print the exact SDK envelope.
+- Secret values are redacted by default in JSON outputs.
 
 ### Output Format
 
@@ -261,17 +298,10 @@ Example:
    API_KEY=envi://core-${ENV}/my-package/API_KEY
    ```
 
-2. Add the path to `ENV_PATHS` in `envi/src/config.ts`:
+2. Envi auto-discovers templates by scanning for `**/.env.example` (monorepo-friendly).
+   If you want to scope it down, use `--only` (or `paths` in config).
 
-   ```typescript
-   const ENV_PATHS = [
-     'engine/api',
-     'console',
-     'my-package', // Add your package here
-   ]
-   ```
-
-3. Create the corresponding item in your secret provider
+3. Create the corresponding item(s) in your secret provider
 
 ## Environments
 
@@ -355,13 +385,17 @@ envi://core/engine-api/${ENV}/SECRET → envi://core/engine-api/prod/SECRET
 
 ## Configured Paths
 
-Currently configured packages:
+By default, Envi discovers templates automatically by scanning for `**/.env.example` from the current working directory.
 
-| Path              | Status       |
-| ----------------- | ------------ |
-| `dashboard-agent` | Has template |
+To restrict which templates are processed:
 
-To add more packages, see [Adding New Templates](#adding-new-templates).
+```bash
+# Only process a specific subdirectory
+bun envi sync --only engine/api
+
+# Multiple paths (comma-separated)
+bun envi diff --only engine/api,console
+```
 
 ## CI/CD Integration
 
@@ -422,6 +456,9 @@ Backups are stored in timestamped directories under `.env-backup/`:
 ```bash
 # List all backup snapshots
 bun envi restore --list
+
+# List backups (same info)
+bun envi backup --list
 
 # Restore from most recent backup
 bun envi restore -f

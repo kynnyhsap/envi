@@ -1,4 +1,4 @@
-import { type EnvFile, type EnvVar, LOCAL_ENVS_SEPARATOR, ENV_MARKER_PREFIX } from './types'
+import { type EnvFile, type EnvVar, LOCAL_ENVS_SEPARATOR, ENV_MARKER_PREFIX, LEGACY_ENV_MARKER_PREFIX } from './types'
 
 export function parseEnvFile(content: string): EnvFile {
   const vars = new Map<string, EnvVar>()
@@ -15,6 +15,11 @@ export function parseEnvFile(content: string): EnvFile {
 
     if (trimmed.startsWith(ENV_MARKER_PREFIX)) {
       sourceEnv = trimmed.slice(ENV_MARKER_PREFIX.length).trim()
+      continue
+    }
+
+    if (trimmed.startsWith(LEGACY_ENV_MARKER_PREFIX)) {
+      sourceEnv = trimmed.slice(LEGACY_ENV_MARKER_PREFIX.length).trim()
       continue
     }
 

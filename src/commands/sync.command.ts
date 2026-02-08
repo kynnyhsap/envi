@@ -2,93 +2,10 @@ import { Table } from 'console-table-printer'
 import pc from 'picocolors'
 
 import { getConfig } from '../config'
-import { getProvider } from '../config'
 import { log } from '../logger'
-import { isSecretReference, toNativeReference } from '../providers'
-import {
-  checkPrerequisites,
-  promptConfirm,
-  truncateValue,
-  redactSecret,
-  parseEnvFile,
-  serializeEnvFile,
-  computeChanges,
-  mergeEnvFiles,
-  resolveAllEnvPaths,
-  substituteVariables,
-  hasUnresolvedVariables,
-  type Change,
-  type EnvPathInfo,
-  type EnvFile,
-} from '../utils'
-import { createAutoBackup } from './backup.command'
-
-async function resolveTemplateSecrets(template: EnvFile): Promise<EnvFile | null> {
-  const config = getConfig()
-  const env = config.environment
-
-  const secretRefs: { key: string; reference: string; originalRef: string }[] = []
-  for (const [key, envVar] of template.vars) {
-    if (isSecretReference(envVar.value)) {
-      const originalRef = envVar.value.trim()
-      const substituted = substituteVariables(originalRef, env)
-
-      if (hasUnresolvedVariables(substituted)) {
-        log.fail(`Unresolved variable in ${key}: ${substituted}`)
-        return null
-      }
-
-      secretRefs.push({ key, reference: substituted, originalRef })
-    }
-  }
-
-  if (secretRefs.length === 0) {
-    return template
-  }
-
-  const references = secretRefs.map((s) => s.reference)
-
-  const provider = getProvider()
-
-    const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))
-  const { resolved, errors } = await provider.resolveSecrets(nativeRefs)
-
-  const nativeToOriginal = new Map<string, string>()
-  for (let i = 0; i < references.length; i++) {
-    nativeToOriginal.set(nativeRefs[i]!, references[i]!)
-  }
-
-  if (errors.size > 0) {
-    log.fail(`Failed to resolve ${errors.size} secret(s):`)
-    for (let i = 0; i < secretRefs.length; i++) {
-      const { key, reference } = secretRefs[i]!
-      const nativeRef = nativeRefs[i]!
-      const error = errors.get(nativeRef)
-      if (error) {
-        log.info(`    ${key}: ${reference}`)
-        log.info(`    ${pc.dim(`Error: ${error}`)}`)
-      }
-    }
-    return null
-  }
-
-  const resolvedVars = new Map(template.vars)
-  for (let i = 0; i < secretRefs.length; i++) {
-    const { key } = secretRefs[i]!
-    const nativeRef = nativeRefs[i]!
-    const value = resolved.get(nativeRef)
-    if (value !== undefined) {
-      const existing = resolvedVars.get(key)!
-      resolvedVars.set(key, { ...existing, value })
-    }
-  }
-
-  return {
-    vars: resolvedVars,
-    order: template.order,
-    trailingContent: template.trailingContent,
-  }
-}
+import { stringifyEnvelope } from '../sdk'
+import { truncateValue, redactSecret, type Change } from '../utils'
+import { createCliEngine } from './engine'
 
 function formatValue(value: string, isSecret: boolean): string {
   if (isSecret) {
@@ -99,7 +16,11 @@ function formatValue(value: string, isSecret: boolean): string {
 
 function isSecretValue(templateValue: string | undefined): boolean {
   if (!templateValue) return false
-  return isSecretReference(templateValue)
+  return (
+    templateValue.trim().startsWith('envi://') ||
+    templateValue.trim().startsWith('op://') ||
+    templateValue.trim().startsWith('pass://')
+  )
 }
 
 function displayChanges(changes: Change[]): {
@@ -195,111 +116,21 @@ function displayChanges(changes: Change[]): {
   return { newCount, updateCount, customCount, unchangedCount }
 }
 
-async function processEnvPath(
-  pathInfo: EnvPathInfo,
-  options: { force: boolean; dryRun: boolean },
-): Promise<{ success: boolean; changes: Change[] }> {
-  log.header(`Processing ${pathInfo.envPath}`)
-
-  const templateFile = Bun.file(pathInfo.templatePath)
-  if (!(await templateFile.exists())) {
-    log.skip(`Template not found: ${pathInfo.templatePath}`)
-    return { success: false, changes: [] }
-  }
-
-  const templateContent = await templateFile.text()
-  const template = parseEnvFile(templateContent)
-  log.detail(`Template: ${pathInfo.templatePath}`)
-  log.detail(`Template has ${template.vars.size} variables`)
-
-  log.info('')
-  log.info('  Resolving secrets...')
-  const injected = await resolveTemplateSecrets(template)
-  if (!injected) {
-    return { success: false, changes: [] }
-  }
-  log.success('Secrets resolved successfully')
-
-  const config = getConfig()
-  const currentEnv = config.environment
-
-  const localFile = Bun.file(pathInfo.envPath)
-  const localExists = await localFile.exists()
-  const local = localExists ? parseEnvFile(await localFile.text()) : null
-
-  if (localExists) {
-    log.detail(`Found existing .env with ${local!.vars.size} variables`)
-    if (local!.sourceEnv && local!.sourceEnv !== currentEnv) {
-      log.warn(`Environment change detected: ${local!.sourceEnv} → ${currentEnv}`)
-    }
-  } else {
-    log.detail(`No existing .env found - will create new file`)
-  }
-
-  // Check for environment switch - if switching, treat all secrets as needing update
-  const envSwitched = !!(local?.sourceEnv && local.sourceEnv !== currentEnv)
-  const changes = computeChanges(template, injected, local, envSwitched)
-
-  log.info('')
-  const { newCount, updateCount, customCount, unchangedCount } = displayChanges(changes)
-
-  log.info('')
-  log.info(
-    `  Summary: ${pc.green(`${newCount} new`)}, ` +
-      `${pc.yellow(`${updateCount} updated`)}, ` +
-      `${pc.cyan(`${customCount} custom`)}, ` +
-      `${pc.dim(`${unchangedCount} unchanged`)}`,
-  )
-
-  if (options.dryRun) {
-    log.warn('Dry run - no changes written')
-    return { success: true, changes }
-  }
-
-  // Prompt for confirmation on env switch or if there are changes
-  if (!options.force) {
-    // Environment switch prompt
-    if (envSwitched) {
-      const envPrompt = `Switch from ${pc.yellow(local!.sourceEnv!)} to ${pc.cyan(currentEnv)}? All secrets will be updated.`
-      const confirmed = await promptConfirm(envPrompt)
-      if (!confirmed) {
-        log.skip('Environment switch cancelled')
-        return { success: false, changes }
-      }
-    } else if (updateCount > 0 || newCount > 0) {
-      let promptMsg = ''
-      if (updateCount > 0 && newCount > 0) {
-        promptMsg = `${updateCount} secrets will be updated and ${newCount} new vars added. Continue?`
-      } else if (updateCount > 0) {
-        promptMsg = `${updateCount} secrets will be updated. Continue?`
-      } else {
-        promptMsg = `${newCount} new vars will be added. Continue?`
-      }
-
-      const confirmed = await promptConfirm(promptMsg)
-      if (!confirmed) {
-        log.skip('Skipped by user')
-        return { success: false, changes }
-      }
-    }
-  }
-
-  // Always write the file to ensure proper formatting and local var placement
-  const merged = mergeEnvFiles(template, injected, local, changes)
-  const outputContent = serializeEnvFile(merged, currentEnv)
-  await Bun.write(pathInfo.envPath, outputContent)
-
-  if (newCount === 0 && updateCount === 0) {
-    log.success('File reformatted (no value changes)')
-  } else {
-    log.success(`Written to ${pathInfo.envPath}`)
-  }
-
-  return { success: true, changes }
-}
-
 export async function syncCommand(options: { force: boolean; dryRun: boolean; noBackup: boolean }): Promise<void> {
   const config = getConfig()
+  const engine = createCliEngine()
+  const result = await engine.sync({
+    force: options.force,
+    dryRun: options.dryRun,
+    noBackup: options.noBackup,
+    includeSecrets: !config.json,
+  })
+
+  if (config.json) {
+    process.stdout.write(stringifyEnvelope(result))
+    process.exitCode = result.ok ? 0 : 1
+    return
+  }
 
   log.banner('Environment Sync')
   log.info(`  Environment: ${pc.cyan(config.environment)}`)
@@ -311,51 +142,56 @@ export async function syncCommand(options: { force: boolean; dryRun: boolean; no
     log.info(pc.yellow('  Running in force mode (no prompts)'))
   }
 
-  const prereqsOk = await checkPrerequisites()
-  if (!prereqsOk) {
-    process.exit(1)
-  }
+  for (const pathResult of result.data.paths) {
+    log.header(`Processing ${pathResult.pathInfo.envPath}`)
 
-  const envPaths = resolveAllEnvPaths()
-
-  // Auto-backup existing .env files before making changes
-  if (!options.dryRun && !options.noBackup) {
-    const envFilePaths = envPaths.map((p) => p.envPath)
-    const backupPath = await createAutoBackup(envFilePaths)
-    if (backupPath) {
-      log.info('')
-      log.info(`  ${pc.dim(`Backed up existing files to ${backupPath}`)}`)
+    if (pathResult.skipped) {
+      log.skip(pathResult.message ?? 'Skipped')
+      continue
     }
-  }
 
-  let successCount = 0
-  let failCount = 0
-  let totalNew = 0
-  let totalUpdated = 0
-  let totalCustom = 0
+    if (!pathResult.success) {
+      log.fail(pathResult.message ?? 'Failed')
+      continue
+    }
 
-  for (const pathInfo of envPaths) {
-    const { success, changes } = await processEnvPath(pathInfo, options)
+    if (pathResult.envSwitched) {
+      log.warn('Environment change detected - secrets updated')
+    }
 
-    if (success) {
-      successCount++
-      totalNew += changes.filter((c) => c.type === 'new').length
-      totalUpdated += changes.filter((c) => c.type === 'updated').length
-      totalCustom += changes.filter((c) => c.type === 'local_modified' || c.type === 'custom').length
+    log.info('')
+    const { newCount, updateCount, customCount, unchangedCount } = displayChanges(pathResult.changes)
+
+    log.info('')
+    log.info(
+      `  Summary: ${pc.green(`${newCount} new`)}, ` +
+        `${pc.yellow(`${updateCount} updated`)}, ` +
+        `${pc.cyan(`${customCount} custom`)}, ` +
+        `${pc.dim(`${unchangedCount} unchanged`)}`,
+    )
+
+    if (options.dryRun) {
+      log.warn('Dry run - no changes written')
+    } else if (newCount === 0 && updateCount === 0) {
+      log.success('File reformatted (no value changes)')
     } else {
-      failCount++
+      log.success(`Written to ${pathResult.pathInfo.envPath}`)
     }
   }
 
   log.banner('Summary')
   log.info('')
-  log.info(`  Files processed: ${pc.green(`${successCount} success`)}, ${pc.red(`${failCount} failed`)}`)
   log.info(
-    `  Variables: ${pc.green(`${totalNew} new`)}, ${pc.yellow(`${totalUpdated} updated`)}, ${pc.cyan(`${totalCustom} custom`)}`,
+    `  Files processed: ${pc.green(`${result.data.summary.success} success`)}, ` +
+      `${pc.red(`${result.data.summary.failed} failed`)}, ` +
+      `${pc.dim(`${result.data.summary.skipped} skipped`)}`,
+  )
+  log.info(
+    `  Variables: ${pc.green(`${result.data.summary.new} new`)}, ` +
+      `${pc.yellow(`${result.data.summary.updated} updated`)}, ` +
+      `${pc.cyan(`${result.data.summary.custom} custom`)}`,
   )
   log.info('')
 
-  if (failCount > 0) {
-    process.exit(1)
-  }
+  process.exitCode = result.ok ? 0 : 1
 }

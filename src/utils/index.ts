@@ -1,6 +1,6 @@
 // Types
 export type { EnvVar, EnvFile, ChangeType, Change } from './types'
-export { LOCAL_ENVS_SEPARATOR, ENV_MARKER_PREFIX } from './types'
+export { LOCAL_ENVS_SEPARATOR, ENV_MARKER_PREFIX, LEGACY_ENV_MARKER_PREFIX } from './types'
 
 // Parsing
 export { parseEnvFile, serializeEnvFile } from './parse'

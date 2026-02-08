@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationMap": false,
+    "emitDeclarationOnly": true
+  },
+  "include": [
+    "src/sdk/**/*.ts",
+    "src/providers/**/*.ts",
+    "src/utils/diff.ts",
+    "src/utils/merge.ts",
+    "src/utils/parse.ts",
+    "src/utils/types.ts",
+    "src/utils/variables.ts",
+    "src/utils/format.ts",
+    "src/runtime/exec.ts",
+    "src/config.ts"
+  ],
+  "exclude": ["**/*.test.ts"]
+}

@@ -1,16 +1,11 @@
 import pc from 'picocolors'
 
 import { getConfig } from '../config'
-import { getProvider } from '../config'
 import { log } from '../logger'
-import { isSecretReference, parseSecretReference, toNativeReference } from '../providers'
-import { parseEnvFile, resolveAllEnvPaths, type EnvPathInfo } from '../utils'
-import { substituteVariables, hasUnresolvedVariables } from '../utils/variables'
+import { stringifyEnvelope } from '../sdk'
+import { hasUnresolvedVariables } from '../utils/variables'
+import { createCliEngine } from './engine'
 
-/**
- * Format a secret reference with colored parts.
- * envi://vault/item/field, op://vault/item/field, pass://vault/item/field
- */
 function formatReference(reference: string): string {
   const trimmed = reference.trim()
 
@@ -30,75 +25,6 @@ function formatReference(reference: string): string {
   return trimmed
 }
 
-interface SecretToValidate {
-  key: string
-  reference: string // Original reference from template (may contain ${ENV})
-  resolvedReference: string // Reference with ${ENV} substituted
-}
-
-function validateReferenceFormat(reference: string): { valid: boolean; error?: string | undefined } {
-  try {
-    parseSecretReference(reference)
-    return { valid: true }
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    return { valid: false, error: msg }
-  }
-}
-
-async function validateReferenceRemote(reference: string): Promise<{ valid: boolean; error?: string | undefined }> {
-  try {
-    const provider = getProvider()
-
-    const nativeRef = toNativeReference(reference, provider.scheme)
-    await provider.resolveSecret(nativeRef)
-    return { valid: true }
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    if (msg.includes('could not find item') || msg.includes('not found')) {
-      return { valid: false, error: 'Item not found' }
-    } else if (msg.includes('could not find vault') || msg.includes('vault')) {
-      return { valid: false, error: 'Vault not found' }
-    } else if (msg.includes('could not find field') || msg.includes('field')) {
-      return { valid: false, error: 'Field not found' }
-    } else if (msg.includes("isn't a secret reference") || msg.includes('invalid')) {
-      return { valid: false, error: 'Invalid reference format' }
-    }
-    const firstLine = msg.split('\n')[0]
-    return { valid: false, error: firstLine ?? msg }
-  }
-}
-
-async function getSecretsFromTemplate(
-  pathInfo: EnvPathInfo,
-): Promise<{ hasTemplate: boolean; secrets: SecretToValidate[] }> {
-  const templateFile = Bun.file(pathInfo.templatePath)
-  const hasTemplate = await templateFile.exists()
-
-  if (!hasTemplate) {
-    return { hasTemplate: false, secrets: [] }
-  }
-
-  const templateContent = await templateFile.text()
-  const template = parseEnvFile(templateContent)
-  const { environment } = getConfig()
-
-  const secrets: SecretToValidate[] = []
-
-  for (const [key, envVar] of template.vars) {
-    if (isSecretReference(envVar.value)) {
-      const reference = envVar.value.trim()
-      secrets.push({
-        key,
-        reference,
-        resolvedReference: substituteVariables(reference, environment),
-      })
-    }
-  }
-
-  return { hasTemplate: true, secrets }
-}
-
 interface ValidateOptions {
   remote?: boolean
 }
@@ -106,15 +32,20 @@ interface ValidateOptions {
 export async function validateCommand(options: ValidateOptions = {}): Promise<void> {
   const isRemote = options.remote ?? false
   const { environment } = getConfig()
-  const provider = getProvider()
+  const engine = createCliEngine()
+  const result = await engine.validate({ remote: isRemote })
+
+  if (getConfig().json) {
+    process.stdout.write(stringifyEnvelope(result))
+    process.exitCode = result.ok ? 0 : 1
+    return
+  }
 
   log.banner('Validate Secret References')
 
-  const envPaths = resolveAllEnvPaths()
-
   log.info('')
   log.info(`  Environment: ${pc.cyan(environment)}`)
-  log.info(`  Provider: ${pc.cyan(provider.name)}`)
+  log.info(`  Provider: ${pc.cyan(result.meta.provider)}`)
   if (isRemote) {
     log.info('  Validating references against provider...')
   } else {
@@ -122,21 +53,14 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
   }
   log.info('')
 
-  let totalValid = 0
-  let totalInvalid = 0
-  let totalTemplates = 0
-
-  for (const pathInfo of envPaths) {
-    const { hasTemplate, secrets } = await getSecretsFromTemplate(pathInfo)
-
-    if (!hasTemplate) {
+  for (const pathResult of result.data.paths) {
+    const pathInfo = pathResult.pathInfo
+    if (!pathResult.hasTemplate) {
       log.skip(`${pathInfo.templatePath} (not found)`)
       continue
     }
 
-    totalTemplates++
-
-    if (secrets.length === 0) {
+    if (pathResult.references.length === 0) {
       log.info(`  ${pc.cyan(pathInfo.templatePath)}`)
       log.detail('No secret references found')
       continue
@@ -144,28 +68,21 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
 
     log.header(pathInfo.templatePath)
 
-    for (const secret of secrets) {
-      const formattedRef = formatReference(secret.resolvedReference)
-      const line = `${secret.key}=${formattedRef}`
+    for (const ref of pathResult.references) {
+      const formattedRef = formatReference(ref.resolvedReference)
+      const line = `${ref.key}=${formattedRef}`
 
-      if (hasUnresolvedVariables(secret.resolvedReference)) {
+      if (hasUnresolvedVariables(ref.resolvedReference)) {
         log.invalid(line)
         log.detail(pc.red('Error: Unresolved variables in reference'))
-        totalInvalid++
         continue
       }
 
-      const result = isRemote
-        ? await validateReferenceRemote(secret.resolvedReference)
-        : validateReferenceFormat(secret.resolvedReference)
-
-      if (result.valid) {
+      if (ref.valid) {
         log.valid(line)
-        totalValid++
       } else {
         log.invalid(line)
-        log.detail(pc.red(`Error: ${result.error}`))
-        totalInvalid++
+        log.detail(pc.red(`Error: ${ref.error ?? 'Invalid reference'}`))
       }
     }
   }
@@ -174,19 +91,21 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
   log.banner('Summary')
   log.info('')
 
-  if (totalTemplates === 0) {
+  if (result.data.summary.templates === 0) {
     log.warn('No templates found')
-  } else if (totalInvalid === 0) {
+  } else if (result.data.summary.invalid === 0) {
     log.info(`  ${pc.green('All references are valid!')}`)
-    log.info(`  ${pc.green(String(totalValid))} reference(s) validated across ${totalTemplates} template(s)`)
+    log.info(
+      `  ${pc.green(String(result.data.summary.valid))} reference(s) validated across ${result.data.summary.templates} template(s)`,
+    )
     if (!isRemote) {
       log.info('')
       log.info(`  ${pc.dim(`Use ${pc.cyan('--remote')} to check against provider`)}`)
     }
   } else {
     log.info(
-      `  ${pc.green(`${totalValid} valid`)}, ${pc.red(`${totalInvalid} invalid`)} ` +
-        `across ${totalTemplates} template(s)`,
+      `  ${pc.green(`${result.data.summary.valid} valid`)}, ${pc.red(`${result.data.summary.invalid} invalid`)} ` +
+        `across ${result.data.summary.templates} template(s)`,
     )
     log.info('')
     log.info(`  ${pc.red('Fix invalid references before running sync')}`)
@@ -194,7 +113,5 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
 
   log.info('')
 
-  if (totalInvalid > 0) {
-    process.exit(1)
-  }
+  process.exitCode = result.ok ? 0 : 1
 }

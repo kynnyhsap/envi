@@ -5,7 +5,23 @@
   "bin": {
     "envi": "./src/cli.ts"
   },
+  "files": [
+    "src",
+    "dist/sdk",
+    "README.md",
+    "AGENTS.md",
+    "PERSONALITY.md",
+    "ROADMAP.md",
+    "examples"
+  ],
   "type": "module",
+  "exports": {
+    "./sdk": {
+      "types": "./dist/sdk/index.d.ts",
+      "default": "./dist/sdk/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "cli": "bun run src/cli.ts",
     "envi": "bun run src/cli.ts",
@@ -13,6 +29,8 @@
     "typecheck": "tsgo --noEmit",
     "fmt": "oxfmt --write .",
     "lint": "oxlint .",
+    "build:sdk": "bun build src/sdk/index.ts --outdir dist/sdk --target node --format esm && tsc -p tsconfig.build.json",
+    "prepack": "bun run build:sdk",
     "compile": "bun build --compile --minify src/cli.ts --outfile dist/envi"
   },
   "dependencies": {

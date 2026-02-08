@@ -34,13 +34,13 @@ import {
   DEFAULT_BACKUP_DIR,
   DEFAULT_OUTPUT_FILE,
   DEFAULT_TEMPLATE_FILE,
-  DEFAULT_PROVIDER,
   setRuntimeConfig,
   parseOnlyFlag,
   loadConfigFile,
   type ConfigFile,
 } from './config'
 import { VALID_PROVIDERS, type ProviderType } from './providers'
+import { resolveRuntimeOptions } from './sdk'
 import { DEFAULT_ENVIRONMENT } from './utils/variables'
 
 function showHelp(): void {
@@ -61,6 +61,7 @@ function showHelp(): void {
   console.info('')
   console.info(pc.bold('GLOBAL OPTIONS'))
   console.info(`  ${pc.green('-q, --quiet')}         Suppress non-essential output`)
+  console.info(`  ${pc.green('--json')}              Output machine-readable JSON`)
   console.info(
     `  ${pc.green('-e, --env')} ${pc.dim('<name>')}    Environment name for ${'${ENV}'} substitution ${pc.dim(`(default: ${DEFAULT_ENVIRONMENT})`)}`,
   )
@@ -141,6 +142,7 @@ function configureCommandHelp(cmd: Command, help: CommandHelp): Command {
 
 interface GlobalOptions {
   quiet?: boolean
+  json?: boolean
   env?: string
   provider?: string
   providerOpt?: string[]
@@ -179,34 +181,58 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
     }
   }
 
-  // Merge: config file ← CLI flags (CLI wins)
-  const env = options.env ?? fileConfig.environment ?? DEFAULT_ENVIRONMENT
+  // Provider options: config file <- CLI --provider-opt (CLI wins)
+  const cliProviderOpts = parseProviderOpts(options.providerOpt)
 
-  const providerName = (options.provider ?? fileConfig.provider ?? DEFAULT_PROVIDER) as ProviderType
-  if (!VALID_PROVIDERS.includes(providerName)) {
-    console.error(pc.red(`Invalid provider: ${providerName}`))
+  let resolved
+  try {
+    const configFile: Record<string, unknown> = {}
+    if (fileConfig.environment !== undefined) configFile['environment'] = fileConfig.environment
+    if (fileConfig.provider !== undefined) configFile['provider'] = fileConfig.provider
+    if (fileConfig.providerOptions !== undefined) configFile['providerOptions'] = fileConfig.providerOptions
+    if (fileConfig.paths !== undefined) configFile['paths'] = fileConfig.paths
+    if (fileConfig.outputFile !== undefined) configFile['outputFile'] = fileConfig.outputFile
+    if (fileConfig.templateFile !== undefined) configFile['templateFile'] = fileConfig.templateFile
+    if (fileConfig.backupDir !== undefined) configFile['backupDir'] = fileConfig.backupDir
+    if (fileConfig.quiet !== undefined) configFile['quiet'] = fileConfig.quiet
+    if (fileConfig.json !== undefined) configFile['json'] = fileConfig.json
+
+    const overrides: Record<string, unknown> = {}
+    if (options.env !== undefined) overrides['environment'] = options.env
+    if (options.provider !== undefined) overrides['provider'] = options.provider as ProviderType
+    if (options.providerOpt !== undefined && options.providerOpt.length > 0)
+      overrides['providerOptions'] = cliProviderOpts
+    const onlyPaths = parseOnlyFlag(options.only)
+    if (onlyPaths !== undefined) overrides['paths'] = onlyPaths
+    if (options.output !== undefined) overrides['outputFile'] = options.output
+    if (options.template !== undefined) overrides['templateFile'] = options.template
+    if (options.backupDir !== undefined) overrides['backupDir'] = options.backupDir
+    if (options.quiet !== undefined) overrides['quiet'] = options.quiet
+    if (options.json !== undefined) overrides['json'] = options.json
+
+    resolved = resolveRuntimeOptions({
+      configFile: configFile as any,
+      overrides: overrides as any,
+    })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error(pc.red(msg))
     console.error(pc.dim(`Valid providers: ${VALID_PROVIDERS.join(', ')}`))
     process.exit(1)
   }
 
-  // Provider options: config file ← CLI --provider-opt (CLI wins)
-  const cliProviderOpts = parseProviderOpts(options.providerOpt)
-  const providerOptions: Record<string, string> = {
-    ...fileConfig.providerOptions,
-    ...cliProviderOpts,
-  }
-
-  const paths = parseOnlyFlag(options.only) ?? fileConfig.paths ?? []
+  const quiet = resolved.quiet || resolved.json
 
   setRuntimeConfig({
-    paths,
-    outputFile: options.output ?? fileConfig.outputFile ?? DEFAULT_OUTPUT_FILE,
-    templateFile: options.template ?? fileConfig.templateFile ?? DEFAULT_TEMPLATE_FILE,
-    backupDir: options.backupDir ?? fileConfig.backupDir ?? DEFAULT_BACKUP_DIR,
-    quiet: options.quiet ?? fileConfig.quiet ?? false,
-    environment: env,
-    provider: providerName,
-    providerOptions,
+    paths: resolved.paths,
+    outputFile: resolved.outputFile,
+    templateFile: resolved.templateFile,
+    backupDir: resolved.backupDir,
+    quiet,
+    json: resolved.json,
+    environment: resolved.environment,
+    provider: resolved.provider,
+    providerOptions: resolved.providerOptions,
   })
 }
 
@@ -217,8 +243,9 @@ program
   .description('Manage .env files with secret providers')
   .version(VERSION, '-v, --version', 'Show version number')
   .option('-q, --quiet', 'Suppress non-essential output')
-  .option('-e, --env <name>', `Environment name for \${ENV} substitution`, DEFAULT_ENVIRONMENT)
-  .option('--provider <name>', `Secret provider (${VALID_PROVIDERS.join(', ')})`, DEFAULT_PROVIDER)
+  .option('--json', 'Output machine-readable JSON')
+  .option('-e, --env <name>', `Environment name for \${ENV} substitution`)
+  .option('--provider <name>', `Secret provider (${VALID_PROVIDERS.join(', ')})`)
   .option(
     '--provider-opt <key=value>',
     'Provider-specific option (repeatable)',

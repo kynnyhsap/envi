@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises'
+
 import packageJson from '../package.json'
 import { createProvider, type Provider, type ProviderType } from './providers'
 import { DEFAULT_ENVIRONMENT } from './utils/variables'
@@ -16,6 +18,7 @@ export interface RuntimeConfig {
   outputFile: string
   paths: string[]
   quiet: boolean
+  json: boolean
   environment: string
   provider: ProviderType
   providerOptions: Record<string, string>
@@ -27,6 +30,7 @@ let runtimeConfig: RuntimeConfig = {
   outputFile: DEFAULT_OUTPUT_FILE,
   paths: [],
   quiet: false,
+  json: false,
   environment: DEFAULT_ENVIRONMENT,
   provider: DEFAULT_PROVIDER,
   providerOptions: {},
@@ -70,13 +74,21 @@ export interface ConfigFile {
   outputFile?: string
   backupDir?: string
   quiet?: boolean
+  json?: boolean
 }
 
 export async function loadConfigFile(path: string): Promise<ConfigFile> {
-  const file = Bun.file(path)
-  if (!(await file.exists())) {
+  let text = ''
+  try {
+    text = await readFile(path, 'utf8')
+  } catch {
     throw new Error(`Config file not found: ${path}`)
   }
-  const content = await file.json()
-  return content as ConfigFile
+
+  try {
+    const content = JSON.parse(text) as unknown
+    return content as ConfigFile
+  } catch {
+    throw new Error(`Invalid JSON in config file: ${path}`)
+  }
 }

@@ -7,6 +7,7 @@
  * Secret references use the `pass://vault/item/field` format.
  */
 
+import { exec } from '../runtime/exec'
 import type { AuthInfo, AuthFailureHints, AvailabilityResult, Provider, ResolveSecretsResult } from './provider'
 
 export class ProtonPassProvider implements Provider {
@@ -26,7 +27,7 @@ export class ProtonPassProvider implements Provider {
 
   async checkAvailability(): Promise<AvailabilityResult> {
     try {
-      const result = await Bun.$`which ${this.binary}`.quiet().nothrow()
+      const result = await exec('which', [this.binary])
       if (result.exitCode === 0) {
         return { available: true, statusLines: [`${this.binary}: installed`] }
       }
@@ -48,7 +49,7 @@ export class ProtonPassProvider implements Provider {
 
   async verifyAuth(): Promise<{ success: boolean; error?: string }> {
     try {
-      const result = await Bun.$`${this.binary} test`.quiet().nothrow()
+      const result = await exec(this.binary, ['test'])
       if (result.exitCode === 0) {
         return { success: true }
       }
@@ -65,7 +66,7 @@ export class ProtonPassProvider implements Provider {
 
   async resolveSecret(reference: string): Promise<string> {
     // Use `pass-cli item view "pass://vault/item/field"` to get a single field value
-    const result = await Bun.$`${this.binary} item view ${reference} --output text`.quiet().nothrow()
+    const result = await exec(this.binary, ['item', 'view', reference, '--output', 'text'])
 
     if (result.exitCode !== 0) {
       const stderr = result.stderr.toString().trim()
@@ -93,7 +94,7 @@ export class ProtonPassProvider implements Provider {
   }
 
   async listVaults(): Promise<{ id: string; name: string }[]> {
-    const result = await Bun.$`${this.binary} vault list --output json`.quiet().nothrow()
+    const result = await exec(this.binary, ['vault', 'list', '--output', 'json'])
 
     if (result.exitCode !== 0) {
       const stderr = result.stderr.toString().trim()

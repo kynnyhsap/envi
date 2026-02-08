@@ -3,6 +3,7 @@ import pc from 'picocolors'
 
 import { getConfig } from '../config'
 import { log } from '../logger'
+import { stringifyEnvelope } from '../sdk'
 import { promptConfirm, formatBackupTimestamp } from '../utils'
 
 interface BackupSnapshot {
@@ -104,21 +105,175 @@ async function restoreFile(backup: BackupFile, options: { force: boolean; dryRun
 }
 
 export async function restoreCommand(options: { force: boolean; dryRun: boolean; list: boolean }): Promise<void> {
+  const config = getConfig()
+
+  if (config.json) {
+    const snapshots = await findBackupSnapshots()
+
+    if (snapshots.length === 0) {
+      const envelope = {
+        schemaVersion: 1,
+        command: 'restore',
+        ok: false,
+        data: { backupDir: config.backupDir, snapshots: [] },
+        issues: [{ code: 'NO_BACKUPS', message: `No backups found in ${config.backupDir}/` }],
+        meta: {
+          environment: config.environment,
+          provider: config.provider,
+          timestamp: new Date().toISOString(),
+        },
+      }
+      process.stdout.write(stringifyEnvelope(envelope))
+      process.exitCode = 1
+      return
+    }
+
+    if (options.list) {
+      const envelope = {
+        schemaVersion: 1,
+        command: 'restore.list',
+        ok: true,
+        data: {
+          backupDir: config.backupDir,
+          snapshots: snapshots.map((s) => ({
+            timestamp: s.timestamp,
+            path: s.path,
+            files: s.files.map((f) => ({
+              originalPath: f.originalPath,
+              size: f.size,
+              modifiedAt: f.modifiedAt.toISOString(),
+            })),
+          })),
+        },
+        issues: [],
+        meta: {
+          environment: config.environment,
+          provider: config.provider,
+          timestamp: new Date().toISOString(),
+        },
+      }
+      process.stdout.write(stringifyEnvelope(envelope))
+      return
+    }
+
+    const selectedSnapshot = snapshots[0]!
+    if (!options.force) {
+      const envelope = {
+        schemaVersion: 1,
+        command: 'restore',
+        ok: false,
+        data: {
+          backupDir: config.backupDir,
+          selectedSnapshot: selectedSnapshot.timestamp,
+          files: selectedSnapshot.files.map((f) => f.originalPath),
+        },
+        issues: [
+          {
+            code: 'PROMPT_REQUIRED',
+            message:
+              'Restore requires interactive selection/confirmation. Re-run with --force or --list when using --json.',
+          },
+        ],
+        meta: {
+          environment: config.environment,
+          provider: config.provider,
+          timestamp: new Date().toISOString(),
+        },
+      }
+      process.stdout.write(stringifyEnvelope(envelope))
+      process.exitCode = 1
+      return
+    }
+
+    if (options.dryRun) {
+      const wouldOverwrite: string[] = []
+      const wouldRestore: string[] = []
+      for (const file of selectedSnapshot.files) {
+        const exists = await Bun.file(file.originalPath).exists()
+        if (exists) wouldOverwrite.push(file.originalPath)
+        else wouldRestore.push(file.originalPath)
+      }
+
+      const envelope = {
+        schemaVersion: 1,
+        command: 'restore',
+        ok: true,
+        data: {
+          dryRun: true,
+          force: true,
+          backupDir: config.backupDir,
+          selectedSnapshot: selectedSnapshot.timestamp,
+          wouldOverwrite,
+          wouldRestore,
+        },
+        issues: [],
+        meta: {
+          environment: config.environment,
+          provider: config.provider,
+          timestamp: new Date().toISOString(),
+        },
+      }
+      process.stdout.write(stringifyEnvelope(envelope))
+      return
+    }
+
+    let successCount = 0
+    let failCount = 0
+    const errors: Array<{ path: string; error: string }> = []
+
+    for (const backup of selectedSnapshot.files) {
+      try {
+        const content = await Bun.file(backup.backupPath).text()
+        await Bun.write(backup.originalPath, content)
+        successCount++
+      } catch (error) {
+        failCount++
+        const msg = error instanceof Error ? error.message : String(error)
+        errors.push({ path: backup.originalPath, error: msg })
+      }
+    }
+
+    const envelope = {
+      schemaVersion: 1,
+      command: 'restore',
+      ok: failCount === 0,
+      data: {
+        dryRun: false,
+        force: true,
+        backupDir: config.backupDir,
+        selectedSnapshot: selectedSnapshot.timestamp,
+        restored: successCount,
+        failed: failCount,
+        errors,
+      },
+      issues: errors.map((e) => ({ code: 'RESTORE_FAILED', message: e.error, path: e.path })),
+      meta: {
+        environment: config.environment,
+        provider: config.provider,
+        timestamp: new Date().toISOString(),
+      },
+    }
+
+    process.stdout.write(stringifyEnvelope(envelope))
+    process.exitCode = failCount === 0 ? 0 : 1
+    return
+  }
+
   log.banner('Restore .env Files from Backup')
 
   if (options.dryRun) {
     log.info(pc.yellow('  Running in dry-run mode'))
   }
 
-  const config = getConfig()
   const snapshots = await findBackupSnapshots()
 
   if (snapshots.length === 0) {
     log.fail(`No backups found in ${config.backupDir}/`)
     log.info('')
     log.info('  Create a backup first with:')
-    log.info(`  ${pc.cyan('env-cli backup')}`)
-    process.exit(1)
+    log.info(`  ${pc.cyan('envi backup')}`)
+    process.exitCode = 1
+    return
   }
 
   if (options.list) {
@@ -142,7 +297,8 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
   const firstSnapshot = snapshots[0]
   if (!firstSnapshot) {
     log.fail('No backups found')
-    process.exit(1)
+    process.exitCode = 1
+    return
   }
 
   if (snapshots.length === 1) {
@@ -168,7 +324,8 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
       const found = snapshots.find((s) => s.timestamp === answer)
       if (!found) {
         log.fail('Selected backup not found')
-        process.exit(1)
+        process.exitCode = 1
+        return
       }
       selectedSnapshot = found
     } catch {
@@ -235,6 +392,7 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
   log.info('')
 
   if (failCount > 0) {
-    process.exit(1)
+    process.exitCode = 1
+    return
   }
 }

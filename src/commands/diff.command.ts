@@ -1,104 +1,10 @@
 import pc from 'picocolors'
 
 import { getConfig } from '../config'
-import { getProvider } from '../config'
 import { log } from '../logger'
-import { isSecretReference, toNativeReference } from '../providers'
-import {
-  checkPrerequisites,
-  parseEnvFile,
-  computeChanges,
-  resolveEnvPath,
-  resolveAllEnvPaths,
-  substituteVariables,
-  hasUnresolvedVariables,
-  type Change,
-  type EnvPathInfo,
-  type EnvFile,
-} from '../utils'
-
-interface DiffResult {
-  pathInfo: EnvPathInfo
-  hasTemplate: boolean
-  hasEnv: boolean
-  changes: Change[]
-  error?: string
-}
-
-async function diffEnvPath(pathInfo: EnvPathInfo): Promise<DiffResult> {
-  const config = getConfig()
-  const env = config.environment
-
-  const templateFile = Bun.file(pathInfo.templatePath)
-  const outputFile = Bun.file(pathInfo.envPath)
-
-  const hasTemplate = await templateFile.exists()
-  const hasEnv = await outputFile.exists()
-
-  if (!hasTemplate) {
-    return { pathInfo, hasTemplate: false, hasEnv, changes: [] }
-  }
-
-  const templateContent = await templateFile.text()
-  const template = parseEnvFile(templateContent)
-
-  let injected: EnvFile
-
-  const secretRefs: { key: string; reference: string }[] = []
-  for (const [key, envVar] of template.vars) {
-    if (isSecretReference(envVar.value)) {
-      const originalRef = envVar.value.trim()
-      const substituted = substituteVariables(originalRef, env)
-
-      if (hasUnresolvedVariables(substituted)) {
-        return { pathInfo, hasTemplate, hasEnv, changes: [], error: `Unresolved variable in ${key}: ${substituted}` }
-      }
-
-      secretRefs.push({ key, reference: substituted })
-    }
-  }
-
-  if (secretRefs.length === 0) {
-    injected = template
-  } else {
-    const references = secretRefs.map((s) => s.reference)
-
-    const provider = getProvider()
-
-    const nativeRefs = references.map((ref) => toNativeReference(ref, provider.scheme))
-    const { resolved, errors } = await provider.resolveSecrets(nativeRefs)
-
-    if (errors.size > 0) {
-      const failedRefs = secretRefs
-        .filter((_, i) => errors.has(nativeRefs[i]!))
-        .map((s) => `${s.key}: ${s.reference}`)
-        .join(', ')
-      return { pathInfo, hasTemplate, hasEnv, changes: [], error: `Failed to resolve: ${failedRefs}` }
-    }
-
-    const resolvedVars = new Map(template.vars)
-    for (let i = 0; i < secretRefs.length; i++) {
-      const { key } = secretRefs[i]!
-      const nativeRef = nativeRefs[i]!
-      const value = resolved.get(nativeRef)
-      if (value !== undefined) {
-        const existing = resolvedVars.get(key)!
-        resolvedVars.set(key, { ...existing, value })
-      }
-    }
-
-    injected = {
-      vars: resolvedVars,
-      order: template.order,
-      trailingContent: template.trailingContent,
-    }
-  }
-
-  const local = hasEnv ? parseEnvFile(await outputFile.text()) : null
-  const changes = computeChanges(template, injected, local)
-
-  return { pathInfo, hasTemplate, hasEnv, changes }
-}
+import { stringifyEnvelope } from '../sdk'
+import { type Change, type EnvPathInfo } from '../utils'
+import { createCliEngine } from './engine'
 
 function maskValue(value: string, maxLen = 40): string {
   if (value.length <= 8) return value
@@ -143,56 +49,52 @@ function displayGitStyleDiff(changes: Change[], pathInfo: EnvPathInfo): void {
 
 export async function diffCommand(options: { path?: string }): Promise<void> {
   const config = getConfig()
+  const engine = createCliEngine()
+  const result = await engine.diff(
+    config.json
+      ? options.path
+        ? { path: options.path }
+        : undefined
+      : {
+          ...(options.path ? { path: options.path } : {}),
+          includeSecrets: true,
+        },
+  )
+
+  if (config.json) {
+    process.stdout.write(stringifyEnvelope(result))
+    process.exitCode = result.ok ? 0 : 1
+    return
+  }
 
   log.banner('Environment Diff')
   log.info(`  Environment: ${pc.cyan(config.environment)}`)
 
-  const prereqsOk = await checkPrerequisites({ quiet: true })
-  if (!prereqsOk) {
-    process.exit(1)
-  }
+  for (const pathResult of result.data.paths) {
+    const pathInfo = pathResult.pathInfo
 
-  const envPaths = options.path ? [resolveEnvPath(options.path)] : resolveAllEnvPaths()
-
-  let totalNew = 0
-  let totalUpdated = 0
-  let totalLocalModified = 0
-  let totalUnchanged = 0
-  let hasAnyChanges = false
-
-  for (const pathInfo of envPaths) {
-    const result = await diffEnvPath(pathInfo)
-
-    if (!result.hasTemplate) {
+    if (!pathResult.hasTemplate) {
       log.skip(`${pathInfo.envPath} (no template)`)
       log.detail(`Template not found: ${pathInfo.templatePath}`)
       continue
     }
 
-    if (result.error) {
+    if (pathResult.error) {
       log.fail(`${pathInfo.envPath}: Failed to resolve secrets`)
-      log.detail(result.error)
+      log.detail(pathResult.error)
       continue
     }
 
-    if (!result.hasEnv) {
+    if (!pathResult.hasEnv) {
       log.missing(`${pathInfo.envPath} not found`)
-      log.detail(`Run ${pc.cyan('env-cli setup')} to create it`)
-      totalNew += result.changes.filter((c) => c.type === 'new').length
-      hasAnyChanges = true
+      log.detail(`Run ${pc.cyan('envi sync')} to create it`)
       continue
     }
 
-    const newChanges = result.changes.filter((c) => c.type === 'new')
-    const updatedChanges = result.changes.filter((c) => c.type === 'updated')
-    const localModifiedChanges = result.changes.filter((c) => c.type === 'local_modified')
-    const localOnlyChanges = result.changes.filter((c) => c.type === 'custom')
-    const unchangedChanges = result.changes.filter((c) => c.type === 'unchanged')
-
-    totalNew += newChanges.length
-    totalUpdated += updatedChanges.length
-    totalLocalModified += localModifiedChanges.length
-    totalUnchanged += unchangedChanges.length
+    const newChanges = pathResult.changes.filter((c) => c.type === 'new')
+    const updatedChanges = pathResult.changes.filter((c) => c.type === 'updated')
+    const localModifiedChanges = pathResult.changes.filter((c) => c.type === 'local_modified')
+    const localOnlyChanges = pathResult.changes.filter((c) => c.type === 'custom')
 
     if (newChanges.length === 0 && updatedChanges.length === 0 && localModifiedChanges.length === 0) {
       log.synced(`${pathInfo.envPath}`)
@@ -202,28 +104,28 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
       continue
     }
 
-    hasAnyChanges = true
-
-    displayGitStyleDiff(result.changes, pathInfo)
+    displayGitStyleDiff(pathResult.changes, pathInfo)
   }
 
   log.banner('Summary')
   log.info('')
 
-  if (!hasAnyChanges) {
+  if (!result.data.summary.hasAnyChanges) {
     log.info(`  ${pc.green('All environments are in sync!')}`)
-    if (totalLocalModified > 0) {
-      log.info(`  ${pc.blue(`${totalLocalModified} local modification(s)`)} preserved`)
+    if (result.data.summary.localModified > 0) {
+      log.info(`  ${pc.blue(`${result.data.summary.localModified} local modification(s)`)} preserved`)
     }
   } else {
     log.info(
-      `  ${pc.green(`${totalNew} new`)}, ` +
-        `${pc.yellow(`${totalUpdated} updated`)}, ` +
-        `${pc.blue(`${totalLocalModified} local mods`)}, ` +
-        `${pc.dim(`${totalUnchanged} unchanged`)}`,
+      `  ${pc.green(`${result.data.summary.new} new`)}, ` +
+        `${pc.yellow(`${result.data.summary.updated} updated`)}, ` +
+        `${pc.blue(`${result.data.summary.localModified} local mods`)}, ` +
+        `${pc.dim(`${result.data.summary.unchanged} unchanged`)}`,
     )
     log.info('')
-    log.info(`  Run ${pc.cyan('env-cli setup')} to apply changes`)
+    log.info(`  Run ${pc.cyan('envi sync')} to apply changes`)
   }
   log.info('')
+
+  process.exitCode = result.ok ? 0 : 1
 }
