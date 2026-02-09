@@ -514,10 +514,9 @@ bun run src/cli.ts validate
 
 ### Authentication Priority (1Password)
 
-Default behavior (`--provider-opt backend=auto`):
+Default behavior (`--provider-opt backend=sdk`):
 
 1. `OP_SERVICE_ACCOUNT_TOKEN` env var -> SDK service account auth (for CI/CD)
 2. `--provider-opt accountName=my-team` or `OP_ACCOUNT_NAME` env var + desktop app running -> SDK desktop app auth
-3. 1Password CLI (`op`) if SDK is unavailable and the CLI is installed + authenticated
 
-You can force a backend with `--provider-opt backend=cli` or `--provider-opt backend=sdk`.
+You can switch backends with `--provider-opt backend=cli` or `--provider-opt backend=sdk`.

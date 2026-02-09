@@ -47,7 +47,7 @@ describe('OnePasswordProvider (backend selection)', () => {
     })
   })
 
-  it('auto mode uses CLI when installed + authenticated', async () => {
+  it('backend=auto uses CLI when installed + authenticated and SDK is unavailable', async () => {
     await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: undefined, OP_ACCOUNT_NAME: undefined }, async () => {
       const exec = makeExec({
         'op --version': () => ({ exitCode: 0, stdout: '2.0.0\n', stderr: '' }),
@@ -56,7 +56,7 @@ describe('OnePasswordProvider (backend selection)', () => {
       })
 
       const provider = new OnePasswordProvider(
-        {},
+        { backend: 'auto' },
         {
           exec,
           createClient: async () => {
@@ -74,7 +74,7 @@ describe('OnePasswordProvider (backend selection)', () => {
     })
   })
 
-  it('auto mode prefers SDK when available', async () => {
+  it('default backend prefers SDK when available', async () => {
     await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: 'token', OP_ACCOUNT_NAME: undefined }, async () => {
       let createClientCalls = 0
       const calls: string[] = []
@@ -106,7 +106,7 @@ describe('OnePasswordProvider (backend selection)', () => {
       expect(auth.success).toBe(true)
       expect(provider.getAuthInfo().type).toBe('service-account')
       expect(createClientCalls).toBe(1)
-      expect(calls).toEqual(['op --version'])
+      expect(calls).toEqual([])
     })
   })
 
@@ -135,14 +135,14 @@ describe('OnePasswordProvider (backend selection)', () => {
     })
   })
 
-  it('auto mode uses SDK when op is not installed', async () => {
+  it('backend=auto uses SDK when op is not installed', async () => {
     await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: 'token', OP_ACCOUNT_NAME: undefined }, async () => {
       const exec = makeExec({
         'op --version': () => ({ exitCode: 1, stdout: '', stderr: 'spawn op ENOENT' }),
       })
 
       const provider = new OnePasswordProvider(
-        {},
+        { backend: 'auto' },
         {
           exec,
           createClient: async () => ({ vaults: { list: async () => [] }, secrets: { resolve: async () => '' } }) as any,

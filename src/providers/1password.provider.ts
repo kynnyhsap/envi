@@ -45,7 +45,7 @@ export class OnePasswordProvider implements Provider {
   private lastAuthAttempt: AuthAttemptState | null = null
 
   constructor(options: Record<string, string> = {}, deps: OnePasswordDeps = {}) {
-    const rawBackend = (options['backend'] ?? 'auto').trim()
+    const rawBackend = (options['backend'] ?? 'sdk').trim()
     this.backend = isBackendMode(rawBackend) ? rawBackend : 'auto'
     this.cliBinary = options['cliBinary'] ?? 'op'
     this.accountName = options['accountName'] ?? process.env['OP_ACCOUNT_NAME']
@@ -82,7 +82,7 @@ export class OnePasswordProvider implements Provider {
     for (const line of sdk.statusLines) statusLines.push(line)
 
     const available =
-      this.backend === 'cli' ? cli.available : this.backend === 'sdk' ? sdk.available : cli.available || sdk.available
+      this.backend === 'cli' ? cli.available : this.backend === 'sdk' ? sdk.available : sdk.available || cli.available
 
     if (!available) {
       return {
@@ -125,13 +125,13 @@ export class OnePasswordProvider implements Provider {
       if (cli.success) return cli
     }
 
-    const cliError = this.lastAuthAttempt?.cliError
     const sdkError = this.lastAuthAttempt?.sdkError
+    const cliError = this.lastAuthAttempt?.cliError
 
-    if (cliError && sdkError) {
-      return { success: false, error: `CLI: ${cliError}; SDK: ${sdkError}` }
+    if (sdkError && cliError) {
+      return { success: false, error: `SDK: ${sdkError}; CLI: ${cliError}` }
     }
-    return { success: false, error: cliError ?? sdkError ?? 'No authentication method available' }
+    return { success: false, error: sdkError ?? cliError ?? 'No authentication method available' }
   }
 
   getAuthFailureHints(): AuthFailureHints {
@@ -247,7 +247,9 @@ export class OnePasswordProvider implements Provider {
     const hasAccountName = !!this.accountName
     statusLines.push(hasAccountName ? 'OP_ACCOUNT_NAME: set' : 'OP_ACCOUNT_NAME: not set')
 
-    const available = appRunning && hasAccountName
+    // We consider desktop auth "available" when the app is running; the auth attempt may still
+    // fail with a more specific error (e.g. missing OP_ACCOUNT_NAME).
+    const available = appRunning
     return { available, statusLines }
   }
 

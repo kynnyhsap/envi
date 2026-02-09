@@ -375,7 +375,9 @@ Envi supports two 1Password backends in `src/providers/1password.provider.ts`:
    - List vaults: `op vault list --format json`
    - Caching: CLI daemon caching is enabled by default on UNIX-like systems. Control it via `OP_CACHE=false` or `--cache=false` on the CLI.
 
-By default, Envi runs in `backend=auto` mode: try the SDK first, then fall back to the CLI if SDK auth is unavailable or fails.
+By default, Envi runs in `backend=sdk` mode.
+
+If you want the 1Password CLI, opt in with `--provider-opt backend=cli`.
 
 ---
 
