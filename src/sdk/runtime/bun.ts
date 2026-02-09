@@ -58,15 +58,27 @@ export function createBunRuntimeAdapter(): RuntimeAdapter {
       const out: string[] = []
       const glob = new bun.Glob('*')
 
-      for await (const entry of glob.scan({ cwd: dirPath, onlyFiles: false })) {
-        const fullPath = path.join(dirPath, entry)
-        try {
-          const stat = await bun.file(fullPath).stat()
-          const isDir = typeof (stat as any)?.isDirectory === 'function' ? (stat as any).isDirectory() : false
-          if (isDir) out.push(entry)
-        } catch {
-          // ignore
+      try {
+        const stat = await bun.file(dirPath).stat()
+        const isDir = typeof (stat as any)?.isDirectory === 'function' ? (stat as any).isDirectory() : false
+        if (!isDir) return []
+      } catch {
+        return []
+      }
+
+      try {
+        for await (const entry of glob.scan({ cwd: dirPath, onlyFiles: false })) {
+          const fullPath = path.join(dirPath, entry)
+          try {
+            const stat = await bun.file(fullPath).stat()
+            const isDir = typeof (stat as any)?.isDirectory === 'function' ? (stat as any).isDirectory() : false
+            if (isDir) out.push(entry)
+          } catch {
+            // ignore
+          }
         }
+      } catch {
+        return []
       }
 
       return out.sort((a, b) => a.localeCompare(b))
