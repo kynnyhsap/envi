@@ -1,59 +1,47 @@
 # AGENTS.md
 
-Envi syncs your `.env` files from 1Password, Proton Pass, or any secret manager — so you never copy secrets by hand again.
+Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/paste).
 
-**Runtime:** Bun — no build step, runs TypeScript directly
-**Type check:** `bun run typecheck` (tsgo)
-**Test:** `bun test` · single file: `bun test src/utils/parse.test.ts` · filter: `bun test --filter "parseEnvFile"`
-**Run:** `bun run src/cli.ts <command>`
+**Package manager:** Bun
+**Runtimes:** CLI (Bun), SDK (Bun + Node)
 
-## Voice & Personality
+**Type check:** `bun run typecheck`
+**Test:** `bun test`
+**Run CLI:** `bun run src/cli.ts <command>`
+**Build SDK (publish):** `bun run build:sdk`
 
-Envi has a name — use it. All user-facing text (CLI output, logs, errors, docs) should reflect the project's identity. Keep the tone concise, helpful, and confident — the way a good CLI tool should feel.
+**Config:** load `envi.json` by default if present; override with `--config <path>`.
 
-## Key Concepts
+## Config and Precedence
 
-- **Templates**: `.env.example` files containing secret references (`envi://`, `op://`, `pass://`)
-- **Secret references**: `<scheme>://vault/item/field` format resolved via configured provider
-- **`envi://` scheme**: Provider-agnostic — converted to native scheme (`op://`, `pass://`) at resolution time
-- **Environment substitution**: `${ENV}` in references replaced at runtime (default: `local`)
-- **3-way merge**: Template + resolved secrets + local overrides
-- **One provider per invocation**: No multi-provider routing within a single run
-- **Auto-discovery**: Globs for `**/<templateFile>`, no hardcoded paths. Monorepo-ready out of the box.
-- **Config merge order**: defaults ← config file (`envi.json` via `--config`) ← CLI flags
+- Default config filename: `envi.json` (auto-loaded when present)
+- Override: `--config <path>` (JSON)
+- Merge order: defaults <- config file <- CLI flags
+- Provider options flow through `--provider-opt key=value` (repeatable) and are treated as a string map
+- `--only <paths>` scopes discovery/processing to specific directories (comma-separated)
 
 ## Architecture
 
-- Command files use `.command.ts` suffix (`src/commands/*.command.ts`)
-- `PROVIDER_DEFS` in `src/providers/index.ts` is the single source of truth for providers — all scheme constants, detection, and factory derive from it. Adding a provider = one entry there + `Provider` interface implementation.
-- Provider constructors take `Record<string, string>` (not typed configs) so the CLI layer stays provider-agnostic. Provider-specific options flow through `--provider-opt key=value`.
-- Zero config file required — works like any Unix tool with just flags + env vars.
-- `references/` contains provider API docs (CLI commands, SDK usage, auth methods). Consult before implementing or modifying provider integrations.
+- Core commands (`status`, `diff`, `sync`, `validate`, `run`) are SDK-backed; keep `src/commands/*.command.ts` as presenters.
+- Provider registry: `PROVIDER_DEFS` in `src/providers/index.ts` is the source of truth for providers/schemes/detection.
+- Providers take `Record<string, string>` options to keep CLI/provider wiring generic.
+- Platform boundaries shared across CLI/SDK/providers live in `src/runtime/*` (avoid provider -> SDK imports to prevent cycles).
+- Canonical machine output is the SDK JSON envelope (`src/sdk/json.ts`); CLI `--json` prints it directly (no reshaping).
+- SDK results are safe by default (redacted); operations that surface values support `includeSecrets` as an explicit escape hatch.
 
-## SDK & JSON Parity
+## Runtime and Filesystem Patterns
 
-- Core CLI commands (`status`, `diff`, `sync`, `validate`, `run`) are SDK-backed; avoid re-implementing business logic in `src/commands/*.command.ts`.
-- `--json` output is the SDK JSON envelope via `src/sdk/json.ts` (`stringifyEnvelope`) and should not be reshaped in the CLI.
-- SDK outputs redact secrets by default; CLI text mode opts into secrets via `includeSecrets: true` where needed.
+- Prefer async filesystem APIs; avoid sync node:fs calls.
+- Avoid TOCTOU patterns like `existsSync(path)` then `statSync(path)`; use one operation and handle `ENOENT` via `try/catch`.
+- Avoid `readFileSync(path).slice(0, max)`; it reads the full file into memory.
+- For deletions, prefer `rm(path, { recursive: true, force: true })` over manual unlink loops.
+- A conventions test (`src/conventions/fs-usage.test.ts`) enforces that sync fs anti-patterns are not introduced.
 
-## Packaging
+## Style
 
-- The published SDK is exported from `envi/sdk` and built via `bun run build:sdk` (Bun bundles JS to `dist/sdk/`, then `tsc -p tsconfig.build.json` emits declarations).
+- Format: `bun run fmt` (oxfmt)
+- Lint: `bun run lint` (oxlint)
 
-## Code Style
+## Notes
 
-- Be surgical with comments. Keep JSDoc on exports, "why" comments, and anything non-obvious. Only remove comments that literally restate the next line of code.
-- Format with oxfmt (`.oxfmtrc.json`): no semis, single quotes, trailing commas, spaces, printWidth 120.
-- Lint with oxlint (`.oxlintrc.json`): import + typescript plugins.
-
-## Runtime & Filesystem Patterns
-
-- Prefer async filesystem APIs. Avoid Node sync fs calls.
-- Avoid TOCTOU patterns like `existsSync(path)` then `statSync(path)`; use a single operation and handle `ENOENT` via `try/catch`.
-- Avoid `readFileSync(path).slice(0, max)` patterns; it reads the whole file into memory.
-- For deletions, prefer `rm(path, { recursive: true, force: true })` over `readdirSync(...).map(unlinkSync)`-style loops.
-- A conventions test (`src/conventions/fs-usage.test.ts`) enforces that sync node:fs anti-patterns aren’t introduced.
-
-## Maintaining This File
-
-If you discover a convention, pattern, or decision that isn't documented here but should be, ask the user whether to add it to AGENTS.md. Don't update it silently.
+- Code-adjacent `AGENTS.md` files under `src/**/` contain module-specific quirks and are loaded automatically when working in those areas.

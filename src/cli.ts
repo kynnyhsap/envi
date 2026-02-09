@@ -169,13 +169,16 @@ function parseProviderOpts(opts: string[] | undefined): Record<string, string> {
 }
 
 async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
-  // Load config file if provided (base layer)
+  // Load config file (base layer)
   let fileConfig: ConfigFile = {}
-  if (options.config) {
-    try {
-      fileConfig = await loadConfigFile(options.config)
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
+  const configPath = options.config ?? 'envi.json'
+
+  try {
+    fileConfig = await loadConfigFile(configPath)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    const isDefaultMissing = options.config === undefined && msg.startsWith('Config file not found:')
+    if (!isDefaultMissing) {
       console.error(pc.red(msg))
       process.exit(1)
     }
