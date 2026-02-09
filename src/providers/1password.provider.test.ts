@@ -74,18 +74,23 @@ describe('OnePasswordProvider (backend selection)', () => {
     })
   })
 
-  it('auto mode falls back to SDK when CLI auth fails', async () => {
+  it('auto mode prefers SDK when available', async () => {
     await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: 'token', OP_ACCOUNT_NAME: undefined }, async () => {
       let createClientCalls = 0
+      const calls: string[] = []
       const exec = makeExec({
         'op --version': () => ({ exitCode: 0, stdout: '2.0.0\n', stderr: '' }),
-        'op whoami --format json': () => ({ exitCode: 1, stdout: '', stderr: 'not signed in' }),
       })
+
+      const execWithTrace = async (command: string, args: string[] = []) => {
+        calls.push(`${command} ${args.join(' ')}`.trim())
+        return exec(command, args)
+      }
 
       const provider = new OnePasswordProvider(
         {},
         {
-          exec,
+          exec: execWithTrace,
           createClient: async (args: any) => {
             createClientCalls++
             expect(args.auth).toBe('token')
@@ -101,6 +106,7 @@ describe('OnePasswordProvider (backend selection)', () => {
       expect(auth.success).toBe(true)
       expect(provider.getAuthInfo().type).toBe('service-account')
       expect(createClientCalls).toBe(1)
+      expect(calls).toEqual(['op --version'])
     })
   })
 

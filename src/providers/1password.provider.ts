@@ -1,8 +1,8 @@
 /**
  * 1Password secret provider.
  *
- * Prefers the 1Password CLI (`op`) when available and authenticated.
- * Falls back to the JavaScript SDK (`@1password/sdk`) when CLI auth fails.
+ * Prefers the JavaScript SDK (`@1password/sdk`) when available and authenticated.
+ * Users can opt into the 1Password CLI (`op`) via `--provider-opt backend=cli`.
  */
 
 import { createClient, DesktopAuth, type Client } from '@1password/sdk'
@@ -71,7 +71,7 @@ export class OnePasswordProvider implements Provider {
       return this.getSdkAuthInfo()
     }
 
-    return { type: 'auto', identifier: 'cli->sdk' }
+    return { type: 'auto', identifier: 'sdk->cli' }
   }
 
   async checkAvailability(): Promise<AvailabilityResult> {
@@ -112,17 +112,17 @@ export class OnePasswordProvider implements Provider {
       return result
     }
 
-    const cliAvailable = (await this.checkCliAvailability()).available
     const sdkAvailable = (await this.checkSdkAvailability()).available
-
-    if (cliAvailable) {
-      const cli = await this.verifyCliAuth()
-      if (cli.success) return cli
-    }
+    const cliAvailable = (await this.checkCliAvailability()).available
 
     if (sdkAvailable) {
       const sdk = await this.verifySdkAuth()
       if (sdk.success) return sdk
+    }
+
+    if (cliAvailable) {
+      const cli = await this.verifyCliAuth()
+      if (cli.success) return cli
     }
 
     const cliError = this.lastAuthAttempt?.cliError
@@ -137,26 +137,24 @@ export class OnePasswordProvider implements Provider {
   getAuthFailureHints(): AuthFailureHints {
     const tried = this.lastAuthAttempt?.tried ?? []
 
+    const lines: string[] = []
+
+    if (tried.includes('sdk')) {
+      const sdkInfo = this.getSdkAuthInfo()
+      if (sdkInfo.type === 'desktop-app') {
+        lines.push('Make sure "Integrate with other apps" is enabled in Settings > Developer')
+        lines.push('Set OP_ACCOUNT_NAME or pass --provider-opt accountName=<name>')
+      } else {
+        lines.push('Check your OP_SERVICE_ACCOUNT_TOKEN value')
+      }
+    }
+
     if (tried.includes('cli')) {
-      return {
-        lines: [
-          `If you're using the CLI, make sure you're signed in: ${this.cliBinary} whoami`,
-          `Then run: ${this.cliBinary} signin`,
-        ],
-      }
+      lines.push(`If you want to use the CLI, make sure you're signed in: ${this.cliBinary} whoami`)
+      lines.push(`Then run: ${this.cliBinary} signin`)
     }
 
-    const sdkInfo = this.getSdkAuthInfo()
-    if (sdkInfo.type === 'desktop-app') {
-      return {
-        lines: [
-          'Make sure "Integrate with other apps" is enabled in Settings > Developer',
-          'Set OP_ACCOUNT_NAME or pass --provider-opt accountName=<name>',
-        ],
-      }
-    }
-
-    return { lines: ['Check your OP_SERVICE_ACCOUNT_TOKEN value'] }
+    return { lines: lines.length > 0 ? lines : ['No authentication method available'] }
   }
 
   async resolveSecret(reference: string): Promise<string> {

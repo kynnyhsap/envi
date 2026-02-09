@@ -362,19 +362,20 @@ await client.items.archive(vaultId, itemId)
 ### Envi integration
 Envi supports two 1Password backends in `src/providers/1password.provider.ts`:
 
-1. **1Password CLI (`op`)** (preferred when installed)
-   - Auth check: `op whoami --format json`
-   - Resolve secrets: `op read "op://..."`
-   - List vaults: `op vault list --format json`
-   - Caching: CLI daemon caching is enabled by default on UNIX-like systems. Control it via `OP_CACHE=false` or `--cache=false` on the CLI.
-
-2. **JavaScript SDK (`@1password/sdk`)** (automatic fallback)
+1. **JavaScript SDK (`@1password/sdk`)** (preferred)
    - Uses service account token (`OP_SERVICE_ACCOUNT_TOKEN`) when set
    - Otherwise uses desktop app integration via `DesktopAuth(OP_ACCOUNT_NAME)`
    - Resolve secrets: `client.secrets.resolve(reference)`
    - List vaults: `client.vaults.list()`
 
-By default, Envi runs in `backend=auto` mode: try CLI first, then fall back to the SDK if CLI auth fails.
+2. **1Password CLI (`op`)** (opt-in)
+   - Enable with `--provider-opt backend=cli`
+   - Auth check: `op whoami --format json`
+   - Resolve secrets: `op read "op://..."`
+   - List vaults: `op vault list --format json`
+   - Caching: CLI daemon caching is enabled by default on UNIX-like systems. Control it via `OP_CACHE=false` or `--cache=false` on the CLI.
+
+By default, Envi runs in `backend=auto` mode: try the SDK first, then fall back to the CLI if SDK auth is unavailable or fails.
 
 ---
 
