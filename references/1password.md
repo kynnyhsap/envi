@@ -365,6 +365,8 @@ Envi supports two 1Password backends in `src/providers/1password.provider.ts`:
 1. **JavaScript SDK (`@1password/sdk`)** (preferred)
    - Uses service account token (`OP_SERVICE_ACCOUNT_TOKEN`) when set
    - Otherwise uses desktop app integration via `DesktopAuth(OP_ACCOUNT_NAME)`
+     - `OP_ACCOUNT_NAME` must match an account configured in the 1Password desktop app.
+     - If unset, Envi will try to auto-detect a personal account from `op account list` (prefers `my.*`).
    - Resolve secrets: `client.secrets.resolve(reference)`
    - List vaults: `client.vaults.list()`
 

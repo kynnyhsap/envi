@@ -20,6 +20,13 @@ interface OnePasswordDeps {
   DesktopAuth?: typeof DesktopAuth
 }
 
+interface OpAccount {
+  url?: string
+  email?: string
+  user_uuid?: string
+  account_uuid?: string
+}
+
 interface AuthAttemptState {
   tried: SelectedBackend[]
   cliError?: string
@@ -34,6 +41,7 @@ export class OnePasswordProvider implements Provider {
   private readonly backend: BackendMode
   private readonly cliBinary: string
   private readonly accountName: string | undefined
+  private detectedAccountName: string | undefined
 
   private readonly _exec: (command: string, args?: string[]) => Promise<ExecResult>
   private readonly _createClient: typeof createClient
@@ -143,7 +151,13 @@ export class OnePasswordProvider implements Provider {
       const sdkInfo = this.getSdkAuthInfo()
       if (sdkInfo.type === 'desktop-app') {
         lines.push('Make sure "Integrate with other apps" is enabled in Settings > Developer')
-        lines.push('Set OP_ACCOUNT_NAME or pass --provider-opt accountName=<name>')
+        const sdkError = this.lastAuthAttempt?.sdkError
+        if (sdkError && sdkError.toLowerCase().includes('account not found')) {
+          lines.push('Check OP_ACCOUNT_NAME / --provider-opt accountName: it must match an account in the desktop app')
+          lines.push('Common values look like a sign-in address (e.g. my.1password.com, my.1password.eu)')
+        } else {
+          lines.push('Set OP_ACCOUNT_NAME or pass --provider-opt accountName=<name>')
+        }
       } else {
         lines.push('Check your OP_SERVICE_ACCOUNT_TOKEN value')
       }
@@ -216,7 +230,39 @@ export class OnePasswordProvider implements Provider {
     if (token) {
       return { type: 'service-account', identifier: 'set' }
     }
-    return { type: 'desktop-app', identifier: this.accountName ?? 'unknown' }
+    return { type: 'desktop-app', identifier: this.getEffectiveAccountName() ?? 'unknown' }
+  }
+
+  private getEffectiveAccountName(): string | undefined {
+    return this.accountName ?? this.detectedAccountName
+  }
+
+  private async detectAccountNameFromOp(): Promise<string | undefined> {
+    if (this.detectedAccountName) return this.detectedAccountName
+
+    const available = (await this.checkCliAvailability()).available
+    if (!available) return undefined
+
+    const result = await this._exec(this.cliBinary, ['account', 'list', '--format', 'json'])
+    if (result.exitCode !== 0) return undefined
+
+    const out = result.stdout.trim()
+    if (!out) return undefined
+
+    let accounts: OpAccount[]
+    try {
+      accounts = JSON.parse(out) as OpAccount[]
+    } catch {
+      return undefined
+    }
+
+    const urls = accounts.map((a) => (a.url ?? '').trim()).filter((u) => u.length > 0)
+
+    if (urls.length === 0) return undefined
+
+    const personal = urls.find((u) => u.startsWith('my.'))
+    this.detectedAccountName = personal ?? urls[0]
+    return this.detectedAccountName
   }
 
   private async checkCliAvailability(): Promise<{ available: boolean }> {
@@ -244,11 +290,21 @@ export class OnePasswordProvider implements Provider {
     const appRunning = await is1PasswordAppRunning(this._exec)
     statusLines.push(appRunning ? '1Password desktop app: running' : '1Password desktop app: not running')
 
-    const hasAccountName = !!this.accountName
-    statusLines.push(hasAccountName ? 'OP_ACCOUNT_NAME: set' : 'OP_ACCOUNT_NAME: not set')
+    let hasAccountName = !!this.accountName
+    if (!hasAccountName && appRunning) {
+      const detected = await this.detectAccountNameFromOp()
+      if (detected) {
+        statusLines.push(`OP_ACCOUNT_NAME: auto (${detected})`)
+        hasAccountName = true
+      }
+    }
+
+    if (!hasAccountName) {
+      statusLines.push('OP_ACCOUNT_NAME: not set')
+    }
 
     // We consider desktop auth "available" when the app is running; the auth attempt may still
-    // fail with a more specific error (e.g. missing OP_ACCOUNT_NAME).
+    // fail with a more specific error.
     const available = appRunning
     return { available, statusLines }
   }
@@ -304,7 +360,7 @@ export class OnePasswordProvider implements Provider {
     if (this.sdkClient) return this.sdkClient
 
     const token = process.env['OP_SERVICE_ACCOUNT_TOKEN']
-    const auth = token ? token : this.getDesktopAuth()
+    const auth = token ? token : await this.getDesktopAuth()
 
     this.sdkClient = await this._createClient({
       auth,
@@ -315,14 +371,15 @@ export class OnePasswordProvider implements Provider {
     return this.sdkClient
   }
 
-  private getDesktopAuth() {
-    if (!this.accountName) {
+  private async getDesktopAuth() {
+    const accountName = this.accountName ?? (await this.detectAccountNameFromOp())
+    if (!accountName) {
       throw new Error(
         '1Password account name is required for desktop app auth. ' +
-          'Set OP_ACCOUNT_NAME env var or configure providers.1password.accountName.',
+          'Set OP_ACCOUNT_NAME env var or pass --provider-opt accountName=<name>.',
       )
     }
-    return new this._DesktopAuth(this.accountName)
+    return new this._DesktopAuth(accountName)
   }
 
   private async cliRead(reference: string): Promise<string> {

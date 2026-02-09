@@ -509,7 +509,7 @@ bun run src/cli.ts validate
 | Variable                   | Description                                              |
 | -------------------------- | -------------------------------------------------------- |
 | `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service account token (overrides desktop auth) |
-| `OP_ACCOUNT_NAME`          | 1Password account name for desktop app auth              |
+| `OP_ACCOUNT_NAME`          | 1Password account name/sign-in address for desktop auth  |
 | `OP_CACHE`                 | 1Password CLI cache toggle (`true`/`false`, default `true`) |
 
 ### Authentication Priority (1Password)
@@ -517,6 +517,7 @@ bun run src/cli.ts validate
 Default behavior (`--provider-opt backend=sdk`):
 
 1. `OP_SERVICE_ACCOUNT_TOKEN` env var -> SDK service account auth (for CI/CD)
-2. `--provider-opt accountName=my-team` or `OP_ACCOUNT_NAME` env var + desktop app running -> SDK desktop app auth
+2. `--provider-opt accountName=<account>` or `OP_ACCOUNT_NAME` env var + desktop app running -> SDK desktop app auth
+   - If unset, Envi will try to auto-detect a personal account from `op account list` (prefers `my.*`).
 
 You can switch backends with `--provider-opt backend=cli` or `--provider-opt backend=sdk`.

@@ -154,4 +154,45 @@ describe('OnePasswordProvider (backend selection)', () => {
       expect(provider.getAuthInfo().type).toBe('service-account')
     })
   })
+
+  it('desktop auth auto-detects personal account when OP_ACCOUNT_NAME is unset', async () => {
+    await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: undefined, OP_ACCOUNT_NAME: undefined }, async () => {
+      let createClientCalls = 0
+      const exec = makeExec({
+        'op --version': () => ({ exitCode: 0, stdout: '2.0.0\n', stderr: '' }),
+        'pgrep -x 1Password': () => ({ exitCode: 0, stdout: '123\n', stderr: '' }),
+        'op account list --format json': () =>
+          ({
+            exitCode: 0,
+            stdout:
+              JSON.stringify([
+                { url: 'my.1password.com', email: 'me@example.com' },
+                { url: 'team.1password.com', email: 'me@company.com' },
+              ]) + '\n',
+            stderr: '',
+          }) satisfies ExecResult,
+      })
+
+      const provider = new OnePasswordProvider(
+        { backend: 'sdk' },
+        {
+          exec,
+          createClient: async (args: any) => {
+            createClientCalls++
+            expect(args.auth).toBeTruthy()
+            expect(args.auth.accountName).toBe('my.1password.com')
+            return {
+              vaults: { list: async () => [] },
+              secrets: { resolve: async () => '' },
+            } as any
+          },
+        },
+      )
+
+      const auth = await provider.verifyAuth()
+      expect(auth.success).toBe(true)
+      expect(provider.getAuthInfo().type).toBe('desktop-app')
+      expect(createClientCalls).toBe(1)
+    })
+  })
 })
