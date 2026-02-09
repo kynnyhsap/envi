@@ -11,6 +11,10 @@ async function getBackupInfo(ctx: ExecutionContext): Promise<{ count: number; la
   const rootDir = ctx.options.rootDir ? path.resolve(ctx.options.rootDir) : ctx.runtime.cwd()
   const backupRoot = path.join(rootDir, ctx.options.backupDir)
 
+  if (!(await ctx.runtime.exists(backupRoot))) {
+    return { count: 0 }
+  }
+
   const dirs = await ctx.runtime.listDirs(backupRoot)
   const snapshots = dirs.filter((d) => SNAPSHOT_RE.test(d)).sort((a, b) => b.localeCompare(a))
   if (snapshots.length === 0) return { count: 0 }

@@ -464,6 +464,109 @@ KV v2 version semantics:
 - CLI supports `vault kv get -version=<int>`: https://developer.hashicorp.com/vault/docs/commands/kv/get
 - HTTP API supports `?version=<int>`: https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v2
 
+## Envi Provider Implementation Notes
+
+This section captures a concrete, low-risk way to implement a Vault provider in Envi given the current provider architecture.
+
+### Provider registration and reference scheme
+
+Envi's SDK resolves references by converting `envi://...` into a provider-native scheme via `toNativeReference()`, then passes that native string to `Provider.resolveSecret()` / `Provider.resolveSecrets()`.
+
+Code references:
+
+- Provider interface: `src/providers/provider.ts`
+- Scheme registry + conversion: `src/providers/index.ts`
+- Resolution flow: `src/sdk/operations/resolve-secrets.ts`
+
+Vault does not define an official `vault://...` secret scheme, but Envi currently expects every provider to have a `scheme` string. The minimal-change approach is:
+
+- Use `vault://` as an Envi-internal native scheme (only used inside Envi), while keeping templates as `envi://...`.
+- Register the provider in `src/providers/index.ts` with `scheme: 'vault://'`.
+
+Also note: the CLI `validate` command hardcodes known schemes for pretty-printing. If you add `vault://`, update:
+
+- `src/commands/validate.command.ts`
+
+### Parsing `envi://` for Vault KV
+
+Given Envi's `parseSecretReference()` shape (`vault`, `item`, `field`) and its support for slashes in `field`:
+
+- KV mount path: `mount = vault`
+- Secret path: `secretPath = item + '/' + fieldPrefix`
+- Key name: `key = lastSegment(field)`
+
+Example:
+
+- `envi://secret/apps/api/DATABASE_URL`
+  - mount: `secret`
+  - secret path: `apps/api`
+  - key: `DATABASE_URL`
+
+### Recommended backend: Vault CLI first
+
+Start with a CLI backend because it already supports Vault's connection and auth ergonomics (TLS options, proxies, namespaces, Vault Agent, token helper).
+
+- Availability check: run `vault version`.
+- Auth verification: run `vault token lookup -format=json`.
+  - CLI docs: https://developer.hashicorp.com/vault/docs/commands/token/lookup
+  - Under the hood, this uses `/auth/token/lookup-self`: https://developer.hashicorp.com/vault/api-docs/auth/token#lookup-a-token-self
+
+Secret resolution:
+
+- Read one key:
+  - `vault kv get -mount=<mount> -field=<key> <secretPath>`
+  - KV CLI docs: https://developer.hashicorp.com/vault/docs/commands/kv/get
+- KV v2 version reads:
+  - `vault kv get -mount=<mount> -field=<key> -version=<n> <secretPath>`
+  - KV CLI docs: https://developer.hashicorp.com/vault/docs/commands/kv/get
+
+`listVaults()` mapping:
+
+Vault does not have a "vault" concept like 1Password/Proton Pass. The closest useful thing for Envi is listing KV mounts.
+
+- Use `vault secrets list -format=json` and filter to mounts where `type == "kv"`.
+  - CLI docs: https://developer.hashicorp.com/vault/docs/commands/secrets/list
+
+### Optional backend: direct HTTP
+
+If you want "no external binaries" support, add an HTTP backend.
+
+Auth verification:
+
+- `GET /v1/auth/token/lookup-self` with `X-Vault-Token`.
+  - API docs: https://developer.hashicorp.com/vault/api-docs/auth/token#lookup-a-token-self
+
+KV reads:
+
+- KV v2: `GET /v1/<mount>/data/<path>` (and `?version=<n>` when needed)
+  - API docs: https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v2
+- KV v1: `GET /v1/<mount>/<path>`
+  - API docs: https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v1#read-secret
+
+KV version detection:
+
+- Best-effort: `GET /v1/sys/mounts` and inspect mount entries where `type == "kv"` and `options.version`.
+  - API docs: https://developer.hashicorp.com/vault/api-docs/system/mounts#list-mounted-secrets-engines
+
+Important: Vault can return 404 for missing paths and for some permission scenarios. "Try v2 then v1" can mislead if the caller lacks permissions.
+
+### Suggested provider options
+
+Implement provider options (via `--provider-opt key=value`) as plain strings to stay provider-agnostic at the CLI layer:
+
+- `backend=auto|cli|http` (default `auto`, which prefers `cli`)
+- `cliBinary=vault`
+- `addr=<url>` (default from `VAULT_ADDR`)
+- `namespace=<ns>` (default from `VAULT_NAMESPACE`)
+- `token=<token>` (default from `VAULT_TOKEN`)
+- `tokenFile=<path>` (optional; default fallback is `~/.vault-token`)
+- `xVaultRequest=true` (only if talking to a proxy that requires it)
+
+See Vault API header behavior:
+
+- Token headers + namespaces: https://developer.hashicorp.com/vault/api-docs
+- `X-Vault-Request` header: https://developer.hashicorp.com/vault/api-docs#the-x-vault-request-header
+
 ## Caveats / Limitations
 
 - No official URI scheme: Vault does not provide a stable `vault://...` reference syntax; any `envi://...` mapping is Envi-specific.
