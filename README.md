@@ -1,15 +1,13 @@
 # envi
 
-Manage `.env` files with secret providers. Sync secrets from 1Password, Proton Pass, or other providers into local `.env` files while preserving your local customizations.
+Manage `.env` files with 1Password. Sync secrets into local `.env` files while preserving your customizations.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
 - [SDK](#sdk)
 - [Secret References](#secret-references)
-- [Providers](#providers)
-  - [1Password](#1password)
-  - [Proton Pass](#proton-pass)
+- [1Password](#1password)
 - [Commands](#commands)
 - [How It Works](#how-it-works)
   - [Templates](#templates-envtpl)
@@ -54,11 +52,11 @@ bun envi sync -d
 # Validate all secret references
 bun envi validate
 
+# Resolve one secret reference directly
+bun envi resolve op://core-${ENV}/engine-api/SECRET
+
 # Run a command with secrets as env vars
 bun envi run -- node index.js
-
-# Use a specific provider
-bun envi sync --provider proton-pass
 
 # Machine-readable output (same envelope as SDK)
 bun envi --json diff
@@ -79,7 +77,6 @@ const engine = createEnviEngine({
   runtime: createRuntimeAdapter(),
   options: {
     environment: 'local',
-    provider: '1password',
   },
 })
 
@@ -91,37 +88,15 @@ If you need secret values in SDK outputs (unsafe), pass `includeSecrets: true` t
 
 ## Secret References
 
-Envi supports three URI schemes for secret references in templates:
+Envi uses native 1Password references in templates.
 
-| Scheme    | Description                                            | Example                   |
-| --------- | ------------------------------------------------------ | ------------------------- |
-| `envi://` | Universal format, routes to the default provider       | `envi://vault/item/field` |
-| `op://`   | 1Password native format (auto-routes to 1Password)     | `op://vault/item/field`   |
-| `pass://` | Proton Pass native format (auto-routes to Proton Pass) | `pass://vault/item/field` |
+| Scheme  | Description                   | Example                 |
+| ------- | ----------------------------- | ----------------------- |
+| `op://` | Native 1Password secret URI   | `op://vault/item/field` |
 
-### Universal Format (`envi://`)
+Format: `op://vault/item[/section]/field`
 
-The `envi://` scheme is provider-agnostic. It maps to the configured default provider's native format:
-
-```bash
-# With --provider 1password (default):
-# envi://core-local/engine-api/SECRET → op://core-local/engine-api/SECRET
-
-# With --provider proton-pass:
-# envi://core-local/engine-api/SECRET → pass://core-local/engine-api/SECRET
-```
-
-Format: `envi://vault/item/field`
-
-### Backward Compatibility
-
-Existing templates using `op://` references continue to work. They are automatically routed to the 1Password provider regardless of the default provider setting.
-
-Similarly, `pass://` references always route to the Proton Pass provider.
-
-## Providers
-
-### 1Password
+## 1Password
 
 The recommended provider. Envi prefers the 1Password CLI (`op`) when it's installed, and falls back to the JavaScript SDK when CLI auth isn't available.
 
@@ -140,19 +115,19 @@ The recommended provider. Envi prefers the 1Password CLI (`op`) when it's instal
 
 ```bash
 # Default (SDK backend)
-bun envi status --provider 1password
+bun envi status
 
 # Auto (SDK first, then CLI fallback)
-bun envi status --provider 1password --provider-opt backend=auto
+bun envi status --provider-opt backend=auto
 
 # Force CLI only
-bun envi status --provider 1password --provider-opt backend=cli
+bun envi status --provider-opt backend=cli
 
 # Force SDK only
-bun envi status --provider 1password --provider-opt backend=sdk
+bun envi status --provider-opt backend=sdk
 
 # Use a specific op binary
-bun envi status --provider 1password --provider-opt cliBinary=/usr/local/bin/op
+bun envi status --provider-opt cliBinary=/usr/local/bin/op
 
 # Secret resolution strategy tuning (1Password)
 bun envi sync --provider-opt resolveMode=batch
@@ -189,44 +164,6 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 - [Desktop App Integration](https://developer.1password.com/docs/sdks/desktop-app-integrations/)
 - [Secret Reference Syntax](https://developer.1password.com/docs/cli/secret-reference-syntax/)
 
-### Proton Pass
-
-Uses the [Proton Pass CLI](https://proton.me/pass/download) (`pass-cli`) to resolve secrets.
-
-**Prerequisites:**
-
-1. Install `pass-cli` from [Proton Pass downloads](https://proton.me/pass/download)
-2. Log in: `pass-cli login`
-3. Verify: `pass-cli test`
-
-**Secret reference format:** `pass://vault/item/field`
-
-```bash
-# Simple field
-SECRET=pass://Production/engine-api/password
-
-# With environment variable
-SECRET=pass://core-${ENV}/engine-api/SECRET
-```
-
-**Field names:** `username`, `password`, `email`, `url`, `note`, `totp`, or any custom field name (case-sensitive).
-
-**Usage:**
-
-```bash
-# Use Proton Pass as provider
-bun envi sync --provider proton-pass
-
-# Optional: explicit backend (only "cli" is supported today)
-bun envi sync --provider proton-pass --provider-opt backend=cli
-
-# Optional: use a specific pass-cli binary
-bun envi sync --provider proton-pass --provider-opt cliBinary=/usr/local/bin/pass-cli
-
-# Check auth status
-bun envi status --provider proton-pass
-```
-
 ## Commands
 
 | Command    | Description                                                         |
@@ -234,6 +171,7 @@ bun envi status --provider proton-pass
 | `status`   | Show status and auth check                                          |
 | `diff`     | Show differences between local `.env` and provider                  |
 | `sync`     | Sync `.env` files from templates                                    |
+| `resolve`  | Resolve one secret reference and print the secret                   |
 | `run`      | Run a command with secrets injected as env vars                     |
 | `backup`   | Backup all `.env` files (timestamped snapshots)                     |
 | `restore`  | Restore `.env` files from backup (interactive)                      |
@@ -248,7 +186,6 @@ bun envi status --provider proton-pass
 | `-q, --quiet`          | Suppress non-essential output                                 |
 | `--json`               | Output machine-readable JSON (same envelope as SDK)           |
 | `-e, --env <name>`     | Environment name for `${ENV}` substitution (default: `local`) |
-| `--provider <name>`    | Secret provider (1password, proton-pass)                      |
 | `--provider-opt <k=v>` | Provider-specific option (repeatable)                         |
 | `--config <path>`      | Load config from JSON file                                    |
 | `--only <paths>`       | Filter which paths to process                                 |
@@ -262,14 +199,14 @@ Templates are checked into git and contain secret references. Use `${ENV}` for e
 ```bash
 # engine/api/.env.example
 NODE_ENV=development
-SECRET=envi://core-${ENV}/engine-api/SECRET
-DATABASE_URL=envi://core-${ENV}/engine-api/DATABASE_URL
+SECRET=op://core-${ENV}/engine-api/SECRET
+DATABASE_URL=op://core-${ENV}/engine-api/DATABASE_URL
 ```
 
 ### Sync Flow
 
 1. **Read template** - Parse `.env.example` file
-2. **Resolve secrets** - Use the configured provider to fetch secrets
+2. **Resolve secrets** - Use 1Password to fetch secrets
 3. **Show changes** - Display table of NEW, UPDATED, UNCHANGED variables
 4. **Confirm** - Prompt for confirmation if there are changes (skip with `--force`)
 5. **Smart merge** - Combine with existing `.env`, preserving your customizations
@@ -279,7 +216,7 @@ DATABASE_URL=envi://core-${ENV}/engine-api/DATABASE_URL
 
 When `--json` is enabled, Envi prints a stable JSON envelope intended for scripting.
 
-- Core commands (`status`, `diff`, `sync`, `validate`, `run`) print the exact SDK envelope.
+- Core commands (`status`, `diff`, `sync`, `validate`, `resolve`, `run`) print the exact SDK envelope.
 - Secret values are redacted by default in JSON outputs.
 
 ### Output Format
@@ -335,13 +272,13 @@ Example:
    ```bash
    # my-package/.env.example
    NODE_ENV=development
-   API_KEY=envi://core-${ENV}/my-package/API_KEY
+    API_KEY=op://core-${ENV}/my-package/API_KEY
    ```
 
 2. Envi auto-discovers templates by scanning for `**/.env.example` (monorepo-friendly).
    If you want to scope it down, use `--only` (or `paths` in config).
 
-3. Create the corresponding item(s) in your secret provider
+3. Create the corresponding item(s) in 1Password
 
 ## Environments
 
@@ -363,9 +300,9 @@ NODE_ENV=development
 PORT=3000
 
 # Environment-specific secrets
-SECRET=envi://core-${ENV}/engine-api/SECRET
-API_KEY=envi://core-${ENV}/engine-api/API_KEY
-DATABASE_URL=envi://core-${ENV}/engine-api/DATABASE_URL
+SECRET=op://core-${ENV}/engine-api/SECRET
+API_KEY=op://core-${ENV}/engine-api/API_KEY
+DATABASE_URL=op://core-${ENV}/engine-api/DATABASE_URL
 ```
 
 ### Vault Structure
@@ -400,9 +337,6 @@ bun envi sync -e prod
 
 # CI/CD (1Password)
 OP_SERVICE_ACCOUNT_TOKEN="..." bun envi sync -e prod -f -q
-
-# Different provider
-bun envi sync --provider proton-pass -e prod
 ```
 
 ### Flexible Patterns
@@ -411,16 +345,16 @@ The `${ENV}` substitution is flexible - use it wherever makes sense for your vau
 
 ```bash
 # Env-prefixed vault (recommended)
-envi://core-${ENV}/engine-api/SECRET → envi://core-prod/engine-api/SECRET
+op://core-${ENV}/engine-api/SECRET -> op://core-prod/engine-api/SECRET
 
 # Env-only vault
-envi://${ENV}/engine-api/SECRET → envi://prod/engine-api/SECRET
+op://${ENV}/engine-api/SECRET -> op://prod/engine-api/SECRET
 
 # Env-prefixed item
-envi://core/${ENV}-engine-api/SECRET → envi://core/prod-engine-api/SECRET
+op://core/${ENV}-engine-api/SECRET -> op://core/prod-engine-api/SECRET
 
 # Env in section
-envi://core/engine-api/${ENV}/SECRET → envi://core/engine-api/prod/SECRET
+op://core/engine-api/${ENV}/SECRET -> op://core/engine-api/prod/SECRET
 ```
 
 ## Configured Paths
@@ -439,7 +373,7 @@ bun envi diff --only engine/api,console
 
 ## CI/CD Integration
 
-For automated environments, configure the appropriate provider credentials.
+For automated environments, configure 1Password service account credentials.
 
 ### 1Password (Service Account)
 
@@ -468,14 +402,6 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
         run: bun envi sync -e prod -f -q
-```
-
-### Proton Pass (CI/CD)
-
-```bash
-# Log in via CLI first
-pass-cli login
-bun envi sync --provider proton-pass --force
 ```
 
 ## Backup System
@@ -517,6 +443,7 @@ bun test
 # Run CLI directly
 bun run src/cli.ts status
 bun run src/cli.ts sync -d
+bun run src/cli.ts resolve op://vault/item/field
 bun run src/cli.ts backup -d
 bun run src/cli.ts restore -d
 bun run src/cli.ts validate
@@ -544,7 +471,6 @@ OP_SERVICE_ACCOUNT_TOKEN="..." bun run bench:e2e
 | `ENVI_OP_RESOLVE_MODE`     | 1Password resolve strategy (`auto`, `batch`, `sequential`)  |
 | `ENVI_OP_RESOLVE_CHUNK_SIZE` | Chunk size for 1Password SDK `resolveAll` batching       |
 | `ENVI_OP_RESOLVE_CONCURRENCY` | Max parallel 1Password fallback/CLI resolves            |
-| `ENVI_PASS_RESOLVE_CONCURRENCY` | Max parallel Proton Pass CLI resolves                 |
 
 ### Authentication Priority (1Password)
 
