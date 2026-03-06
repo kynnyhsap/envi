@@ -1,4 +1,5 @@
 import { isSecretReference } from '../../providers'
+import { mapWithConcurrency } from '../../utils/concurrency'
 import { parseEnvFile } from '../../utils/parse'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
@@ -11,6 +12,14 @@ import type {
 } from '../types'
 import { checkProviderReady } from './provider-check'
 import { injectResolvedSecrets, resolveEnvFileToKeyValue } from './resolve-secrets'
+
+const DEFAULT_RUN_RESOLVE_CONCURRENCY = 8
+
+function getRunResolveConcurrency(): number {
+  const raw = Number(process.env['ENVI_RUN_RESOLVE_CONCURRENCY'])
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_RUN_RESOLVE_CONCURRENCY
+  return Math.floor(raw)
+}
 
 export async function resolveRunEnvironmentOperation(
   ctx: ExecutionContext,
@@ -40,14 +49,31 @@ export async function resolveRunEnvironmentOperation(
 
   if (!noTemplate) {
     const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
-    for (const pathInfo of envPaths) {
+    const templateResults = await mapWithConcurrency(envPaths, getRunResolveConcurrency(), async (pathInfo) => {
       const hasTemplate = await ctx.runtime.exists(pathInfo.templatePath)
-      if (!hasTemplate) continue
+      if (!hasTemplate) {
+        return {
+          vars: null as Map<string, string> | null,
+          secretKeys: new Set<string>(),
+          issues: [] as Issue[],
+        }
+      }
 
-      const template = parseEnvFile(await ctx.runtime.readText(pathInfo.templatePath))
+      let template
+      try {
+        template = parseEnvFile(await ctx.runtime.readText(pathInfo.templatePath))
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        return {
+          vars: null as Map<string, string> | null,
+          secretKeys: new Set<string>(),
+          issues: [{ code: 'TEMPLATE_READ_FAILED', message: msg, path: pathInfo.templatePath }] as Issue[],
+        }
+      }
 
+      const pathSecretKeys = new Set<string>()
       for (const [key, envVar] of template.vars) {
-        if (isSecretReference(envVar.value)) secretKeys.add(key)
+        if (isSecretReference(envVar.value)) pathSecretKeys.add(key)
       }
 
       const injected = await injectResolvedSecrets({
@@ -57,23 +83,52 @@ export async function resolveRunEnvironmentOperation(
       })
 
       if (!injected.injected) {
-        issues.push(...injected.issues)
-        continue
+        return {
+          vars: null as Map<string, string> | null,
+          secretKeys: pathSecretKeys,
+          issues: injected.issues,
+        }
       }
 
+      const vars = new Map<string, string>()
       for (const [key, envVar] of injected.injected.vars) {
-        envVars.set(key, envVar.value)
+        vars.set(key, envVar.value)
+      }
+
+      return {
+        vars,
+        secretKeys: pathSecretKeys,
+        issues: [] as Issue[],
+      }
+    })
+
+    for (const result of templateResults) {
+      issues.push(...result.issues)
+
+      for (const key of result.secretKeys) {
+        secretKeys.add(key)
+      }
+
+      if (!result.vars) continue
+      for (const [key, value] of result.vars) {
+        envVars.set(key, value)
       }
     }
     templateVarsCount = envVars.size
   }
 
   if (envFile && envFile.length > 0) {
-    for (const filePath of envFile) {
+    const envFileResults = await mapWithConcurrency(envFile, getRunResolveConcurrency(), async (filePath) => {
       const exists = await ctx.runtime.exists(filePath)
       if (!exists) {
-        issues.push({ code: 'ENV_FILE_NOT_FOUND', message: `Env file not found: ${filePath}`, path: filePath })
-        continue
+        return {
+          vars: null as Map<string, string> | null,
+          secretKeys: new Set<string>(),
+          issues: [
+            { code: 'ENV_FILE_NOT_FOUND', message: `Env file not found: ${filePath}`, path: filePath },
+          ] as Issue[],
+          varCount: 0,
+        }
       }
 
       const content = await ctx.runtime.readText(filePath)
@@ -84,18 +139,34 @@ export async function resolveRunEnvironmentOperation(
       })
 
       if (!resolved.vars) {
-        issues.push(...resolved.issues.map((i) => ({ ...i, path: filePath })))
-        continue
+        return {
+          vars: null as Map<string, string> | null,
+          secretKeys: resolved.secretKeys,
+          issues: resolved.issues.map((i) => ({ ...i, path: filePath })),
+          varCount: 0,
+        }
       }
 
-      for (const key of resolved.secretKeys) {
+      return {
+        vars: resolved.vars,
+        secretKeys: resolved.secretKeys,
+        issues: [] as Issue[],
+        varCount: resolved.vars.size,
+      }
+    })
+
+    for (const result of envFileResults) {
+      issues.push(...result.issues)
+
+      for (const key of result.secretKeys) {
         secretKeys.add(key)
       }
 
-      for (const [key, value] of resolved.vars) {
+      if (!result.vars) continue
+      for (const [key, value] of result.vars) {
         envVars.set(key, value)
       }
-      envFileVarsCount += resolved.vars.size
+      envFileVarsCount += result.varCount
     }
   }
 

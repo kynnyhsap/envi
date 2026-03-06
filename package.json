@@ -1,6 +1,6 @@
 {
-  "name": "envi",
-  "version": "0.1.0",
+  "name": "envi-cli",
+  "version": "0.1.1",
   "description": "Envi syncs your .env files from 1Password, Proton Pass, or any secret manager — so you never copy secrets by hand again.",
   "bin": {
     "envi": "./src/cli.ts"
@@ -24,6 +24,7 @@
   },
   "scripts": {
     "cli": "bun run src/cli.ts",
+    "bench:e2e": "bun run examples/1password-e2e-bench/bench.ts",
     "envi": "bun run src/cli.ts",
     "test": "bun test",
     "typecheck": "tsgo --noEmit",

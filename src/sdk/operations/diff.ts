@@ -1,3 +1,4 @@
+import { mapWithConcurrency } from '../../utils/concurrency'
 import { computeChanges } from '../../utils/diff'
 import { parseEnvFile } from '../../utils/parse'
 import type { Change, EnvFile } from '../../utils/types'
@@ -7,6 +8,14 @@ import type { DiffData, DiffOperationOptions, DiffPathData, DiffResult, Executio
 import { checkProviderReady } from './provider-check'
 import { redactChanges } from './redact'
 import { injectResolvedSecrets } from './resolve-secrets'
+
+const DEFAULT_DIFF_PATH_CONCURRENCY = 8
+
+function getDiffPathConcurrency(): number {
+  const raw = Number(process.env['ENVI_DIFF_PATH_CONCURRENCY'])
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_DIFF_PATH_CONCURRENCY
+  return Math.floor(raw)
+}
 
 async function diffOne(
   ctx: ExecutionContext,
@@ -67,12 +76,15 @@ export async function diffOperation(ctx: ExecutionContext, options: DiffOperatio
   let hasAnyChanges = false
   const issues: Issue[] = []
 
-  for (const pathInfo of envPaths) {
-    const result = await diffOne(ctx, pathInfo, { includeSecrets })
+  const results = await mapWithConcurrency(envPaths, getDiffPathConcurrency(), async (pathInfo) =>
+    diffOne(ctx, pathInfo, { includeSecrets }),
+  )
+
+  for (const result of results) {
     paths.push(result)
 
     if (result.error) {
-      issues.push({ code: 'DIFF_FAILED', message: result.error, path: pathInfo.envPath })
+      issues.push({ code: 'DIFF_FAILED', message: result.error, path: result.pathInfo.envPath })
       hasAnyChanges = true
       continue
     }

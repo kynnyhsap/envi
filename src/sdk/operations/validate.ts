@@ -13,6 +13,7 @@ import type {
   ValidateResult,
 } from '../types'
 import { checkProviderReady } from './provider-check'
+import { resolveReferenceBatch } from './resolve-secrets'
 
 function validateReferenceFormat(reference: string): { valid: boolean; error?: string } {
   try {
@@ -21,21 +22,6 @@ function validateReferenceFormat(reference: string): { valid: boolean; error?: s
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     return { valid: false, error: msg }
-  }
-}
-
-async function validateReferenceRemote(
-  ctx: ExecutionContext,
-  reference: string,
-): Promise<{ valid: boolean; error?: string }> {
-  try {
-    const nativeRef = toNativeReference(reference, ctx.provider.scheme)
-    await ctx.provider.resolveSecret(nativeRef)
-    return { valid: true }
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    const firstLine = msg.split('\n')[0]
-    return { valid: false, error: firstLine ?? msg }
   }
 }
 
@@ -77,6 +63,7 @@ export async function validateOperation(
 
     const template = parseEnvFile(await ctx.runtime.readText(pathInfo.templatePath))
     const references: ValidateReferenceData[] = []
+    const remoteCandidates: Array<{ key: string; reference: string; resolvedReference: string }> = []
 
     for (const [key, envVar] of template.vars) {
       if (!isSecretReference(envVar.value)) continue
@@ -101,25 +88,62 @@ export async function validateOperation(
         continue
       }
 
-      const res = remote
-        ? await validateReferenceRemote(ctx, resolvedReference)
-        : validateReferenceFormat(resolvedReference)
-      if (res.valid) {
-        references.push({ key, reference, resolvedReference, valid: true })
-        valid++
-      } else {
-        if (res.error) {
-          references.push({ key, reference, resolvedReference, valid: false, error: res.error })
-        } else {
-          references.push({ key, reference, resolvedReference, valid: false, error: 'Invalid reference' })
-        }
-        issues.push({
-          code: 'INVALID_REFERENCE',
-          message: res.error ?? 'Invalid reference',
-          key,
-          reference: resolvedReference,
-        })
+      if (remote) {
+        remoteCandidates.push({ key, reference, resolvedReference })
+        continue
+      }
+
+      const res = validateReferenceFormat(resolvedReference)
+      if (!res.valid) {
+        const message = res.error ?? 'Invalid reference'
+        references.push({ key, reference, resolvedReference, valid: false, error: message })
+        issues.push({ code: 'INVALID_REFERENCE', message, key, reference: resolvedReference })
         invalid++
+        continue
+      }
+
+      references.push({ key, reference, resolvedReference, valid: true })
+      valid++
+    }
+
+    if (remote && remoteCandidates.length > 0) {
+      const batch = await resolveReferenceBatch({
+        references: remoteCandidates.map((candidate) =>
+          toNativeReference(candidate.resolvedReference, ctx.provider.scheme),
+        ),
+        provider: ctx.provider,
+      })
+
+      for (const candidate of remoteCandidates) {
+        const nativeReference = toNativeReference(candidate.resolvedReference, ctx.provider.scheme)
+        const error = batch.errors.get(nativeReference)
+
+        if (error) {
+          const firstLine = error.split('\n')[0] ?? error
+          references.push({
+            key: candidate.key,
+            reference: candidate.reference,
+            resolvedReference: candidate.resolvedReference,
+            valid: false,
+            error: firstLine,
+          })
+          issues.push({
+            code: 'INVALID_REFERENCE',
+            message: firstLine,
+            key: candidate.key,
+            reference: candidate.resolvedReference,
+          })
+          invalid++
+          continue
+        }
+
+        references.push({
+          key: candidate.key,
+          reference: candidate.reference,
+          resolvedReference: candidate.resolvedReference,
+          valid: true,
+        })
+        valid++
       }
     }
 

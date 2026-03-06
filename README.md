@@ -27,6 +27,7 @@ Manage `.env` files with secret providers. Sync secrets from 1Password, Proton P
 - [CI/CD Integration](#cicd-integration)
 - [Backup System](#backup-system)
 - [Development](#development)
+- [E2E Benchmark Vault](#e2e-benchmark-vault)
 - [Environment Variables](#environment-variables)
 
 ## Quick Start
@@ -138,8 +139,11 @@ The recommended provider. Envi prefers the 1Password CLI (`op`) when it's instal
 **Backend selection** (optional):
 
 ```bash
-# Default (CLI-first, then SDK fallback)
+# Default (SDK backend)
 bun envi status --provider 1password
+
+# Auto (SDK first, then CLI fallback)
+bun envi status --provider 1password --provider-opt backend=auto
 
 # Force CLI only
 bun envi status --provider 1password --provider-opt backend=cli
@@ -149,7 +153,21 @@ bun envi status --provider 1password --provider-opt backend=sdk
 
 # Use a specific op binary
 bun envi status --provider 1password --provider-opt cliBinary=/usr/local/bin/op
+
+# Secret resolution strategy tuning (1Password)
+bun envi sync --provider-opt resolveMode=batch
+bun envi sync --provider-opt resolveChunkSize=150
+bun envi sync --provider-opt resolveConcurrency=12
 ```
+
+**Performance provider options (1Password):**
+
+- `resolveMode`: `auto` (default), `batch`, or `sequential`
+  - `auto` prefers batched SDK resolution with fallback, and concurrent CLI resolution
+  - `batch` forces batched SDK resolution and concurrent CLI resolution
+  - `sequential` forces per-reference resolution (useful as a baseline)
+- `resolveChunkSize`: chunk size for batched SDK calls (default: `100`)
+- `resolveConcurrency`: max parallel resolves for CLI/fallback paths (default: `8`)
 
 **Secret reference format:** `op://vault/item[/section]/field`
 
@@ -504,13 +522,29 @@ bun run src/cli.ts restore -d
 bun run src/cli.ts validate
 ```
 
+## E2E Benchmark Vault
+
+For live performance benchmarks against a real 1Password service account vault, use:
+
+- `examples/1password-e2e-bench/README.md`
+
+Quick run:
+
+```bash
+OP_SERVICE_ACCOUNT_TOKEN="..." bun run bench:e2e
+```
+
 ## Environment Variables
 
-| Variable                   | Description                                              |
-| -------------------------- | -------------------------------------------------------- |
-| `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service account token (overrides desktop auth) |
-| `OP_ACCOUNT_NAME`          | 1Password account name/sign-in address for desktop auth  |
+| Variable                   | Description                                                 |
+| -------------------------- | ----------------------------------------------------------- |
+| `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service account token (overrides desktop auth)    |
+| `OP_ACCOUNT_NAME`          | 1Password account name/sign-in address for desktop auth     |
 | `OP_CACHE`                 | 1Password CLI cache toggle (`true`/`false`, default `true`) |
+| `ENVI_OP_RESOLVE_MODE`     | 1Password resolve strategy (`auto`, `batch`, `sequential`)  |
+| `ENVI_OP_RESOLVE_CHUNK_SIZE` | Chunk size for 1Password SDK `resolveAll` batching       |
+| `ENVI_OP_RESOLVE_CONCURRENCY` | Max parallel 1Password fallback/CLI resolves            |
+| `ENVI_PASS_RESOLVE_CONCURRENCY` | Max parallel Proton Pass CLI resolves                 |
 
 ### Authentication Priority (1Password)
 

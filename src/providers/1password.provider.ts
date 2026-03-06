@@ -9,10 +9,15 @@ import { createClient, DesktopAuth, type Client } from '@1password/sdk'
 
 import { VERSION } from '../config'
 import { exec, type ExecResult } from '../runtime/exec'
+import { mapWithConcurrency } from '../utils/concurrency'
 import type { AuthInfo, AuthFailureHints, AvailabilityResult, Provider, ResolveSecretsResult } from './provider'
 
 type BackendMode = 'auto' | 'cli' | 'sdk'
 type SelectedBackend = 'cli' | 'sdk'
+type ResolveMode = 'auto' | 'batch' | 'sequential'
+
+const DEFAULT_RESOLVE_CHUNK_SIZE = 100
+const DEFAULT_RESOLVE_CONCURRENCY = 8
 
 interface OnePasswordDeps {
   exec?: (command: string, args?: string[]) => Promise<ExecResult>
@@ -39,6 +44,9 @@ export class OnePasswordProvider implements Provider {
   readonly scheme = 'op://'
 
   private readonly backend: BackendMode
+  private readonly resolveMode: ResolveMode
+  private readonly resolveChunkSize: number
+  private readonly resolveConcurrency: number
   private readonly cliBinary: string
   private readonly accountName: string | undefined
   private detectedAccountName: string | undefined
@@ -51,10 +59,24 @@ export class OnePasswordProvider implements Provider {
   private selectedBackend: SelectedBackend | null = null
   private authVerified = false
   private lastAuthAttempt: AuthAttemptState | null = null
+  private readonly secretCache = new Map<string, string>()
+  private readonly inFlightResolutions = new Map<string, Promise<string>>()
 
   constructor(options: Record<string, string> = {}, deps: OnePasswordDeps = {}) {
     const rawBackend = (options['backend'] ?? 'sdk').trim()
     this.backend = isBackendMode(rawBackend) ? rawBackend : 'auto'
+
+    const rawResolveMode = (options['resolveMode'] ?? process.env['ENVI_OP_RESOLVE_MODE'] ?? 'auto').trim()
+    this.resolveMode = isResolveMode(rawResolveMode) ? rawResolveMode : 'auto'
+    this.resolveChunkSize = parsePositiveInt(
+      options['resolveChunkSize'] ?? process.env['ENVI_OP_RESOLVE_CHUNK_SIZE'],
+      DEFAULT_RESOLVE_CHUNK_SIZE,
+    )
+    this.resolveConcurrency = parsePositiveInt(
+      options['resolveConcurrency'] ?? process.env['ENVI_OP_RESOLVE_CONCURRENCY'],
+      DEFAULT_RESOLVE_CONCURRENCY,
+    )
+
     this.cliBinary = options['cliBinary'] ?? 'op'
     this.accountName = options['accountName'] ?? process.env['OP_ACCOUNT_NAME']
 
@@ -173,42 +195,48 @@ export class OnePasswordProvider implements Provider {
 
   async resolveSecret(reference: string): Promise<string> {
     await this.ensureAuthenticated()
-
-    if (this.selectedBackend === 'cli') {
-      return this.cliRead(reference)
+    if (this.resolveMode === 'sequential') {
+      return this.resolveReference(reference)
     }
-
-    const client = await this.getSdkClient()
-    return client.secrets.resolve(reference)
+    return this.resolveReferenceCached(reference)
   }
 
   async resolveSecrets(references: string[]): Promise<ResolveSecretsResult> {
     await this.ensureAuthenticated()
 
+    const uniqueReferences = uniqueStrings(references)
     const resolved = new Map<string, string>()
     const errors = new Map<string, string>()
+    const useCache = this.resolveMode !== 'sequential'
 
-    if (this.selectedBackend === 'cli') {
-      for (const ref of references) {
-        try {
-          resolved.set(ref, await this.cliRead(ref))
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error)
-          errors.set(ref, msg)
+    if (uniqueReferences.length === 0) {
+      return { resolved, errors }
+    }
+
+    const toFetch: string[] = []
+    for (const reference of uniqueReferences) {
+      if (useCache) {
+        const cached = this.secretCache.get(reference)
+        if (cached !== undefined) {
+          resolved.set(reference, cached)
+          continue
         }
       }
+
+      toFetch.push(reference)
+    }
+
+    if (toFetch.length === 0) {
+      return { resolved, errors }
+    }
+
+    if (this.selectedBackend === 'cli') {
+      await this.resolveSecretsViaCli(toFetch, resolved, errors)
       return { resolved, errors }
     }
 
     const client = await this.getSdkClient()
-    for (const ref of references) {
-      try {
-        resolved.set(ref, await client.secrets.resolve(ref))
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        errors.set(ref, msg)
-      }
-    }
+    await this.resolveSecretsViaSdk(client, toFetch, resolved, errors)
 
     return { resolved, errors }
   }
@@ -223,6 +251,147 @@ export class OnePasswordProvider implements Provider {
     const client = await this.getSdkClient()
     const vaults = await client.vaults.list(undefined)
     return vaults.map((v) => ({ id: v.id, name: v.title }))
+  }
+
+  private async resolveReferenceCached(reference: string): Promise<string> {
+    const cached = this.secretCache.get(reference)
+    if (cached !== undefined) return cached
+
+    const inFlight = this.inFlightResolutions.get(reference)
+    if (inFlight) return inFlight
+
+    const promise = this.resolveReference(reference)
+    this.inFlightResolutions.set(reference, promise)
+
+    try {
+      const value = await promise
+      this.secretCache.set(reference, value)
+      return value
+    } finally {
+      this.inFlightResolutions.delete(reference)
+    }
+  }
+
+  private async resolveReference(reference: string): Promise<string> {
+    if (this.selectedBackend === 'cli') {
+      return this.cliRead(reference)
+    }
+
+    const client = await this.getSdkClient()
+    return client.secrets.resolve(reference)
+  }
+
+  private async resolveSecretsViaCli(
+    references: string[],
+    resolved: Map<string, string>,
+    errors: Map<string, string>,
+  ): Promise<void> {
+    if (this.resolveMode === 'sequential') {
+      for (const reference of references) {
+        try {
+          resolved.set(reference, await this.resolveReference(reference))
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error)
+          errors.set(reference, msg)
+        }
+      }
+      return
+    }
+
+    await mapWithConcurrency(references, this.resolveConcurrency, async (reference) => {
+      try {
+        resolved.set(reference, await this.resolveReferenceCached(reference))
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        errors.set(reference, msg)
+      }
+    })
+  }
+
+  private async resolveSecretsViaSdk(
+    client: Client,
+    references: string[],
+    resolved: Map<string, string>,
+    errors: Map<string, string>,
+  ): Promise<void> {
+    const useSequential = this.resolveMode === 'sequential'
+    const useBatch = this.resolveMode === 'batch' || this.resolveMode === 'auto'
+
+    if (useSequential) {
+      for (const reference of references) {
+        try {
+          resolved.set(reference, await this.resolveReference(reference))
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error)
+          errors.set(reference, msg)
+        }
+      }
+      return
+    }
+
+    if (useBatch) {
+      const chunks = chunkArray(references, this.resolveChunkSize)
+      let batchFailed = false
+
+      for (const chunk of chunks) {
+        const ok = await this.tryResolveSdkBatchChunk(client, chunk, resolved, errors)
+        if (!ok) {
+          batchFailed = true
+          break
+        }
+      }
+
+      if (!batchFailed) {
+        return
+      }
+    }
+
+    await mapWithConcurrency(references, this.resolveConcurrency, async (reference) => {
+      try {
+        resolved.set(reference, await this.resolveReferenceCached(reference))
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        errors.set(reference, msg)
+      }
+    })
+  }
+
+  private async tryResolveSdkBatchChunk(
+    client: Client,
+    references: string[],
+    resolved: Map<string, string>,
+    errors: Map<string, string>,
+  ): Promise<boolean> {
+    try {
+      const response = await client.secrets.resolveAll(references)
+      const individualResponses = response.individualResponses
+
+      for (const reference of references) {
+        const item = individualResponses[reference]
+        if (!item) {
+          errors.set(reference, 'No response returned for reference')
+          continue
+        }
+
+        if (item.error) {
+          errors.set(reference, formatResolveReferenceError(item.error))
+          continue
+        }
+
+        const value = item.content?.secret
+        if (typeof value === 'string') {
+          this.secretCache.set(reference, value)
+          resolved.set(reference, value)
+          continue
+        }
+
+        errors.set(reference, 'Resolved response did not include a secret value')
+      }
+
+      return true
+    } catch {
+      return false
+    }
   }
 
   private getSdkAuthInfo(): AuthInfo {
@@ -408,6 +577,52 @@ export class OnePasswordProvider implements Provider {
 
 function isBackendMode(value: string): value is BackendMode {
   return value === 'auto' || value === 'cli' || value === 'sdk'
+}
+
+function isResolveMode(value: string): value is ResolveMode {
+  return value === 'auto' || value === 'batch' || value === 'sequential'
+}
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.floor(parsed)
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values))
+}
+
+function chunkArray<T>(items: T[], chunkSize: number): T[][] {
+  if (items.length === 0) return []
+
+  const size = Math.max(1, Math.floor(chunkSize))
+  if (items.length <= size) return [items]
+
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
+}
+
+function formatResolveReferenceError(error: unknown): string {
+  if (!error || typeof error !== 'object') {
+    return String(error)
+  }
+
+  const maybeMessage = Reflect.get(error, 'message')
+  if (typeof maybeMessage === 'string' && maybeMessage.trim().length > 0) {
+    return maybeMessage
+  }
+
+  const maybeType = Reflect.get(error, 'type')
+  if (typeof maybeType === 'string' && maybeType.trim().length > 0) {
+    return maybeType
+  }
+
+  return 'Failed to resolve reference'
 }
 
 function stripFinalNewline(value: string): string {

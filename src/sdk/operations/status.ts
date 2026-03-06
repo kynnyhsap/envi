@@ -1,11 +1,19 @@
 import path from 'node:path'
 
+import { mapWithConcurrency } from '../../utils/concurrency'
 import { parseEnvFile } from '../../utils/parse'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
 import type { ExecutionContext, Issue, StatusData, StatusResult, StatusPathData } from '../types'
 
 const SNAPSHOT_RE = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/
+const DEFAULT_STATUS_PATH_CONCURRENCY = 8
+
+function getStatusPathConcurrency(): number {
+  const raw = Number(process.env['ENVI_STATUS_PATH_CONCURRENCY'])
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_STATUS_PATH_CONCURRENCY
+  return Math.floor(raw)
+}
 
 async function getBackupInfo(ctx: ExecutionContext): Promise<{ count: number; latestTimestamp?: string }> {
   const rootDir = ctx.options.rootDir ? path.resolve(ctx.options.rootDir) : ctx.runtime.cwd()
@@ -84,10 +92,9 @@ export async function statusOperation(ctx: ExecutionContext): Promise<StatusResu
   }
 
   const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
-  const statuses: StatusPathData[] = []
-  for (const p of envPaths) {
-    statuses.push(await getPathStatus(ctx, p))
-  }
+  const statuses = await mapWithConcurrency(envPaths, getStatusPathConcurrency(), async (pathInfo) =>
+    getPathStatus(ctx, pathInfo),
+  )
 
   const backups = await getBackupInfo(ctx)
 

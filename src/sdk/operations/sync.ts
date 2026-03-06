@@ -1,6 +1,7 @@
 import path from 'node:path'
 
 import { generateBackupTimestamp } from '../../config'
+import { mapWithConcurrency } from '../../utils/concurrency'
 import { computeChanges } from '../../utils/diff'
 import { mergeEnvFiles } from '../../utils/merge'
 import { parseEnvFile, serializeEnvFile } from '../../utils/parse'
@@ -12,6 +13,14 @@ import { checkProviderReady } from './provider-check'
 import { redactChanges } from './redact'
 import { injectResolvedSecrets } from './resolve-secrets'
 
+const DEFAULT_SYNC_PATH_CONCURRENCY = 8
+
+function getSyncPathConcurrency(): number {
+  const raw = Number(process.env['ENVI_SYNC_PATH_CONCURRENCY'])
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_SYNC_PATH_CONCURRENCY
+  return Math.floor(raw)
+}
+
 async function createAutoBackup(ctx: ExecutionContext, envFilePaths: string[]): Promise<void> {
   if (envFilePaths.length === 0) return
 
@@ -19,9 +28,9 @@ async function createAutoBackup(ctx: ExecutionContext, envFilePaths: string[]): 
   const timestamp = generateBackupTimestamp()
   const backupRoot = path.join(rootDir, ctx.options.backupDir, timestamp)
 
-  for (const absoluteFile of envFilePaths) {
+  await mapWithConcurrency(envFilePaths, getSyncPathConcurrency(), async (absoluteFile) => {
     const exists = await ctx.runtime.exists(absoluteFile)
-    if (!exists) continue
+    if (!exists) return
 
     const relative = path.relative(rootDir, absoluteFile)
     const backupPath = path.join(backupRoot, relative)
@@ -33,7 +42,7 @@ async function createAutoBackup(ctx: ExecutionContext, envFilePaths: string[]): 
     } catch {
       // Silent backup failure (matches previous auto-backup intent)
     }
-  }
+  })
 }
 
 function countChanges(changes: Change[]) {
@@ -273,8 +282,16 @@ export async function syncOperation(ctx: ExecutionContext, options: SyncOperatio
   let totalUpdated = 0
   let totalCustom = 0
 
-  for (const pathInfo of envPaths) {
-    const result = await processEnvPath(ctx, pathInfo, { force, dryRun, includeSecrets })
+  const canParallelize = force || dryRun
+  const pathWork = canParallelize
+    ? await mapWithConcurrency(envPaths, getSyncPathConcurrency(), async (pathInfo) =>
+        processEnvPath(ctx, pathInfo, { force, dryRun, includeSecrets }),
+      )
+    : await mapWithConcurrency(envPaths, 1, async (pathInfo) =>
+        processEnvPath(ctx, pathInfo, { force, dryRun, includeSecrets }),
+      )
+
+  for (const result of pathWork) {
     pathResults.push(result.data)
     issues.push(...result.issues)
 

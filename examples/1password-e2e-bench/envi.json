@@ -1,0 +1,10 @@
+{
+  "provider": "1password",
+  "providerOptions": {
+    "backend": "cli"
+  },
+  "environment": "local",
+  "templateFile": ".env.example",
+  "outputFile": ".env",
+  "backupDir": ".env-backup"
+}

@@ -4,14 +4,83 @@ import type { EnvFile } from '../../utils/types'
 import { hasUnresolvedVariables, substituteVariables } from '../../utils/variables'
 import type { Issue } from '../types'
 
+interface CollectedSecretReference {
+  key: string
+  reference: string
+  original: string
+}
+
+function injectResolvedValues(
+  template: EnvFile,
+  refs: CollectedSecretReference[],
+  resolved: Map<string, string>,
+): EnvFile {
+  const resolvedVars = new Map(template.vars)
+
+  for (const ref of refs) {
+    const value = resolved.get(ref.reference)
+    if (value === undefined) continue
+
+    const existing = resolvedVars.get(ref.key)
+    if (!existing) continue
+    resolvedVars.set(ref.key, { ...existing, value })
+  }
+
+  return {
+    vars: resolvedVars,
+    order: template.order,
+    trailingContent: template.trailingContent,
+  }
+}
+
+export async function resolveReferenceBatch(args: {
+  references: string[]
+  provider: Provider
+}): Promise<{ resolved: Map<string, string>; errors: Map<string, string> }> {
+  const uniqueReferences = Array.from(new Set(args.references))
+  const resolved = new Map<string, string>()
+  const errors = new Map<string, string>()
+
+  if (uniqueReferences.length === 0) {
+    return { resolved, errors }
+  }
+
+  const nativeByReference = new Map<string, string>()
+  for (const reference of uniqueReferences) {
+    nativeByReference.set(reference, toNativeReference(reference, args.provider.scheme))
+  }
+
+  const nativeRefs = uniqueReferences.map((reference) => nativeByReference.get(reference)!)
+  const providerResult = await args.provider.resolveSecrets(nativeRefs)
+
+  for (const reference of uniqueReferences) {
+    const native = nativeByReference.get(reference)!
+    const error = providerResult.errors.get(native)
+    if (error) {
+      errors.set(reference, error)
+      continue
+    }
+
+    const value = providerResult.resolved.get(native)
+    if (value === undefined) {
+      errors.set(reference, 'Secret was not returned by provider')
+      continue
+    }
+
+    resolved.set(reference, value)
+  }
+
+  return { resolved, errors }
+}
+
 export function collectSecretReferences(
   template: EnvFile,
   env: string,
 ): {
-  refs: { key: string; reference: string; original: string }[]
+  refs: CollectedSecretReference[]
   issues: Issue[]
 } {
-  const refs: { key: string; reference: string; original: string }[] = []
+  const refs: CollectedSecretReference[] = []
   const issues: Issue[] = []
 
   for (const [key, envVar] of template.vars) {
@@ -50,46 +119,29 @@ export async function injectResolvedSecrets(args: {
     return { injected: args.template, issues: [] }
   }
 
-  const references = refs.map((r) => r.reference)
-  const nativeRefs = references.map((ref) => toNativeReference(ref, args.provider.scheme))
+  const { resolved, errors } = await resolveReferenceBatch({
+    references: refs.map((r) => r.reference),
+    provider: args.provider,
+  })
 
-  const { resolved, errors } = await args.provider.resolveSecrets(nativeRefs)
   if (errors.size > 0) {
     const outIssues: Issue[] = []
-    for (let i = 0; i < refs.length; i++) {
-      const key = refs[i]!.key
-      const ref = refs[i]!.reference
-      const native = nativeRefs[i]!
-      const error = errors.get(native)
+    for (const ref of refs) {
+      const error = errors.get(ref.reference)
       if (error) {
         outIssues.push({
           code: 'SECRET_RESOLUTION_FAILED',
-          message: `Failed to resolve ${key}: ${error}`,
-          key,
-          reference: ref,
+          message: `Failed to resolve ${ref.key}: ${error}`,
+          key: ref.key,
+          reference: ref.reference,
         })
       }
     }
     return { injected: null, issues: outIssues }
   }
 
-  const resolvedVars = new Map(args.template.vars)
-  for (let i = 0; i < refs.length; i++) {
-    const key = refs[i]!.key
-    const native = nativeRefs[i]!
-    const value = resolved.get(native)
-    if (value !== undefined) {
-      const existing = resolvedVars.get(key)!
-      resolvedVars.set(key, { ...existing, value })
-    }
-  }
-
   return {
-    injected: {
-      vars: resolvedVars,
-      order: args.template.order,
-      trailingContent: args.template.trailingContent,
-    },
+    injected: injectResolvedValues(args.template, refs, resolved),
     issues: [],
   }
 }
@@ -133,33 +185,30 @@ export async function resolveEnvFileToKeyValue(args: {
     return { vars, issues: [], secretKeys }
   }
 
-  const references = refs.map((r) => r.reference)
-  const nativeRefs = references.map((ref) => toNativeReference(ref, args.provider.scheme))
-  const { resolved, errors } = await args.provider.resolveSecrets(nativeRefs)
+  const { resolved, errors } = await resolveReferenceBatch({
+    references: refs.map((r) => r.reference),
+    provider: args.provider,
+  })
+
   if (errors.size > 0) {
     const outIssues: Issue[] = []
-    for (let i = 0; i < refs.length; i++) {
-      const key = refs[i]!.key
-      const ref = refs[i]!.reference
-      const native = nativeRefs[i]!
-      const error = errors.get(native)
+    for (const ref of refs) {
+      const error = errors.get(ref.reference)
       if (error) {
         outIssues.push({
           code: 'SECRET_RESOLUTION_FAILED',
-          message: `Failed to resolve ${key}: ${error}`,
-          key,
-          reference: ref,
+          message: `Failed to resolve ${ref.key}: ${error}`,
+          key: ref.key,
+          reference: ref.reference,
         })
       }
     }
     return { vars: null, issues: outIssues, secretKeys }
   }
 
-  for (let i = 0; i < refs.length; i++) {
-    const key = refs[i]!.key
-    const native = nativeRefs[i]!
-    const value = resolved.get(native)
-    if (value !== undefined) vars.set(key, value)
+  for (const ref of refs) {
+    const value = resolved.get(ref.reference)
+    if (value !== undefined) vars.set(ref.key, value)
   }
 
   return { vars, issues: [], secretKeys }

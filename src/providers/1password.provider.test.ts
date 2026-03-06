@@ -196,3 +196,147 @@ describe('OnePasswordProvider (backend selection)', () => {
     })
   })
 })
+
+describe('OnePasswordProvider (secret resolution modes)', () => {
+  it('uses resolveAll and deduplicates references in SDK mode', async () => {
+    await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: 'token', OP_ACCOUNT_NAME: undefined }, async () => {
+      const seenBatches: string[][] = []
+
+      const provider = new OnePasswordProvider(
+        { backend: 'sdk', resolveMode: 'batch' },
+        {
+          createClient: async () =>
+            ({
+              vaults: { list: async () => [] },
+              secrets: {
+                resolve: async () => {
+                  throw new Error('resolve should not be used when resolveAll succeeds')
+                },
+                resolveAll: async (refs: string[]) => {
+                  seenBatches.push([...refs])
+                  return {
+                    individualResponses: Object.fromEntries(
+                      refs.map((ref) => [ref, { content: { secret: `resolved(${ref})` } }]),
+                    ),
+                  }
+                },
+              },
+            }) as any,
+        },
+      )
+
+      const refs = ['op://vault/item/field', 'op://vault/item/field', 'op://vault/item/other']
+      const result = await provider.resolveSecrets(refs)
+
+      expect(seenBatches.length).toBe(1)
+      expect(seenBatches[0]).toEqual(['op://vault/item/field', 'op://vault/item/other'])
+      expect(result.errors.size).toBe(0)
+      expect(result.resolved.get('op://vault/item/field')).toBe('resolved(op://vault/item/field)')
+      expect(result.resolved.get('op://vault/item/other')).toBe('resolved(op://vault/item/other)')
+    })
+  })
+
+  it('falls back to per-reference resolve when resolveAll fails', async () => {
+    await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: 'token', OP_ACCOUNT_NAME: undefined }, async () => {
+      let resolveCalls = 0
+
+      const provider = new OnePasswordProvider(
+        { backend: 'sdk', resolveMode: 'batch' },
+        {
+          createClient: async () =>
+            ({
+              vaults: { list: async () => [] },
+              secrets: {
+                resolveAll: async () => {
+                  throw new Error('resolveAll failed')
+                },
+                resolve: async (ref: string) => {
+                  resolveCalls++
+                  return `resolved(${ref})`
+                },
+              },
+            }) as any,
+        },
+      )
+
+      const refs = ['op://vault/item/field', 'op://vault/item/other']
+      const result = await provider.resolveSecrets(refs)
+
+      expect(resolveCalls).toBe(2)
+      expect(result.errors.size).toBe(0)
+      expect(result.resolved.get('op://vault/item/field')).toBe('resolved(op://vault/item/field)')
+      expect(result.resolved.get('op://vault/item/other')).toBe('resolved(op://vault/item/other)')
+    })
+  })
+
+  it('reuses in-memory cache across resolveSecrets calls', async () => {
+    await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: 'token', OP_ACCOUNT_NAME: undefined }, async () => {
+      let resolveAllCalls = 0
+
+      const provider = new OnePasswordProvider(
+        { backend: 'sdk', resolveMode: 'batch' },
+        {
+          createClient: async () =>
+            ({
+              vaults: { list: async () => [] },
+              secrets: {
+                resolveAll: async (refs: string[]) => {
+                  resolveAllCalls++
+                  return {
+                    individualResponses: Object.fromEntries(
+                      refs.map((ref) => [ref, { content: { secret: `resolved(${ref})` } }]),
+                    ),
+                  }
+                },
+                resolve: async () => {
+                  throw new Error('resolve should not be used when resolveAll succeeds')
+                },
+              },
+            }) as any,
+        },
+      )
+
+      const reference = 'op://vault/item/field'
+
+      const first = await provider.resolveSecrets([reference])
+      const second = await provider.resolveSecrets([reference])
+
+      expect(resolveAllCalls).toBe(1)
+      expect(first.resolved.get(reference)).toBe('resolved(op://vault/item/field)')
+      expect(second.resolved.get(reference)).toBe('resolved(op://vault/item/field)')
+    })
+  })
+
+  it('resolveMode=sequential skips resolveAll', async () => {
+    await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: 'token', OP_ACCOUNT_NAME: undefined }, async () => {
+      let resolveCalls = 0
+
+      const provider = new OnePasswordProvider(
+        { backend: 'sdk', resolveMode: 'sequential' },
+        {
+          createClient: async () =>
+            ({
+              vaults: { list: async () => [] },
+              secrets: {
+                resolveAll: async () => {
+                  throw new Error('resolveAll should not be used in sequential mode')
+                },
+                resolve: async (ref: string) => {
+                  resolveCalls++
+                  return `resolved(${ref})`
+                },
+              },
+            }) as any,
+        },
+      )
+
+      const refs = ['op://vault/item/field', 'op://vault/item/other']
+      const result = await provider.resolveSecrets(refs)
+
+      expect(resolveCalls).toBe(2)
+      expect(result.errors.size).toBe(0)
+      expect(result.resolved.get('op://vault/item/field')).toBe('resolved(op://vault/item/field)')
+      expect(result.resolved.get('op://vault/item/other')).toBe('resolved(op://vault/item/other)')
+    })
+  })
+})
