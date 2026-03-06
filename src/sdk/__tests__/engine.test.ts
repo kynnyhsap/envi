@@ -10,7 +10,7 @@ describe('sdk engine (smoke)', () => {
     const runtime = createMemoryRuntime({
       cwd,
       files: {
-        '/repo/.env.example': 'API_KEY=envi://vault/item/API_KEY\nNON_SECRET=hello\n',
+        '/repo/.env.example': 'API_KEY=op://vault/item/API_KEY\nNON_SECRET=hello\n',
         '/repo/.env': 'NON_SECRET=hello\n',
       },
       templateMatches: ['.env.example'],
@@ -42,7 +42,7 @@ describe('sdk engine (smoke)', () => {
     const runtime = createMemoryRuntime({
       cwd,
       files: {
-        '/repo/.env.example': 'API_KEY=envi://vault/item/API_KEY\n',
+        '/repo/.env.example': 'API_KEY=op://vault/item/API_KEY\n',
       },
       templateMatches: ['.env.example'],
     })
@@ -67,7 +67,7 @@ describe('sdk engine (smoke)', () => {
     const runtime = createMemoryRuntime({
       cwd,
       files: {
-        '/repo/.env.example': 'API_KEY=envi://vault/item/API_KEY\n',
+        '/repo/.env.example': 'API_KEY=op://vault/item/API_KEY\n',
       },
       templateMatches: ['.env.example'],
     })
@@ -89,12 +89,28 @@ describe('sdk engine (smoke)', () => {
     expect(full.data.env['API_KEY']).toContain('resolved(')
   })
 
+  it('resolveSecret resolves a single reference with env substitution', async () => {
+    const engine = createEnviEngine({
+      provider: createFakeProvider(),
+      options: {
+        provider: '1password',
+        environment: 'local',
+      },
+    })
+
+    const result = await engine.resolveSecret({ reference: 'op://core-${ENV}/api/API_KEY' })
+    expect(result.command).toBe('resolve')
+    expect(result.ok).toBe(true)
+    expect(result.data.nativeReference).toBe('op://core-local/api/API_KEY')
+    expect(result.data.secret).toBe('resolved(op://core-local/api/API_KEY)')
+  })
+
   it('status captures authInfo after verifyAuth', async () => {
     const cwd = '/repo'
     const runtime = createMemoryRuntime({
       cwd,
       files: {
-        '/repo/.env.example': 'API_KEY=envi://vault/item/API_KEY\n',
+        '/repo/.env.example': 'API_KEY=op://vault/item/API_KEY\n',
       },
       templateMatches: ['.env.example'],
     })

@@ -8,13 +8,13 @@ export { createRuntimeAdapter, detectRuntime, type DetectedRuntime } from './run
 
 export {
   createProvider,
-  VALID_PROVIDERS,
   SECRET_SCHEMES,
   isSecretReference,
-  detectProvider,
   toNativeReference,
+  parseSecretReference,
+  validateSecretReferenceFormat,
 } from '../providers'
-export type { Provider, ProviderType, SecretReference } from '../providers'
+export type { Provider, ProviderType, SecretReference, SecretReferenceValidationResult } from '../providers'
 
 export type {
   EnviEngine,
@@ -26,5 +26,6 @@ export type {
   DiffResult,
   SyncResult,
   ValidateResult,
+  ResolveSecretResult,
   RunResolveResult,
 } from './types'

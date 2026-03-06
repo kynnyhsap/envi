@@ -47,7 +47,7 @@ export async function resolveReferenceBatch(args: {
 
   const nativeByReference = new Map<string, string>()
   for (const reference of uniqueReferences) {
-    nativeByReference.set(reference, toNativeReference(reference, args.provider.scheme))
+    nativeByReference.set(reference, toNativeReference(reference))
   }
 
   const nativeRefs = uniqueReferences.map((reference) => nativeByReference.get(reference)!)

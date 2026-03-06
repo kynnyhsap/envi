@@ -40,7 +40,7 @@ let providerInstance: Provider | null = null
 
 export function setRuntimeConfig(config: Partial<RuntimeConfig>): void {
   runtimeConfig = { ...runtimeConfig, ...config }
-  providerInstance = createProvider(runtimeConfig.provider, runtimeConfig.providerOptions)
+  providerInstance = createProvider(runtimeConfig.providerOptions)
 }
 
 export function getProvider(): Provider {

@@ -1,12 +1,12 @@
 export const DEFAULT_ENVIRONMENT = 'local'
 
 /**
- * Substitute ${ENV} in secret references (envi://, op://, pass://)
- * Example: envi://core-${ENV}/item/field → envi://core-local/item/field
+ * Substitute ${ENV} in op:// secret references.
+ * Example: op://core-${ENV}/item/field -> op://core-local/item/field
  */
 export function substituteVariables(value: string, env: string): string {
   const trimmed = value.trim()
-  if (!trimmed.startsWith('op://') && !trimmed.startsWith('envi://') && !trimmed.startsWith('pass://')) return value
+  if (!trimmed.startsWith('op://')) return value
   return value.replace(/\$\{ENV\}/g, env)
 }
 

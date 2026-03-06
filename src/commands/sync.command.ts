@@ -16,11 +16,7 @@ function formatValue(value: string, isSecret: boolean): string {
 
 function isSecretValue(templateValue: string | undefined): boolean {
   if (!templateValue) return false
-  return (
-    templateValue.trim().startsWith('envi://') ||
-    templateValue.trim().startsWith('op://') ||
-    templateValue.trim().startsWith('pass://')
-  )
+  return templateValue.trim().startsWith('op://')
 }
 
 function displayChanges(changes: Change[]): {

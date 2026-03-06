@@ -1,5 +1,5 @@
 import { DEFAULT_BACKUP_DIR, DEFAULT_OUTPUT_FILE, DEFAULT_PROVIDER, DEFAULT_TEMPLATE_FILE } from '../config'
-import { VALID_PROVIDERS, type ProviderType } from '../providers'
+import type { ProviderType } from '../providers'
 import { DEFAULT_ENVIRONMENT } from '../utils/variables'
 import type { RuntimeOptions, RuntimeOptionsInput } from './types'
 
@@ -31,8 +31,8 @@ export function resolveRuntimeOptions(input: RuntimeOptionsInput = {}): RuntimeO
   }
 
   const provider = merged.provider as ProviderType
-  if (!VALID_PROVIDERS.includes(provider)) {
-    throw new Error(`Invalid provider: ${provider}`)
+  if (provider !== '1password') {
+    throw new Error(`Invalid provider: ${provider}. Envi only supports 1password.`)
   }
   merged.provider = provider
 

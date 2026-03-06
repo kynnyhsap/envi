@@ -40,6 +40,15 @@ test('live 1Password E2E: provision vault, sync secrets, and clean up', async ()
     expect(validate.ok).toBe(true)
     expect(validate.data.summary.invalid).toBe(0)
 
+    const resolvedSecret = await runCli([
+      '--quiet',
+      '--config',
+      'envi.json',
+      'resolve',
+      `op://${vault.title}/api-envs/DATABASE_URL`,
+    ])
+    expect(resolvedSecret.stdout.trim()).toBe(getSeedFieldValue('api-envs', 'DATABASE_URL'))
+
     const sync = await runCliJson(['--config', 'envi.json', '--json', 'sync', '-f', '--no-backup'])
     expect(sync.ok).toBe(true)
     expect(sync.data.summary.success).toBe(3)
@@ -108,10 +117,10 @@ async function prepareWorkspace(vaultName: string): Promise<void> {
     path.join(WORKSPACE_DIR, 'apps', 'api', '.env.example'),
     [
       'NODE_ENV=development',
-      `DATABASE_URL=envi://${vaultName}/api-envs/DATABASE_URL`,
+      `DATABASE_URL=op://${vaultName}/api-envs/DATABASE_URL`,
       `JWT_SECRET=op://${vaultName}/api-envs/JWT_SECRET`,
-      `BETTER_AUTH_URL=envi://${vaultName}/api-envs/BETTER_AUTH_URL`,
-      `INTERNAL_API_KEY=envi://${vaultName}/app-envs/INTERNAL_API_KEY`,
+      `BETTER_AUTH_URL=op://${vaultName}/api-envs/BETTER_AUTH_URL`,
+      `INTERNAL_API_KEY=op://${vaultName}/app-envs/INTERNAL_API_KEY`,
       '',
     ].join('\n'),
   )
@@ -119,11 +128,11 @@ async function prepareWorkspace(vaultName: string): Promise<void> {
   await Bun.write(
     path.join(WORKSPACE_DIR, 'apps', 'web', '.env.example'),
     [
-      `NEXT_PUBLIC_API_URL=envi://${vaultName}/web-envs/NEXT_PUBLIC_API_URL`,
+      `NEXT_PUBLIC_API_URL=op://${vaultName}/web-envs/NEXT_PUBLIC_API_URL`,
       `NEXT_PUBLIC_APP_URL=op://${vaultName}/web-envs/NEXT_PUBLIC_APP_URL`,
-      `SENTRY_AUTH_TOKEN=envi://${vaultName}/web-envs/SENTRY_AUTH_TOKEN`,
-      `GOOGLE_CLIENT_ID=envi://${vaultName}/web-envs/GOOGLE_CLIENT_ID`,
-      `FEATURE_FLAGS=envi://${vaultName}/app-envs/FEATURE_FLAGS`,
+      `SENTRY_AUTH_TOKEN=op://${vaultName}/web-envs/SENTRY_AUTH_TOKEN`,
+      `GOOGLE_CLIENT_ID=op://${vaultName}/web-envs/GOOGLE_CLIENT_ID`,
+      `FEATURE_FLAGS=op://${vaultName}/app-envs/FEATURE_FLAGS`,
       '',
     ].join('\n'),
   )
@@ -131,11 +140,11 @@ async function prepareWorkspace(vaultName: string): Promise<void> {
   await Bun.write(
     path.join(WORKSPACE_DIR, 'apps', 'worker', '.env.example'),
     [
-      `QUEUE_URL=envi://${vaultName}/worker-envs/QUEUE_URL`,
+      `QUEUE_URL=op://${vaultName}/worker-envs/QUEUE_URL`,
       `WORKER_TOKEN=op://${vaultName}/worker-envs/WORKER_TOKEN`,
-      `CRON_SECRET=envi://${vaultName}/worker-envs/CRON_SECRET`,
-      `DATABASE_URL=envi://${vaultName}/api-envs/DATABASE_URL`,
-      `SLACK_WEBHOOK_URL=envi://${vaultName}/ops-envs/SLACK_WEBHOOK_URL`,
+      `CRON_SECRET=op://${vaultName}/worker-envs/CRON_SECRET`,
+      `DATABASE_URL=op://${vaultName}/api-envs/DATABASE_URL`,
+      `SLACK_WEBHOOK_URL=op://${vaultName}/ops-envs/SLACK_WEBHOOK_URL`,
       '',
     ].join('\n'),
   )

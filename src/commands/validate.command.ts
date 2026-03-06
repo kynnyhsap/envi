@@ -10,7 +10,7 @@ function formatReference(reference: string): string {
   const trimmed = reference.trim()
 
   // Find the scheme
-  const schemes = ['envi://', 'op://', 'pass://']
+  const schemes = ['op://']
   for (const scheme of schemes) {
     if (trimmed.startsWith(scheme)) {
       const path = trimmed.slice(scheme.length)

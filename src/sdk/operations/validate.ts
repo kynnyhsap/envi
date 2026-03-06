@@ -1,4 +1,4 @@
-import { isSecretReference, parseSecretReference, toNativeReference } from '../../providers'
+import { isSecretReference, toNativeReference, validateSecretReferenceFormat } from '../../providers'
 import { parseEnvFile } from '../../utils/parse'
 import { substituteVariables, hasUnresolvedVariables } from '../../utils/variables'
 import { makeEnvelope } from '../json'
@@ -14,16 +14,6 @@ import type {
 } from '../types'
 import { checkProviderReady } from './provider-check'
 import { resolveReferenceBatch } from './resolve-secrets'
-
-function validateReferenceFormat(reference: string): { valid: boolean; error?: string } {
-  try {
-    parseSecretReference(reference)
-    return { valid: true }
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    return { valid: false, error: msg }
-  }
-}
 
 export async function validateOperation(
   ctx: ExecutionContext,
@@ -93,7 +83,7 @@ export async function validateOperation(
         continue
       }
 
-      const res = validateReferenceFormat(resolvedReference)
+      const res = validateSecretReferenceFormat(resolvedReference)
       if (!res.valid) {
         const message = res.error ?? 'Invalid reference'
         references.push({ key, reference, resolvedReference, valid: false, error: message })
@@ -108,14 +98,12 @@ export async function validateOperation(
 
     if (remote && remoteCandidates.length > 0) {
       const batch = await resolveReferenceBatch({
-        references: remoteCandidates.map((candidate) =>
-          toNativeReference(candidate.resolvedReference, ctx.provider.scheme),
-        ),
+        references: remoteCandidates.map((candidate) => toNativeReference(candidate.resolvedReference)),
         provider: ctx.provider,
       })
 
       for (const candidate of remoteCandidates) {
-        const nativeReference = toNativeReference(candidate.resolvedReference, ctx.provider.scheme)
+        const nativeReference = toNativeReference(candidate.resolvedReference)
         const error = batch.errors.get(nativeReference)
 
         if (error) {

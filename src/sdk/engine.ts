@@ -1,5 +1,6 @@
 import { createProvider } from '../providers'
 import { diffOperation } from './operations/diff'
+import { resolveSecretOperation } from './operations/resolve'
 import { resolveRunEnvironmentOperation } from './operations/run-resolve'
 import { statusOperation } from './operations/status'
 import { syncOperation } from './operations/sync'
@@ -14,7 +15,7 @@ function makeContext(args: {
   runtime?: ExecutionContext['runtime']
   prompts?: ExecutionContext['prompts']
 }): ExecutionContext {
-  const provider = args.provider ?? createProvider(args.options.provider, args.options.providerOptions)
+  const provider = args.provider ?? createProvider(args.options.providerOptions)
   const runtime = args.runtime ?? createRuntimeAdapter()
   const ctx: ExecutionContext = {
     options: args.options,
@@ -56,6 +57,10 @@ export function createEnviEngine(opts: CreateEngineOptions = {}): EnviEngine {
 
     async validate(operationOptions) {
       return validateOperation(ctx, operationOptions)
+    },
+
+    async resolveSecret(operationOptions) {
+      return resolveSecretOperation(ctx, operationOptions)
     },
 
     async resolveRunEnvironment(operationOptions) {

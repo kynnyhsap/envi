@@ -10,6 +10,7 @@
  *   status              Show .env status and auth
  *   diff                Show differences between local and provider
  *   sync                Sync .env files from templates
+ *   resolve             Resolve one secret reference
  *   backup              Backup current .env files
  *   restore             Restore .env files from backup
  *   validate            Validate all secret references in templates
@@ -25,6 +26,7 @@ import {
   diffCommand,
   syncCommand,
   runCommand,
+  resolveCommand,
   backupCommand,
   restoreCommand,
   validateCommand,
@@ -39,7 +41,6 @@ import {
   loadConfigFile,
   type ConfigFile,
 } from './config'
-import { VALID_PROVIDERS, type ProviderType } from './providers'
 import { resolveRuntimeOptions } from './sdk'
 import { DEFAULT_ENVIRONMENT } from './utils/variables'
 
@@ -54,6 +55,7 @@ function showHelp(): void {
   console.info(`  ${pc.yellow('status')}              Show .env status and auth`)
   console.info(`  ${pc.yellow('diff')}                Show differences between local and provider`)
   console.info(`  ${pc.yellow('sync')}                Sync .env files from templates`)
+  console.info(`  ${pc.yellow('resolve')}             Resolve one secret reference`)
   console.info(`  ${pc.yellow('backup')}              Backup current .env files (timestamped)`)
   console.info(`  ${pc.yellow('restore')}             Restore .env files from backup`)
   console.info(`  ${pc.yellow('run')}                 Run a command with secrets as env vars`)
@@ -64,9 +66,6 @@ function showHelp(): void {
   console.info(`  ${pc.green('--json')}              Output machine-readable JSON`)
   console.info(
     `  ${pc.green('-e, --env')} ${pc.dim('<name>')}    Environment name for ${'${ENV}'} substitution ${pc.dim(`(default: ${DEFAULT_ENVIRONMENT})`)}`,
-  )
-  console.info(
-    `  ${pc.green('--provider')} ${pc.dim('<name>')}   Secret provider ${pc.dim(`(${VALID_PROVIDERS.join(', ')})`)}`,
   )
   console.info(`  ${pc.green('--provider-opt')} ${pc.dim('<k=v>')} Provider-specific option (repeatable)`)
   console.info(`  ${pc.green('--config')} ${pc.dim('<path>')}    Load config from JSON file`)
@@ -88,6 +87,7 @@ function showHelp(): void {
   console.info(`  ${pc.dim('$')} envi diff`)
   console.info(`  ${pc.dim('$')} envi sync -d                    ${pc.dim('# dry run')}`)
   console.info(`  ${pc.dim('$')} envi sync --only engine/api     ${pc.dim('# single path')}`)
+  console.info(`  ${pc.dim('$')} envi resolve op://vault/item/field`)
   console.info(`  ${pc.dim('$')} envi backup`)
   console.info(`  ${pc.dim('$')} envi restore --list`)
   console.info('')
@@ -144,7 +144,6 @@ interface GlobalOptions {
   quiet?: boolean
   json?: boolean
   env?: string
-  provider?: string
   providerOpt?: string[]
   config?: string
   only?: string
@@ -202,7 +201,6 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
 
     const overrides: Record<string, unknown> = {}
     if (options.env !== undefined) overrides['environment'] = options.env
-    if (options.provider !== undefined) overrides['provider'] = options.provider as ProviderType
     if (options.providerOpt !== undefined && options.providerOpt.length > 0)
       overrides['providerOptions'] = cliProviderOpts
     const onlyPaths = parseOnlyFlag(options.only)
@@ -220,7 +218,6 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     console.error(pc.red(msg))
-    console.error(pc.dim(`Valid providers: ${VALID_PROVIDERS.join(', ')}`))
     process.exit(1)
   }
 
@@ -248,7 +245,6 @@ program
   .option('-q, --quiet', 'Suppress non-essential output')
   .option('--json', 'Output machine-readable JSON')
   .option('-e, --env <name>', `Environment name for \${ENV} substitution`)
-  .option('--provider <name>', `Secret provider (${VALID_PROVIDERS.join(', ')})`)
   .option(
     '--provider-opt <key=value>',
     'Provider-specific option (repeatable)',
@@ -315,6 +311,15 @@ configureCommandHelp(
     dryRun: options.dryRun ?? false,
     noBackup: options.backup === false,
   })
+})
+
+configureCommandHelp(program.command('resolve <reference>').description('Resolve one secret reference to its value'), {
+  name: 'resolve <reference>',
+  description: 'Resolve one op:// reference to its secret value',
+  examples: ['envi resolve op://core-${ENV}/engine-api/SECRET'],
+}).action(async (reference: string) => {
+  await applyGlobalOptions(program.opts())
+  await resolveCommand({ reference })
 })
 
 configureCommandHelp(

@@ -60,6 +60,7 @@ describe('CLI e2e tests', () => {
       expect(stdout).toContain('COMMANDS')
       expect(stdout).toContain('status')
       expect(stdout).toContain('sync')
+      expect(stdout).toContain('resolve')
       expect(stdout).toContain('backup')
       expect(stdout).toContain('restore')
     })
@@ -88,6 +89,34 @@ describe('CLI e2e tests', () => {
       expect(stdout).toContain('--force')
       expect(stdout).toContain('--dry-run')
       expect(stdout).toContain('--no-backup')
+    })
+
+    it('should show resolve subcommand-specific help', async () => {
+      const { stdout, exitCode } = await runCli('resolve', '--help')
+
+      expect(exitCode).toBe(0)
+      expect(stdout).toContain('resolve')
+      expect(stdout).toContain('op://')
+    })
+  })
+
+  describe('resolve command', () => {
+    it('should reject references that do not start with op://', async () => {
+      const { stdout, stderr, exitCode } = await runCli('resolve', 'not-a-secret')
+
+      expect(exitCode).toBe(1)
+      const output = stdout + stderr
+      expect(output).toContain('Invalid reference')
+      expect(output).toContain('op://')
+    })
+
+    it('should reject malformed references before remote auth', async () => {
+      const { stdout, stderr, exitCode } = await runCli('resolve', 'op://vault/item')
+
+      expect(exitCode).toBe(1)
+      const output = stdout + stderr
+      expect(output).toContain('Invalid reference')
+      expect(output).toContain('vault/item/field')
     })
   })
 

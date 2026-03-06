@@ -4,7 +4,7 @@ import type { RuntimeAdapter } from './runtime/contracts'
 
 export const SDK_SCHEMA_VERSION = 1 as const
 
-export type EnviCommand = 'status' | 'diff' | 'sync' | 'validate' | 'run.resolve'
+export type EnviCommand = 'status' | 'diff' | 'sync' | 'validate' | 'resolve' | 'run.resolve'
 
 export interface Issue {
   code: string
@@ -208,6 +208,19 @@ export interface ValidateData {
 
 export type ValidateResult = JsonEnvelope<ValidateData, 'validate'>
 
+export interface ResolveSecretOperationOptions {
+  reference: string
+}
+
+export interface ResolveSecretData {
+  input: string
+  resolvedReference: string
+  nativeReference: string
+  secret: string
+}
+
+export type ResolveSecretResult = JsonEnvelope<ResolveSecretData, 'resolve'>
+
 export interface ResolveRunEnvironmentOperationOptions {
   envFile?: string[]
   noTemplate?: boolean
@@ -232,5 +245,6 @@ export interface EnviEngine {
   diff(options?: DiffOperationOptions): Promise<DiffResult>
   sync(options?: SyncOperationOptions): Promise<SyncResult>
   validate(options?: ValidateOperationOptions): Promise<ValidateResult>
+  resolveSecret(options: ResolveSecretOperationOptions): Promise<ResolveSecretResult>
   resolveRunEnvironment(options?: ResolveRunEnvironmentOperationOptions): Promise<RunResolveResult>
 }
