@@ -16,7 +16,7 @@ Multiple packages, each with its own `.env.example`. Envi auto-discovers them fr
 
 ## Vault Setup
 
-Create a vault called `example` with these items:
+Create a vault called `envi-example` with these items:
 
 **api-service**
 | Field | Description |
@@ -37,17 +37,17 @@ Create a vault called `example` with these items:
 | `REDIS_URL`| Redis connection |
 
 ```bash
-op vault create example
+op vault create envi-example
 
 op item create \
-  --vault example \
+  --vault envi-example \
   --category "Secure Note" \
   --title api-service \
   'API_KEY[concealed]=sk_live_abc123' \
   'DATABASE_URL[concealed]=postgres://user:pass@localhost:5432/mydb'
 
 op item create \
-  --vault example \
+  --vault envi-example \
   --category "Secure Note" \
   --title web-app \
   'SESSION_SECRET[concealed]=session-signing-key-xyz' \
@@ -55,7 +55,7 @@ op item create \
   'OAUTH_CLIENT_SECRET[concealed]=oauth-client-secret-456'
 
 op item create \
-  --vault example \
+  --vault envi-example \
   --category "Secure Note" \
   --title worker \
   'REDIS_URL[concealed]=redis://localhost:6379'

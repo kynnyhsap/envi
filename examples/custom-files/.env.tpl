@@ -1,5 +1,5 @@
 NODE_ENV=development
 PORT=3000
 
-API_KEY=op://example/api-service/API_KEY
-DATABASE_URL=op://example/api-service/DATABASE_URL
+API_KEY=op://envi-example/api-service/API_KEY
+DATABASE_URL=op://envi-example/api-service/DATABASE_URL

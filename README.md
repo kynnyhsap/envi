@@ -196,9 +196,21 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 - `examples/README.md` - quick index of the maintained examples
 - `examples/1password-basic/` - simplest single-app setup
 - `examples/1password-monorepo/` - auto-discovered multi-package setup
-- `examples/1password-different-vaults/` - `${ENV}` vault switching
+- `examples/1password-environments/` - `${ENV}` item-name switching inside one vault
 - `examples/custom-files/` - custom template and output filenames
 - `examples/1password-e2e-bench/` - live benchmark harness
+
+Seed the shared example vaults with:
+
+```bash
+bun run examples:setup
+```
+
+Clean them up with:
+
+```bash
+bun run examples:cleanup
+```
 
 ## How It Works
 

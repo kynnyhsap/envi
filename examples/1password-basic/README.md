@@ -4,7 +4,7 @@ One app, one vault, a few `op://` references.
 
 ## Vault Setup
 
-Create a vault called `example` and a secure note called `api-service` with these fields:
+Create a vault called `envi-example` and a secure note called `api-service` with these fields:
 
 | Field          | Example Value                              |
 | -------------- | ------------------------------------------ |
@@ -13,10 +13,10 @@ Create a vault called `example` and a secure note called `api-service` with thes
 | `JWT_SECRET`   | `super-secret-jwt-key`                     |
 
 ```bash
-op vault create example
+op vault create envi-example
 
 op item create \
-  --vault example \
+  --vault envi-example \
   --category "Secure Note" \
   --title api-service \
   'API_KEY[concealed]=sk_live_abc123' \

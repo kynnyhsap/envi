@@ -1,16 +1,16 @@
-# 1Password -- Different Vaults
+# 1Password -- Environments
 
-Use `${ENV}` to switch vaults without changing the template.
+Use `${ENV}` to switch item names inside one shared vault.
 
 ## Vault Setup
 
-Create these vaults in 1Password:
+Create a vault called `envi-example` with these secure notes:
 
-- `example-local`
-- `example-staging`
-- `example-prod`
+- `api-service-local`
+- `api-service-staging`
+- `api-service-prod`
 
-Each vault should contain a secure note called `api-service` with these fields:
+Each item should contain these fields:
 
 | Field | Description |
 | --- | --- |
@@ -20,13 +20,13 @@ Each vault should contain a secure note called `api-service` with these fields:
 | `STRIPE_SECRET` | Stripe secret key |
 
 ```bash
-for env in local staging prod; do
-  op vault create "example-${env}"
+op vault create envi-example
 
+for env in local staging prod; do
   op item create \
-    --vault "example-${env}" \
+    --vault envi-example \
     --category "Secure Note" \
-    --title api-service \
+    --title "api-service-${env}" \
     "API_KEY[concealed]=sk_${env}_abc123" \
     "DATABASE_URL[concealed]=postgres://user:pass@db-${env}:5432/mydb" \
     "REDIS_URL[concealed]=redis://redis-${env}:6379" \
@@ -47,7 +47,7 @@ envi sync -e staging
 envi sync -e prod
 
 # Resolve one production secret directly
-envi resolve -e prod op://example-${ENV}/api-service/API_KEY
+envi resolve -e prod op://envi-example/api-service-${ENV}/API_KEY
 ```
 
-`op://example-${ENV}/api-service/API_KEY` becomes `op://example-staging/api-service/API_KEY` when you run with `-e staging`.
+`op://envi-example/api-service-${ENV}/API_KEY` becomes `op://envi-example/api-service-staging/API_KEY` when you run with `-e staging`.

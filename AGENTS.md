@@ -9,6 +9,8 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 **Test:** `bun test`
 **Live E2E:** `bun run test:e2e:1password` (requires local `.env.local` token)
 **Benchmark:** `bun run bench:e2e` (requires local `.env.local` token)
+**Seed example vaults:** `bun run examples:setup` (requires local `.env.local` token)
+**Cleanup example vaults:** `bun run examples:cleanup` (requires local `.env.local` token)
 **Run CLI:** `bun run src/cli.ts <command>`
 **Build SDK (publish):** `bun run build:sdk`
 
