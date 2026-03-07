@@ -12,4 +12,6 @@ export interface RuntimeAdapter {
   stat(filePath: string): Promise<FileStat | null>
   listDirs(dirPath: string): Promise<string[]>
   findTemplateFiles(rootDir: string, templateFile: string, backupDir: string): Promise<string[]>
+  findFilesNamed(rootDir: string, fileName: string, excludeDirs?: string[]): Promise<string[]>
+  findFilesWithPrefix(rootDir: string, prefix: string, excludeDirs?: string[]): Promise<string[]>
 }

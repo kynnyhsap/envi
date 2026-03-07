@@ -25,6 +25,14 @@ async function runCli(...args: string[]): Promise<{ stdout: string; stderr: stri
   }
 }
 
+async function runCliJson(...args: string[]) {
+  const result = await runCli(...args)
+  return {
+    ...result,
+    json: result.stdout ? JSON.parse(result.stdout) : null,
+  }
+}
+
 async function setupTestWorkspace() {
   await $`rm -rf ${TEST_DIR}`.quiet().nothrow()
   await $`mkdir -p ${TEST_DIR}/test-app`.quiet()
@@ -211,6 +219,29 @@ describe('CLI e2e tests', () => {
       expect(stdout).toContain('2')
       expect(stdout).toContain('Backed up')
     })
+
+    it('should return machine output in json mode', async () => {
+      await Bun.write(join(TEST_DIR, 'test-app/.env'), 'TEST_VAR=test_value\n')
+
+      const { json, exitCode } = await runCliJson('--json', 'backup', '-f')
+
+      expect(exitCode).toBe(0)
+      expect(json.command).toBe('backup')
+      expect(json.ok).toBe(true)
+      expect(json.data.backedUp).toBe(1)
+      expect(json.data.files).toContain('test-app/.env')
+    })
+
+    it('should require force in json mode for real backup writes', async () => {
+      await Bun.write(join(TEST_DIR, 'test-app/.env'), 'TEST_VAR=test_value\n')
+
+      const { json, exitCode } = await runCliJson('--json', 'backup')
+
+      expect(exitCode).toBe(1)
+      expect(json.command).toBe('backup')
+      expect(json.ok).toBe(false)
+      expect(json.issues[0].code).toBe('PROMPT_REQUIRED')
+    })
   })
 
   describe('restore command', () => {
@@ -295,6 +326,28 @@ describe('CLI e2e tests', () => {
       expect(exitCode).toBe(0)
       expect(stdout).toContain('Restored')
     })
+
+    it('should list backups in json mode', async () => {
+      const timestamp = createTimestampDir()
+      await $`mkdir -p ${BACKUP_DIR}/${timestamp}/test-app`.quiet()
+      await Bun.write(join(BACKUP_DIR, timestamp, 'test-app/.env'), 'BACKUP_VAR=backup_value\n')
+
+      const { json, exitCode } = await runCliJson('--json', 'restore', '--list')
+
+      expect(exitCode).toBe(0)
+      expect(json.command).toBe('restore.list')
+      expect(json.ok).toBe(true)
+      expect(json.data.snapshots[0].timestamp).toBe(timestamp)
+    })
+
+    it('should fail with structured json when no backups exist', async () => {
+      const { json, exitCode } = await runCliJson('--json', 'restore', '-f')
+
+      expect(exitCode).toBe(1)
+      expect(json.command).toBe('restore')
+      expect(json.ok).toBe(false)
+      expect(json.issues[0].code).toBe('NO_BACKUPS')
+    })
   })
 
   // NOTE: sync command tests are skipped because they require 1Password CLI
@@ -377,6 +430,40 @@ describe('CLI e2e tests', () => {
       // In quiet mode, should have minimal output
       expect(stdout.length).toBeLessThan(100)
     })
+
+    it('should use config file values and allow cli overrides', async () => {
+      await Bun.write(join(TEST_DIR, 'test-app/.env'), 'VAR=value\n')
+      await Bun.write(
+        join(TEST_DIR, 'envi.json'),
+        JSON.stringify(
+          {
+            backupDir: 'configured-backups',
+          },
+          null,
+          2,
+        ) + '\n',
+      )
+
+      const configured = await runCli('--config', 'envi.json', 'backup', '-f')
+      expect(configured.exitCode).toBe(0)
+      const configuredBackups = new Bun.Glob('**/.env')
+      let configuredCount = 0
+      for await (const _entry of configuredBackups.scan({ cwd: join(TEST_DIR, 'configured-backups'), dot: true })) {
+        configuredCount++
+      }
+      expect(configuredCount).toBe(1)
+
+      await $`rm -rf ${TEST_DIR}/configured-backups ${TEST_DIR}/cli-backups`.quiet().nothrow()
+
+      const overridden = await runCli('--config', 'envi.json', '--backup-dir', 'cli-backups', 'backup', '-f')
+      expect(overridden.exitCode).toBe(0)
+      let cliCount = 0
+      for await (const _entry of configuredBackups.scan({ cwd: join(TEST_DIR, 'cli-backups'), dot: true })) {
+        cliCount++
+      }
+      expect(cliCount).toBe(1)
+      expect(await Bun.file(join(TEST_DIR, 'configured-backups')).exists()).toBe(false)
+    })
   })
 
   describe('--env flag', () => {
@@ -444,6 +531,13 @@ QUOTED="value with spaces"
       // Verify content preserved
       const restored = await Bun.file(join(TEST_DIR, 'test-app/.env')).text()
       expect(restored).toBe(content)
+    })
+
+    it('should fail on invalid provider opt format', async () => {
+      const { stdout, stderr, exitCode } = await runCli('--provider-opt', 'backend', 'backup', '-f')
+
+      expect(exitCode).toBe(1)
+      expect(stdout + stderr).toContain('Invalid --provider-opt format')
     })
   })
 })

@@ -83,8 +83,22 @@ interface GlobalOptions {
   config?: string
   only?: string
   output?: string
-  template?: string
+  templateFile?: string
   backupDir?: string
+}
+
+interface RunActionOptions extends GlobalOptions {
+  envFile?: string | string[]
+  template?: boolean
+  '--'?: string[]
+}
+
+function rewriteTemplateFlag(args: string[]): string[] {
+  return args.map((arg) => {
+    if (arg === '--template') return '--template-file'
+    if (arg.startsWith('--template=')) return `--template-file=${arg.slice('--template='.length)}`
+    return arg
+  })
 }
 
 function parseProviderOpts(opts: string | string[] | undefined): Record<string, string> {
@@ -138,7 +152,7 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
   const onlyPaths = parseOnlyFlag(options.only)
   if (onlyPaths !== undefined) overrides['paths'] = onlyPaths
   if (options.output !== undefined) overrides['outputFile'] = options.output
-  if (options.template !== undefined) overrides['templateFile'] = options.template
+  if (options.templateFile !== undefined) overrides['templateFile'] = options.templateFile
   if (options.backupDir !== undefined) overrides['backupDir'] = options.backupDir
   if (options.quiet !== undefined) overrides['quiet'] = options.quiet
   if (options.json !== undefined) overrides['json'] = options.json
@@ -205,7 +219,7 @@ cli.option('--provider-opt <key=value>', 'Provider-specific option (repeatable)'
 cli.option('--config <path>', 'Load config from JSON file')
 cli.option('--only <paths>', 'Only process specified paths (comma-separated)')
 cli.option('--output <file>', `Output file name (default: ${DEFAULT_OUTPUT_FILE})`)
-cli.option('--template <file>', `Template file name (default: ${DEFAULT_TEMPLATE_FILE})`)
+cli.option('--template-file <file>', `Template file name (default: ${DEFAULT_TEMPLATE_FILE})`)
 cli.option('--backup-dir <dir>', `Backup directory (default: ${DEFAULT_BACKUP_DIR})`)
 
 addExamples(cli.command('status', 'Show .env status and auth'), [
@@ -294,12 +308,26 @@ addExamples(
     'envi run --no-template --env-file .env.secrets -- ./deploy.sh',
     'envi run -e prod -- node server.js',
   ],
-).action(async (command: string[] | string, options: { envFile?: string[]; template?: boolean } & GlobalOptions) => {
-  const childCommand = Array.isArray(command) ? command : command ? [command] : []
-  await withGlobalOptions(options, () =>
+).action(async (command: string[] | string, options: RunActionOptions) => {
+  const parsedOptions: RunActionOptions =
+    options ?? ((typeof command === 'object' && !Array.isArray(command) ? command : {}) as RunActionOptions)
+  const envFiles = Array.isArray(parsedOptions.envFile)
+    ? parsedOptions.envFile
+    : parsedOptions.envFile
+      ? [parsedOptions.envFile]
+      : undefined
+  const childCommand =
+    Array.isArray(command) && command.length > 0
+      ? command
+      : typeof command === 'string'
+        ? [command]
+        : Array.isArray(parsedOptions['--'])
+          ? parsedOptions['--']
+          : []
+  await withGlobalOptions(parsedOptions, () =>
     runCommand(childCommand, {
-      ...(options.envFile ? { envFile: options.envFile } : {}),
-      noTemplate: options.template === false,
+      ...(envFiles ? { envFile: envFiles } : {}),
+      noTemplate: parsedOptions.template === false,
     }),
   )
 })
@@ -314,7 +342,7 @@ addExamples(
 })
 
 try {
-  const parsed = cli.parse(process.argv, { run: false })
+  const parsed = cli.parse([process.argv[0]!, process.argv[1]!, ...rewriteTemplateFlag(rawArgs)], { run: false })
   if (!cli.matchedCommand && parsed.args[0]) {
     throw new Error(`unknown command ${parsed.args[0]}`)
   }

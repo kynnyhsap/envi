@@ -4,7 +4,17 @@ import type { RuntimeAdapter } from './runtime/contracts'
 
 export const SDK_SCHEMA_VERSION = 1 as const
 
-export type EnviCommand = 'status' | 'diff' | 'sync' | 'validate' | 'resolve' | 'run.resolve'
+export type EnviCommand =
+  | 'status'
+  | 'diff'
+  | 'sync'
+  | 'validate'
+  | 'resolve'
+  | 'run.resolve'
+  | 'backup'
+  | 'backup.list'
+  | 'restore'
+  | 'restore.list'
 
 export interface Issue {
   code: string
@@ -56,6 +66,7 @@ export interface EnvPathInfo {
 
 export interface PromptAdapter {
   confirm?: (message: string, defaultValue?: boolean) => Promise<boolean>
+  select?: (args: { message: string; choices: Array<{ name: string; value: string }> }) => Promise<string>
 }
 
 export interface ExecutionContext {
@@ -239,6 +250,60 @@ export interface RunResolveData {
 
 export type RunResolveResult = JsonEnvelope<RunResolveData, 'run.resolve'>
 
+export interface BackupSnapshotFileData {
+  originalPath: string
+  size: number
+  modifiedAt: string
+}
+
+export interface BackupSnapshotData {
+  timestamp: string
+  path: string
+  files: BackupSnapshotFileData[]
+}
+
+export interface BackupData {
+  backupDir: string
+  snapshots?: BackupSnapshotData[]
+  dryRun?: boolean
+  force?: boolean
+  found?: number
+  backupRoot?: string | null
+  files?: string[]
+  backedUp?: number
+  errors?: Array<{ path: string; error: string }>
+}
+
+export interface BackupOperationOptions {
+  force?: boolean
+  dryRun?: boolean
+  list?: boolean
+}
+
+export type BackupResult = JsonEnvelope<BackupData, 'backup'> | JsonEnvelope<BackupData, 'backup.list'>
+
+export interface RestoreData {
+  backupDir: string
+  snapshots?: BackupSnapshotData[]
+  selectedSnapshot?: string
+  files?: string[]
+  dryRun?: boolean
+  force?: boolean
+  wouldOverwrite?: string[]
+  wouldRestore?: string[]
+  restored?: number
+  failed?: number
+  errors?: Array<{ path: string; error: string }>
+}
+
+export interface RestoreOperationOptions {
+  force?: boolean
+  dryRun?: boolean
+  list?: boolean
+}
+
+export type RestoreResult = JsonEnvelope<RestoreData, 'restore'> | JsonEnvelope<RestoreData, 'restore.list'>
+
 export interface EnviEngine {
   readonly options: RuntimeOptions
   status(): Promise<StatusResult>
@@ -247,4 +312,6 @@ export interface EnviEngine {
   validate(options?: ValidateOperationOptions): Promise<ValidateResult>
   resolveSecret(options: ResolveSecretOperationOptions): Promise<ResolveSecretResult>
   resolveRunEnvironment(options?: ResolveRunEnvironmentOperationOptions): Promise<RunResolveResult>
+  backup(options?: BackupOperationOptions): Promise<BackupResult>
+  restore(options?: RestoreOperationOptions): Promise<RestoreResult>
 }

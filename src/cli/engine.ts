@@ -1,10 +1,19 @@
-import { getConfig, getProvider } from '../app/config'
+import { select } from '@inquirer/prompts'
+
+import { getConfig } from '../app/config'
+import { createProvider } from '../providers'
 import { createBunRuntimeAdapter, createEnviEngine } from '../sdk'
 import { promptConfirm } from '../shared/helpers'
 
 export function createCliEngine() {
   const config = getConfig()
-  const provider = getProvider()
+  const provider = createProvider(config.providerOptions)
+  const prompts = config.json
+    ? undefined
+    : {
+        confirm: promptConfirm,
+        select: (args: { message: string; choices: Array<{ name: string; value: string }> }) => select(args),
+      }
 
   return createEnviEngine({
     options: {
@@ -20,8 +29,6 @@ export function createCliEngine() {
     },
     provider,
     runtime: createBunRuntimeAdapter(),
-    prompts: {
-      confirm: promptConfirm,
-    },
+    ...(prompts ? { prompts } : {}),
   })
 }

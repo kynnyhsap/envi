@@ -7,7 +7,7 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 
 **Type check:** `bun run typecheck`
 **Test:** `bun test`
-**Live E2E:** `bun run test:e2e:1password` (requires local `.env.local` token)
+**Live E2E:** `bun run test:e2e:1password` (uses repo-root `.env.test` or `.env.local`)
 **Benchmark:** `bun run bench:e2e` (requires local `.env.local` token)
 **Seed example vaults:** `bun run examples:setup` (requires local `.env.local` token)
 **Cleanup example vaults:** `bun run examples:cleanup` (requires local `.env.local` token)
@@ -15,6 +15,16 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 **Build SDK (publish):** `bun run build:sdk`
 
 **Config:** load `envi.json` by default if present; override with `--config <path>`.
+
+## Testing
+
+- Local/unit/integration coverage runs with `bun test`
+- CLI local E2E lives in `src/cli/cli.e2e.test.ts`
+- Live 1Password E2E lives in `src/cli/cli.1password.live.e2e.ts`
+- Live E2E loads repo-root `.env.test` first, then `.env.local`
+- When making code changes, run the smallest relevant test slice first, then run the broader suite before calling the work done
+- When doing a refactor or touching CLI/SDK/runtime/provider wiring, always run at least `bun run typecheck`, `bun test`, and `bun run lint`
+- When changing critical 1Password flows (`status`, `diff`, `sync`, `validate`, `resolve`, `run`, `backup`, `restore`) or shared CLI parsing/config behavior, also run `bun run test:e2e:1password` unless the user explicitly asks not to or required credentials are unavailable
 
 ## Config and Precedence
 
@@ -26,10 +36,10 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 
 ## Architecture
 
-- Core commands (`status`, `diff`, `sync`, `validate`, `resolve`, `run`) are SDK-backed; keep `src/commands/*.command.ts` as presenters.
+- Core commands (`status`, `diff`, `sync`, `validate`, `resolve`, `run`) are SDK-backed; keep `src/cli/commands/*.ts` as presenters.
 - Envi is 1Password-only today. Keep the provider boundary intact, but assume a single `OnePasswordProvider` behind it.
 - Provider options still flow as `Record<string, string>` so CLI/SDK wiring stays simple and extensible.
-- Platform boundaries shared across CLI/SDK/providers live in `src/runtime/*` (avoid provider -> SDK imports to prevent cycles).
+- Process/platform boundaries shared across CLI/SDK/providers live in `src/shared/process/*` and `src/sdk/runtime/*` (avoid provider -> SDK imports to prevent cycles).
 - Canonical machine output is the SDK JSON envelope (`src/sdk/json.ts`); CLI `--json` prints it directly (no reshaping).
 - SDK results are safe by default (redacted); operations that surface values support `includeSecrets` as an explicit escape hatch.
 
@@ -56,4 +66,4 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 
 - Code-adjacent `AGENTS.md` files under `src/**/` contain module-specific quirks and are loaded automatically when working in those areas.
 - `examples/` should stay small, 1Password-only, and limited to real supported workflows.
-- Local-only service account tokens live in repo-root `.env.local` (gitignored).
+- Local-only service account tokens live in repo-root `.env.test` or `.env.local` (both gitignored).

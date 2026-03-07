@@ -17,16 +17,20 @@ export {
 export type { Provider, ProviderType, SecretReference, SecretReferenceValidationResult } from '../providers'
 
 export type {
+  BackupResult,
+  BackupOperationOptions,
   EnviCommand,
   EnviEngine,
-  RuntimeOptions,
-  RuntimeOptionsInput,
   Issue,
   JsonEnvelope,
-  StatusResult,
   DiffResult,
+  ResolveSecretResult,
+  RestoreOperationOptions,
+  RestoreResult,
+  RunResolveResult,
+  RuntimeOptions,
+  RuntimeOptionsInput,
+  StatusResult,
   SyncResult,
   ValidateResult,
-  ResolveSecretResult,
-  RunResolveResult,
 } from './types'

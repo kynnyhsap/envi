@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 
 import packageJson from '../../package.json'
-import { createProvider, type Provider, type ProviderType } from '../providers'
+import type { ProviderType } from '../providers'
 import { DEFAULT_ENVIRONMENT } from '../shared/env/variables'
 
 export const VERSION = packageJson.version
@@ -36,18 +36,8 @@ let runtimeConfig: RuntimeConfig = {
   providerOptions: {},
 }
 
-let providerInstance: Provider | null = null
-
 export function setRuntimeConfig(config: Partial<RuntimeConfig>): void {
   runtimeConfig = { ...runtimeConfig, ...config }
-  providerInstance = createProvider(runtimeConfig.providerOptions)
-}
-
-export function getProvider(): Provider {
-  if (!providerInstance) {
-    throw new Error('Provider not initialized. Call setRuntimeConfig() first.')
-  }
-  return providerInstance
 }
 
 export function getConfig(): RuntimeConfig {

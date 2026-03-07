@@ -30,7 +30,12 @@ export function createBunRuntimeAdapter(): RuntimeAdapter {
     },
 
     async exists(filePath: string) {
-      return bun.file(filePath).exists()
+      try {
+        await bun.file(filePath).stat()
+        return true
+      } catch {
+        return false
+      }
     },
 
     async readText(filePath: string) {
@@ -94,6 +99,41 @@ export function createBunRuntimeAdapter(): RuntimeAdapter {
 
         if (parts.includes('node_modules')) continue
         if (rel === backupDir || rel.startsWith(`${backupDir}/`)) continue
+
+        matches.push(rel)
+      }
+
+      return matches.sort((a, b) => a.localeCompare(b))
+    },
+
+    async findFilesNamed(rootDir: string, fileName: string, excludeDirs: string[] = []) {
+      const matches: string[] = []
+      const glob = new bun.Glob(`**/${fileName}`)
+
+      for await (const entry of glob.scan({ cwd: rootDir, dot: true, onlyFiles: true })) {
+        const rel = String(entry).replace(/\\/g, '/')
+        const parts = rel.split('/')
+
+        if (parts.includes('node_modules')) continue
+        if (excludeDirs.some((dir) => rel === dir || rel.startsWith(`${dir}/`))) continue
+
+        matches.push(rel)
+      }
+
+      return matches.sort((a, b) => a.localeCompare(b))
+    },
+
+    async findFilesWithPrefix(rootDir: string, prefix: string, excludeDirs: string[] = []) {
+      const matches: string[] = []
+      const glob = new bun.Glob(`**/${prefix}*`)
+
+      for await (const entry of glob.scan({ cwd: rootDir, dot: true, onlyFiles: true })) {
+        const rel = String(entry).replace(/\\/g, '/')
+        const parts = rel.split('/')
+
+        if (parts.includes('node_modules')) continue
+        if (excludeDirs.some((dir) => rel === dir || rel.startsWith(`${dir}/`))) continue
+        if (!path.basename(rel).startsWith(prefix)) continue
 
         matches.push(rel)
       }

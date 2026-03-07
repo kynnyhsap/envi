@@ -1,6 +1,8 @@
 import { createProvider } from '../providers'
+import { backupOperation } from './operations/backup'
 import { diffOperation } from './operations/diff'
 import { resolveSecretOperation } from './operations/resolve'
+import { restoreOperation } from './operations/restore'
 import { resolveRunEnvironmentOperation } from './operations/run-resolve'
 import { statusOperation } from './operations/status'
 import { syncOperation } from './operations/sync'
@@ -65,6 +67,14 @@ export function createEnviEngine(opts: CreateEngineOptions = {}): EnviEngine {
 
     async resolveRunEnvironment(operationOptions) {
       return resolveRunEnvironmentOperation(ctx, operationOptions)
+    },
+
+    async backup(operationOptions) {
+      return backupOperation(ctx, operationOptions)
+    },
+
+    async restore(operationOptions) {
+      return restoreOperation(ctx, operationOptions)
     },
   }
 }

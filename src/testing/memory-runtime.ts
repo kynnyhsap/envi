@@ -34,5 +34,11 @@ export function createMemoryRuntime(args: {
     async findTemplateFiles() {
       return args.templateMatches
     },
+    async findFilesNamed() {
+      return []
+    },
+    async findFilesWithPrefix() {
+      return []
+    },
   }
 }

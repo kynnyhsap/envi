@@ -21,6 +21,22 @@ async function walkForTemplateFiles(
   backupRoot: string,
   out: string[],
 ): Promise<void> {
+  await walkForMatchingFiles(dirPath, {
+    matchFile: (entryName) => entryName === templateFile,
+    skipDir: (entryName, normalizedPath) =>
+      entryName === 'node_modules' || normalizedPath === backupRoot || normalizedPath.startsWith(`${backupRoot}/`),
+    out,
+  })
+}
+
+async function walkForMatchingFiles(
+  dirPath: string,
+  args: {
+    matchFile: (entryName: string) => boolean
+    skipDir?: (entryName: string, normalizedPath: string) => boolean
+    out: string[]
+  },
+): Promise<void> {
   let entries
   try {
     entries = await readdir(dirPath, { withFileTypes: true })
@@ -33,14 +49,13 @@ async function walkForTemplateFiles(
     const normalized = absolutePath.replace(/\\/g, '/')
 
     if (entry.isDirectory()) {
-      if (entry.name === 'node_modules') continue
-      if (normalized === backupRoot || normalized.startsWith(`${backupRoot}/`)) continue
-      await walkForTemplateFiles(absolutePath, templateFile, backupRoot, out)
+      if (args.skipDir?.(entry.name, normalized)) continue
+      await walkForMatchingFiles(absolutePath, args)
       continue
     }
 
-    if (entry.isFile() && entry.name === templateFile) {
-      out.push(absolutePath)
+    if (entry.isFile() && args.matchFile(entry.name)) {
+      args.out.push(absolutePath)
     }
   }
 }
@@ -97,6 +112,43 @@ export function createFsRuntimeAdapter(): RuntimeAdapter {
 
       const relative = matches.map((match) => path.relative(absoluteRoot, match).replace(/\\/g, '/'))
       return relative.sort((a, b) => a.localeCompare(b))
+    },
+
+    async findFilesNamed(rootDir: string, fileName: string, excludeDirs: string[] = []) {
+      const absoluteRoot = path.resolve(rootDir)
+      const excluded = excludeDirs.map((dir) => path.resolve(absoluteRoot, dir).replace(/\\/g, '/'))
+      const matches: string[] = []
+
+      await walkForMatchingFiles(absoluteRoot, {
+        matchFile: (entryName) => entryName === fileName,
+        skipDir: (entryName, normalizedPath) => {
+          if (entryName === 'node_modules') return true
+          return excluded.some((dir) => normalizedPath === dir || normalizedPath.startsWith(`${dir}/`))
+        },
+        out: matches,
+      })
+
+      return matches
+        .map((match) => path.relative(absoluteRoot, match).replace(/\\/g, '/'))
+        .sort((a, b) => a.localeCompare(b))
+    },
+
+    async findFilesWithPrefix(rootDir: string, prefix: string, excludeDirs: string[] = []) {
+      const absoluteRoot = path.resolve(rootDir)
+      const excluded = excludeDirs.map((dir) => path.resolve(absoluteRoot, dir).replace(/\\/g, '/'))
+      const matches: string[] = []
+
+      await walkForMatchingFiles(absoluteRoot, {
+        matchFile: (entryName) => entryName.startsWith(prefix),
+        skipDir: (_entryName, normalizedPath) => {
+          return excluded.some((dir) => normalizedPath === dir || normalizedPath.startsWith(`${dir}/`))
+        },
+        out: matches,
+      })
+
+      return matches
+        .map((match) => path.relative(absoluteRoot, match).replace(/\\/g, '/'))
+        .sort((a, b) => a.localeCompare(b))
     },
   }
 }
