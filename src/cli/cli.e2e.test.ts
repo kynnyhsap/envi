@@ -92,6 +92,40 @@ describe('CLI e2e tests', () => {
       expect(stdout).toContain('envi')
     })
 
+    it('should show help command output', async () => {
+      const { stdout, exitCode } = await runCli('help')
+
+      expect(exitCode).toBe(0)
+      expect(stdout).toContain('COMMANDS')
+      expect(stdout).toContain('status')
+    })
+
+    it('should show subcommand help via help command', async () => {
+      const { stdout, exitCode } = await runCli('help', 'status')
+
+      expect(exitCode).toBe(0)
+      expect(stdout).toContain('Show .env status and auth')
+      expect(stdout).toContain('envi status [options]')
+    })
+
+    it('should return root help as json', async () => {
+      const { json, exitCode } = await runCliJson('help', '--json')
+
+      expect(exitCode).toBe(0)
+      expect(json.name).toBe('envi')
+      expect(json.version).toBeDefined()
+      expect(json.commands.some((command: { name: string }) => command.name === 'status')).toBe(true)
+    })
+
+    it('should return subcommand help as json', async () => {
+      const { json, exitCode } = await runCliJson('help', 'resolve', '--json')
+
+      expect(exitCode).toBe(0)
+      expect(json.command.name).toBe('resolve')
+      expect(json.command.description).toContain('Resolve one or more')
+      expect(json.options.some((option: { flags: string }) => option.flags === '--json')).toBe(true)
+    })
+
     it('should show help when no command provided', async () => {
       const { stdout, exitCode } = await runCli()
 

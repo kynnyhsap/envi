@@ -13,7 +13,7 @@ import {
   loadConfigFile,
   type ConfigFile,
 } from '../app/config'
-import { resolveRuntimeOptions } from '../sdk'
+import { resolveRuntimeOptions, stringifyEnvelope } from '../sdk'
 import { DEFAULT_ENVIRONMENT } from '../shared/env/variables'
 import {
   statusCommand,
@@ -37,6 +37,17 @@ interface CommandHelp {
   usage: string
   options?: HelpOption[]
   examples?: string[]
+}
+
+interface HelpJsonPayload {
+  name: string
+  version: string
+  description: string
+  usage: string
+  options: HelpOption[]
+  examples: string[]
+  commands?: Array<Pick<CommandHelp, 'name' | 'description' | 'usage'>>
+  command?: CommandHelp
 }
 
 const GLOBAL_HELP_OPTIONS: HelpOption[] = [
@@ -138,6 +149,70 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
   },
 }
 
+const ROOT_HELP_EXAMPLES = [
+  'envi help',
+  'envi status',
+  'envi diff',
+  'envi sync -d                    # dry run',
+  'envi sync --only engine/api     # single path',
+  'envi resolve op://vault/item/field',
+  'envi backup',
+  'envi restore --list',
+]
+
+function getCommandNames(): string[] {
+  return ['help', ...Object.keys(COMMAND_HELP)]
+}
+
+function buildRootHelpJson(): HelpJsonPayload {
+  return {
+    name: 'envi',
+    version: VERSION,
+    description: 'Manage .env files with 1Password',
+    usage: 'envi <command> [options]',
+    options: GLOBAL_HELP_OPTIONS,
+    examples: ROOT_HELP_EXAMPLES,
+    commands: getCommandNames().map((name) => {
+      if (name === 'help') {
+        return {
+          name: 'help',
+          description: 'Show root or subcommand help',
+          usage: 'envi help [command] [options]',
+        }
+      }
+      const command = COMMAND_HELP[name]!
+      return {
+        name: command.name,
+        description: command.description,
+        usage: command.usage,
+      }
+    }),
+  }
+}
+
+function buildCommandHelpJson(commandName: string): HelpJsonPayload | null {
+  const command = COMMAND_HELP[commandName]
+  if (!command) return null
+
+  return {
+    name: 'envi',
+    version: VERSION,
+    description: command.description,
+    usage: command.usage,
+    options: [...(command.options ?? []), ...GLOBAL_HELP_OPTIONS],
+    examples: command.examples ?? [],
+    command,
+  }
+}
+
+function writeHelpJson(commandName?: string): void {
+  const payload = commandName ? buildCommandHelpJson(commandName) : buildRootHelpJson()
+  if (!payload) {
+    throw new Error(`unknown command ${commandName}`)
+  }
+  process.stdout.write(stringifyEnvelope(payload))
+}
+
 function printOptionTable(options: HelpOption[]): void {
   const width = Math.max(...options.map((option) => option.flags.length))
   for (const option of options) {
@@ -184,6 +259,7 @@ function showHelp(commandName?: string): void {
   console.info(`  ${pc.cyan('envi')} ${pc.yellow('<command>')} ${pc.dim('[options]')}`)
   console.info('')
   console.info(pc.bold('COMMANDS'))
+  console.info(`  ${pc.yellow('help')}                Show root or subcommand help`)
   console.info(`  ${pc.yellow('status')}              Show .env status and auth`)
   console.info(`  ${pc.yellow('diff')}                Show differences between local and provider`)
   console.info(`  ${pc.yellow('sync')}                Sync .env files from templates`)
@@ -197,13 +273,11 @@ function showHelp(commandName?: string): void {
   printOptionTable(GLOBAL_HELP_OPTIONS)
   console.info('')
   console.info(pc.bold('EXAMPLES'))
-  console.info(`  ${pc.dim('$')} envi status`)
-  console.info(`  ${pc.dim('$')} envi diff`)
-  console.info(`  ${pc.dim('$')} envi sync -d                    ${pc.dim('# dry run')}`)
-  console.info(`  ${pc.dim('$')} envi sync --only engine/api     ${pc.dim('# single path')}`)
-  console.info(`  ${pc.dim('$')} envi resolve op://vault/item/field`)
-  console.info(`  ${pc.dim('$')} envi backup`)
-  console.info(`  ${pc.dim('$')} envi restore --list`)
+  for (const example of ROOT_HELP_EXAMPLES) {
+    const [command, comment] = example.split('#')
+    const suffix = comment ? ` ${pc.dim(`#${comment}`)}` : ''
+    console.info(`  ${pc.dim('$')} ${command?.trimEnd()}${suffix}`)
+  }
   console.info('')
 }
 
@@ -338,6 +412,23 @@ function isVersionFlag(arg: string | undefined): boolean {
   return arg === '-v' || arg === '--version'
 }
 
+function isJsonFlag(arg: string | undefined): boolean {
+  return arg === '--json'
+}
+
+function findHelpCommandName(args: string[]): string | undefined {
+  const helpIndex = args.indexOf('help')
+  if (helpIndex === -1) return undefined
+
+  for (let index = helpIndex + 1; index < args.length; index++) {
+    const arg = args[index]
+    if (!arg || arg.startsWith('-')) continue
+    return arg
+  }
+
+  return undefined
+}
+
 function findCommandName(args: string[]): string | undefined {
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]
@@ -373,8 +464,23 @@ if (rawArgs.filter((arg) => !arg.startsWith('-')).length === 0 && rawArgs.some((
   process.exit(0)
 }
 
+if (rawArgs[0] === 'help') {
+  const commandName = findHelpCommandName(rawArgs)
+  if (rawArgs.some((arg) => isJsonFlag(arg))) {
+    writeHelpJson(commandName)
+  } else {
+    showHelp(commandName)
+  }
+  process.exit(0)
+}
+
 if (rawArgs.length === 0 || rawArgs.some((arg) => isHelpFlag(arg))) {
-  showHelp(findCommandName(rawArgs))
+  const commandName = findCommandName(rawArgs)
+  if (rawArgs.some((arg) => isJsonFlag(arg))) {
+    writeHelpJson(commandName)
+  } else {
+    showHelp(commandName)
+  }
   process.exit(0)
 }
 
