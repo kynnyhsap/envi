@@ -26,7 +26,157 @@ import {
   validateCommand,
 } from './commands'
 
-function showHelp(): void {
+interface HelpOption {
+  flags: string
+  description: string
+}
+
+interface CommandHelp {
+  name: string
+  description: string
+  usage: string
+  options?: HelpOption[]
+  examples?: string[]
+}
+
+const GLOBAL_HELP_OPTIONS: HelpOption[] = [
+  { flags: '-q, --quiet', description: 'Suppress non-essential output' },
+  { flags: '--json', description: 'Output machine-readable JSON' },
+  {
+    flags: '-e, --env <name>',
+    description: `Environment name for ${'${ENV}'} substitution (default: ${DEFAULT_ENVIRONMENT})`,
+  },
+  { flags: '--provider-opt <k=v>', description: 'Provider-specific option (repeatable)' },
+  { flags: '--config <path>', description: 'Load config from JSON file' },
+  { flags: '--only <paths>', description: 'Only process specified paths (comma-separated)' },
+  { flags: '--output <file>', description: `Output file name (default: ${DEFAULT_OUTPUT_FILE})` },
+  { flags: '--template-file <file>', description: `Template file name (default: ${DEFAULT_TEMPLATE_FILE})` },
+  { flags: '--backup-dir <dir>', description: `Backup directory (default: ${DEFAULT_BACKUP_DIR})` },
+  { flags: '--no-color', description: 'Disable ANSI colors' },
+  { flags: '-v, --version', description: 'Show version' },
+  { flags: '-h, --help', description: 'Show this help' },
+]
+
+const COMMAND_HELP: Record<string, CommandHelp> = {
+  status: {
+    name: 'status',
+    description: 'Show .env status and auth',
+    usage: 'envi status [options]',
+    examples: ['envi status', 'envi status --only engine/api'],
+  },
+  diff: {
+    name: 'diff',
+    description: 'Show differences between local and provider',
+    usage: 'envi diff [options]',
+    options: [{ flags: '-p, --path <path>', description: 'Check specific path only' }],
+    examples: ['envi diff', 'envi diff --path engine/api'],
+  },
+  sync: {
+    name: 'sync',
+    description: 'Sync .env files from templates',
+    usage: 'envi sync [options]',
+    options: [
+      { flags: '-f, --force', description: 'Skip confirmation prompts' },
+      { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
+      { flags: '--no-backup', description: 'Skip automatic backup before syncing' },
+    ],
+    examples: ['envi sync', 'envi sync -d', 'envi sync -f', 'envi sync --no-backup', 'envi sync --only engine/api'],
+  },
+  resolve: {
+    name: 'resolve',
+    description: 'Resolve one or more secret references to their values',
+    usage: 'envi resolve <reference...> [options]',
+    examples: [
+      'envi resolve op://core-${ENV}/engine-api/SECRET',
+      'envi resolve op://vault/app/API_KEY op://vault/app/JWT_SECRET',
+    ],
+  },
+  backup: {
+    name: 'backup',
+    description: 'Backup current .env files (creates timestamped snapshot)',
+    usage: 'envi backup [options]',
+    options: [
+      { flags: '-f, --force', description: 'Skip confirmation prompts' },
+      { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
+      { flags: '-l, --list', description: 'List available backup snapshots' },
+    ],
+    examples: ['envi backup', 'envi backup -d', 'envi backup -f', 'envi backup --list'],
+  },
+  restore: {
+    name: 'restore',
+    description: 'Restore .env files from backup',
+    usage: 'envi restore [options]',
+    options: [
+      { flags: '-f, --force', description: 'Skip confirmation prompts (uses most recent backup)' },
+      { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
+      { flags: '-l, --list', description: 'List available backup snapshots' },
+    ],
+    examples: ['envi restore', 'envi restore --list', 'envi restore -f', 'envi restore -d'],
+  },
+  run: {
+    name: 'run',
+    description: 'Run a command with secrets injected as environment variables',
+    usage: 'envi run [options] -- <command> [args...]',
+    options: [
+      { flags: '--env-file <files...>', description: 'Load additional .env files (may contain secret refs)' },
+      { flags: '--no-template', description: 'Skip loading templates' },
+    ],
+    examples: [
+      'envi run -- node index.js',
+      'envi run -- npm start',
+      'envi run --env-file .env.local -- node index.js',
+      'envi run --no-template --env-file .env.secrets -- ./deploy.sh',
+      'envi run -e prod -- node server.js',
+    ],
+  },
+  validate: {
+    name: 'validate',
+    description: 'Validate all secret references in templates',
+    usage: 'envi validate [options]',
+    options: [{ flags: '-r, --remote', description: 'Check references against provider (slower, requires auth)' }],
+    examples: ['envi validate', 'envi validate --remote', 'envi validate --only engine/api'],
+  },
+}
+
+function printOptionTable(options: HelpOption[]): void {
+  const width = Math.max(...options.map((option) => option.flags.length))
+  for (const option of options) {
+    console.info(`  ${pc.green(option.flags.padEnd(width))}  ${option.description}`)
+  }
+}
+
+function showHelp(commandName?: string): void {
+  if (commandName) {
+    const command = COMMAND_HELP[commandName]
+    if (!command) {
+      showHelp()
+      return
+    }
+
+    console.info('')
+    console.info(pc.bold(pc.cyan('envi')) + ' ' + pc.yellow(command.name) + pc.dim(`  v${VERSION}`))
+    console.info(pc.dim(command.description))
+    console.info('')
+    console.info(pc.bold('USAGE'))
+    console.info(`  ${pc.cyan(command.usage)}`)
+    console.info('')
+
+    const options = [...(command.options ?? []), ...GLOBAL_HELP_OPTIONS]
+    console.info(pc.bold('OPTIONS'))
+    printOptionTable(options)
+
+    if (command.examples && command.examples.length > 0) {
+      console.info('')
+      console.info(pc.bold('EXAMPLES'))
+      for (const example of command.examples) {
+        console.info(`  ${pc.dim('$')} ${example}`)
+      }
+    }
+
+    console.info('')
+    return
+  }
+
   console.info('')
   console.info(pc.bold(pc.cyan('envi')) + pc.dim(` v${VERSION}`) + ' - Manage .env files with 1Password')
   console.info('')
@@ -37,32 +187,14 @@ function showHelp(): void {
   console.info(`  ${pc.yellow('status')}              Show .env status and auth`)
   console.info(`  ${pc.yellow('diff')}                Show differences between local and provider`)
   console.info(`  ${pc.yellow('sync')}                Sync .env files from templates`)
-  console.info(`  ${pc.yellow('resolve')}             Resolve one secret reference`)
+  console.info(`  ${pc.yellow('resolve')}             Resolve one or more secret references`)
   console.info(`  ${pc.yellow('backup')}              Backup current .env files (timestamped)`)
   console.info(`  ${pc.yellow('restore')}             Restore .env files from backup`)
   console.info(`  ${pc.yellow('run')}                 Run a command with secrets as env vars`)
   console.info(`  ${pc.yellow('validate')}            Validate all secret references in templates`)
   console.info('')
   console.info(pc.bold('GLOBAL OPTIONS'))
-  console.info(`  ${pc.green('-q, --quiet')}         Suppress non-essential output`)
-  console.info(`  ${pc.green('--json')}              Output machine-readable JSON`)
-  console.info(
-    `  ${pc.green('-e, --env')} ${pc.dim('<name>')}    Environment name for ${'${ENV}'} substitution ${pc.dim(`(default: ${DEFAULT_ENVIRONMENT})`)}`,
-  )
-  console.info(`  ${pc.green('--provider-opt')} ${pc.dim('<k=v>')} Provider-specific option (repeatable)`)
-  console.info(`  ${pc.green('--config')} ${pc.dim('<path>')}    Load config from JSON file`)
-  console.info(`  ${pc.green('--only')} ${pc.dim('<paths>')}      Only process specified paths (comma-separated)`)
-  console.info(
-    `  ${pc.green('--output')} ${pc.dim('<file>')}    Output file name ${pc.dim(`(default: ${DEFAULT_OUTPUT_FILE})`)}`,
-  )
-  console.info(
-    `  ${pc.green('--template')} ${pc.dim('<file>')}  Template file name ${pc.dim(`(default: ${DEFAULT_TEMPLATE_FILE})`)}`,
-  )
-  console.info(
-    `  ${pc.green('--backup-dir')} ${pc.dim('<dir>')} Backup directory ${pc.dim(`(default: ${DEFAULT_BACKUP_DIR})`)}`,
-  )
-  console.info(`  ${pc.green('-v, --version')}       Show version`)
-  console.info(`  ${pc.green('-h, --help')}          Show this help`)
+  printOptionTable(GLOBAL_HELP_OPTIONS)
   console.info('')
   console.info(pc.bold('EXAMPLES'))
   console.info(`  ${pc.dim('$')} envi status`)
@@ -78,6 +210,7 @@ function showHelp(): void {
 interface GlobalOptions {
   quiet?: boolean
   json?: boolean
+  color?: boolean
   env?: string
   providerOpt?: string | string[]
   config?: string
@@ -197,14 +330,51 @@ function toErrorMessage(error: unknown): string {
   return message
 }
 
-const rawArgs = process.argv.slice(2)
-if (rawArgs.length === 1 && ['-v', '--version'].includes(rawArgs[0]!)) {
+function isHelpFlag(arg: string | undefined): boolean {
+  return arg === '-h' || arg === '--help'
+}
+
+function isVersionFlag(arg: string | undefined): boolean {
+  return arg === '-v' || arg === '--version'
+}
+
+function findCommandName(args: string[]): string | undefined {
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]
+    if (!arg) continue
+    if (isHelpFlag(arg) || isVersionFlag(arg)) continue
+    if (arg === '--') break
+    if (arg.startsWith('-')) {
+      const takesValue =
+        arg === '--config' ||
+        arg === '--env' ||
+        arg === '--provider-opt' ||
+        arg === '--only' ||
+        arg === '--output' ||
+        arg === '--template-file' ||
+        arg === '--backup-dir'
+      const takesShortValue = arg === '-e'
+      if (takesValue || takesShortValue) {
+        index++
+      }
+      continue
+    }
+    if (arg === 'help') {
+      return args[index + 1]
+    }
+    return arg
+  }
+  return undefined
+}
+
+const rawArgs = rewriteTemplateFlag(process.argv.slice(2))
+if (rawArgs.filter((arg) => !arg.startsWith('-')).length === 0 && rawArgs.some((arg) => isVersionFlag(arg))) {
   console.info(VERSION)
   process.exit(0)
 }
 
-if (rawArgs.length === 0 || (rawArgs.length === 1 && ['-h', '--help'].includes(rawArgs[0]!))) {
-  showHelp()
+if (rawArgs.length === 0 || rawArgs.some((arg) => isHelpFlag(arg))) {
+  showHelp(findCommandName(rawArgs))
   process.exit(0)
 }
 
@@ -214,6 +384,7 @@ cli.help()
 
 cli.option('-q, --quiet', 'Suppress non-essential output')
 cli.option('--json', 'Output machine-readable JSON')
+cli.option('--no-color', 'Disable ANSI colors')
 cli.option('-e, --env <name>', 'Environment name for ${ENV} substitution')
 cli.option('--provider-opt <key=value>', 'Provider-specific option (repeatable)')
 cli.option('--config <path>', 'Load config from JSON file')
@@ -344,7 +515,7 @@ addExamples(
 })
 
 try {
-  const parsed = cli.parse([process.argv[0]!, process.argv[1]!, ...rewriteTemplateFlag(rawArgs)], { run: false })
+  const parsed = cli.parse([process.argv[0]!, process.argv[1]!, ...rawArgs], { run: false })
   if (!cli.matchedCommand && parsed.args[0]) {
     throw new Error(`unknown command ${parsed.args[0]}`)
   }

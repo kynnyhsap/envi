@@ -9,20 +9,32 @@ const TEST_DIR = join(import.meta.dir, '.test-workspace')
 const BACKUP_DIR = join(TEST_DIR, BACKUP_FOLDER_NAME)
 
 async function runCli(...args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  try {
-    const result = await $`bun ${CLI_PATH} ${args}`.cwd(TEST_DIR).quiet()
-    return {
-      stdout: result.stdout.toString(),
-      stderr: result.stderr.toString(),
-      exitCode: 0,
-    }
-  } catch (error: any) {
-    return {
-      stdout: error.stdout?.toString() ?? '',
-      stderr: error.stderr?.toString() ?? '',
-      exitCode: error.exitCode ?? 1,
+  return runCliWithEnv({}, ...args)
+}
+
+async function runCliWithEnv(
+  env: Record<string, string | undefined>,
+  ...args: string[]
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const mergedEnv: Record<string, string> = {}
+  for (const [key, value] of Object.entries({ ...process.env, ...env })) {
+    if (typeof value === 'string') {
+      mergedEnv[key] = value
     }
   }
+
+  const proc = Bun.spawn(['bun', CLI_PATH, ...args], {
+    cwd: TEST_DIR,
+    env: mergedEnv,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+
+  const exitCode = await proc.exited
+  const stdout = await new Response(proc.stdout).text()
+  const stderr = await new Response(proc.stderr).text()
+
+  return { stdout, stderr, exitCode }
 }
 
 async function runCliJson(...args: string[]) {
@@ -105,6 +117,34 @@ describe('CLI e2e tests', () => {
       expect(exitCode).toBe(0)
       expect(stdout).toContain('resolve')
       expect(stdout).toContain('op://')
+    })
+
+    it('should render colored subcommand help when color is enabled', async () => {
+      const { stdout, exitCode } = await runCliWithEnv({ FORCE_COLOR: '1', NO_COLOR: undefined }, 'status', '--help')
+
+      expect(exitCode).toBe(0)
+      expect(stdout).toContain('\u001b[')
+      expect(stdout).toContain('OPTIONS')
+    })
+
+    it('should disable help colors with --no-color', async () => {
+      const { stdout, exitCode } = await runCliWithEnv(
+        { FORCE_COLOR: '1', NO_COLOR: undefined },
+        '--no-color',
+        'status',
+        '--help',
+      )
+
+      expect(exitCode).toBe(0)
+      expect(stdout).not.toContain('\u001b[')
+      expect(stdout).toContain('--no-color')
+    })
+
+    it('should disable help colors with NO_COLOR', async () => {
+      const { stdout, exitCode } = await runCliWithEnv({ FORCE_COLOR: '1', NO_COLOR: '1' }, 'status', '--help')
+
+      expect(exitCode).toBe(0)
+      expect(stdout).not.toContain('\u001b[')
     })
   })
 
