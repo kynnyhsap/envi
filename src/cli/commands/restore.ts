@@ -13,7 +13,7 @@ function summarizeSnapshot(snapshot: { files?: Array<{ size: number }> }): { fil
   }
 }
 
-export async function restoreCommand(options: { force: boolean; dryRun: boolean; list: boolean }): Promise<void> {
+export async function restoreCommand(options: { dryRun: boolean; list: boolean; snapshot?: string }): Promise<void> {
   const { config, engine } = createCommandContext()
   const result = await engine.restore(options)
 
@@ -27,7 +27,10 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
 
     for (const snapshot of result.data.snapshots ?? []) {
       const { fileCount, sizeKb } = summarizeSnapshot(snapshot)
-      log.info(`  ${pc.cyan(snapshot.timestamp)}  ${pc.dim(`(${fileCount} files, ${sizeKb}KB)`)}`)
+      const label = snapshot.isLatest
+        ? `${snapshot.id} ${pc.dim(`(${formatBackupTimestamp(snapshot.timestamp)})`)}`
+        : snapshot.id
+      log.info(`  ${pc.cyan(label)}  ${pc.dim(`(${fileCount} files, ${sizeKb}KB)`)}`)
       for (const file of snapshot.files ?? []) {
         log.detail(`  ${file.originalPath}`)
       }
@@ -36,7 +39,6 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
     return
   }
 
-  const cancelled = result.issues.some((issue) => issue.code === 'CANCELLED')
   const noBackups = result.issues.some((issue) => issue.code === 'NO_BACKUPS')
   if (!result.ok && !noBackups) {
     printIssuesAndExit(result.issues)
@@ -57,16 +59,13 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
     return
   }
 
-  if (cancelled) {
-    log.info('')
-    log.skip(result.issues[0]?.message ?? 'Restore cancelled')
-    return
-  }
-
   const files = result.data.files ?? []
   const selectedSnapshot = result.data.selectedSnapshot
   if (selectedSnapshot) {
-    log.header(`Backup: ${formatBackupTimestamp(selectedSnapshot)}`)
+    log.header(`Backup: ${selectedSnapshot === 'latest' ? 'latest' : formatBackupTimestamp(selectedSnapshot)}`)
+    if (result.data.selectedSnapshotPath) {
+      log.detail(`Path: ${result.data.selectedSnapshotPath}`)
+    }
     log.info('')
     log.info(`  ${pc.green(String(files.length))} file(s) to restore:`)
     log.info('')

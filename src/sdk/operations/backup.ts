@@ -2,9 +2,8 @@ import { generateBackupTimestamp } from '../../app/config'
 import { makeEnvelope } from '../json'
 import type { BackupOperationOptions, BackupResult, ExecutionContext, Issue } from '../types'
 import {
-  backupFilesToRoot,
+  createLatestSnapshot,
   findEnvFilesForBackup,
-  getBackupRootInfo,
   listBackupSnapshots,
   toBackupSnapshotData,
 } from './backup-helpers'
@@ -13,7 +12,6 @@ export async function backupOperation(
   ctx: ExecutionContext,
   options: BackupOperationOptions = {},
 ): Promise<BackupResult> {
-  const force = options.force ?? false
   const dryRun = options.dryRun ?? false
   const list = options.list ?? false
 
@@ -40,7 +38,6 @@ export async function backupOperation(
       data: {
         backupDir: ctx.options.backupDir,
         dryRun,
-        force,
         found: 0,
         backupRoot: null,
         files: [],
@@ -52,7 +49,9 @@ export async function backupOperation(
     })
   }
 
-  const { backupRootRelative, backupRootAbsolute } = getBackupRootInfo(ctx, generateBackupTimestamp())
+  const createdAt = new Date().toISOString()
+  const snapshotId = generateBackupTimestamp()
+  const backupRootRelative = `${ctx.options.backupDir}/latest`
 
   if (dryRun) {
     return makeEnvelope({
@@ -61,7 +60,6 @@ export async function backupOperation(
       data: {
         backupDir: ctx.options.backupDir,
         dryRun: true,
-        force,
         found: envFiles.length,
         backupRoot: backupRootRelative,
         files: envFiles,
@@ -73,53 +71,11 @@ export async function backupOperation(
     })
   }
 
-  if (!force) {
-    if (!ctx.prompts?.confirm) {
-      return makeEnvelope({
-        command: 'backup',
-        ok: false,
-        data: {
-          backupDir: ctx.options.backupDir,
-          dryRun: false,
-          force: false,
-          found: envFiles.length,
-          backupRoot: backupRootRelative,
-          files: envFiles,
-          backedUp: 0,
-        },
-        issues: [
-          {
-            code: 'PROMPT_REQUIRED',
-            message: 'Backup requires confirmation. Re-run with --force or --dry-run when using --json.',
-          },
-        ],
-        options: ctx.options,
-        providerId: ctx.provider.id,
-      })
-    }
-
-    const confirmed = await ctx.prompts.confirm(`Backup ${envFiles.length} file(s) to ${backupRootRelative}/?`, true)
-    if (!confirmed) {
-      return makeEnvelope({
-        command: 'backup',
-        ok: true,
-        data: {
-          backupDir: ctx.options.backupDir,
-          dryRun: false,
-          force: false,
-          found: envFiles.length,
-          backupRoot: backupRootRelative,
-          files: envFiles,
-          backedUp: 0,
-        },
-        issues: [{ code: 'CANCELLED', message: 'Backup cancelled by user' }],
-        options: ctx.options,
-        providerId: ctx.provider.id,
-      })
-    }
-  }
-
-  const backupResult = await backupFilesToRoot(ctx, envFiles, backupRootAbsolute)
+  const backupResult = await createLatestSnapshot(ctx, {
+    id: snapshotId,
+    createdAt,
+    filePaths: envFiles,
+  })
   const issues: Issue[] = backupResult.errors.map((entry) => ({
     code: 'BACKUP_FAILED',
     message: entry.error,
@@ -132,7 +88,6 @@ export async function backupOperation(
     data: {
       backupDir: ctx.options.backupDir,
       dryRun: false,
-      force: true,
       found: envFiles.length,
       backupRoot: backupRootRelative,
       files: envFiles,

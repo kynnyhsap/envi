@@ -13,9 +13,9 @@ function summarizeSnapshot(snapshot: { files?: Array<{ size: number }> }): { fil
   }
 }
 
-export async function backupCommand(options: { force: boolean; dryRun: boolean; list: boolean }): Promise<void> {
+export async function backupCommand(options: { dryRun: boolean; list: boolean }): Promise<void> {
   const { config, engine } = createCommandContext()
-  const result = await engine.backup(options)
+  const result = await engine.backup({ dryRun: options.dryRun, list: options.list })
 
   if (config.json) {
     writeJsonResult(result)
@@ -41,9 +41,10 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
 
     for (const snapshot of snapshots) {
       const { fileCount, sizeKb } = summarizeSnapshot(snapshot)
-      log.info(
-        `  ${pc.cyan(formatBackupTimestamp(snapshot.timestamp))}  ${pc.dim(`(${fileCount} files, ${sizeKb}KB)`)}`,
-      )
+      const label = snapshot.isLatest
+        ? `${snapshot.id} ${pc.dim(`(${formatBackupTimestamp(snapshot.timestamp)})`)}`
+        : snapshot.id
+      log.info(`  ${pc.cyan(label)}  ${pc.dim(`(${fileCount} files, ${sizeKb}KB)`)}`)
       for (const file of snapshot.files ?? []) {
         log.detail(`  ${file.originalPath}`)
       }
@@ -52,8 +53,7 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
     return
   }
 
-  const cancelled = result.issues.some((issue) => issue.code === 'CANCELLED')
-  if (!result.ok && !cancelled) {
+  if (!result.ok) {
     printIssuesAndExit(result.issues)
   }
 
@@ -81,12 +81,6 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
     log.info(`  Backup location: ${pc.cyan(result.data.backupRoot)}`)
   }
 
-  if (cancelled) {
-    log.info('')
-    log.skip('Backup cancelled by user')
-    return
-  }
-
   if (result.data.dryRun) {
     log.info('')
     log.warn('Dry run - no backups created')
@@ -109,7 +103,7 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
 
   log.banner('Summary')
   log.info('')
-  log.info(`  Backed up: ${pc.green(String(result.data.backedUp ?? 0))} file(s) to ${result.data.backupRoot}/`)
+  log.info(`  Backed up: ${pc.green(String(result.data.backedUp ?? 0))} file(s) to ${result.data.backupRoot}`)
   log.info('')
 
   process.exitCode = result.ok ? 0 : 1

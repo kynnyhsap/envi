@@ -87,11 +87,10 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
     description: 'Sync .env files from templates',
     usage: 'envi sync [options]',
     options: [
-      { flags: '-f, --force', description: 'Skip confirmation prompts' },
       { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
       { flags: '--no-backup', description: 'Skip automatic backup before syncing' },
     ],
-    examples: ['envi sync', 'envi sync -d', 'envi sync -f', 'envi sync --no-backup', 'envi sync --only engine/api'],
+    examples: ['envi sync', 'envi sync -d', 'envi sync --no-backup', 'envi sync --only engine/api'],
   },
   resolve: {
     name: 'resolve',
@@ -107,22 +106,26 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
     description: 'Backup current .env files (creates timestamped snapshot)',
     usage: 'envi backup [options]',
     options: [
-      { flags: '-f, --force', description: 'Skip confirmation prompts' },
       { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
       { flags: '-l, --list', description: 'List available backup snapshots' },
     ],
-    examples: ['envi backup', 'envi backup -d', 'envi backup -f', 'envi backup --list'],
+    examples: ['envi backup', 'envi backup -d', 'envi backup --list'],
   },
   restore: {
     name: 'restore',
     description: 'Restore .env files from backup',
     usage: 'envi restore [options]',
     options: [
-      { flags: '-f, --force', description: 'Skip confirmation prompts (uses most recent backup)' },
       { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
       { flags: '-l, --list', description: 'List available backup snapshots' },
+      { flags: '--snapshot <id>', description: 'Restore a specific snapshot id instead of latest' },
     ],
-    examples: ['envi restore', 'envi restore --list', 'envi restore -f', 'envi restore -d'],
+    examples: [
+      'envi restore',
+      'envi restore --list',
+      'envi restore --snapshot 2026-03-07T15-39-54-840Z',
+      'envi restore -d',
+    ],
   },
   run: {
     name: 'run',
@@ -443,7 +446,8 @@ function findCommandName(args: string[]): string | undefined {
         arg === '--only' ||
         arg === '--output' ||
         arg === '--template-file' ||
-        arg === '--backup-dir'
+        arg === '--backup-dir' ||
+        arg === '--snapshot'
       const takesShortValue = arg === '-e'
       if (takesValue || takesShortValue) {
         index++
@@ -518,14 +522,12 @@ addExamples(
 addExamples(
   cli
     .command('sync', 'Sync .env files from templates')
-    .option('-f, --force', 'Skip confirmation prompts')
     .option('-d, --dry-run', 'Preview changes without writing files')
     .option('--no-backup', 'Skip automatic backup before syncing'),
-  ['envi sync', 'envi sync -d', 'envi sync -f', 'envi sync --no-backup', 'envi sync --only engine/api'],
-).action(async (options: { force?: boolean; dryRun?: boolean; backup?: boolean } & GlobalOptions) => {
+  ['envi sync', 'envi sync -d', 'envi sync --no-backup', 'envi sync --only engine/api'],
+).action(async (options: { dryRun?: boolean; backup?: boolean } & GlobalOptions) => {
   await withGlobalOptions(options, () =>
     syncCommand({
-      force: options.force ?? false,
       dryRun: options.dryRun ?? false,
       noBackup: options.backup === false,
     }),
@@ -543,14 +545,12 @@ addExamples(cli.command('resolve [...references]', 'Resolve one or more secret r
 addExamples(
   cli
     .command('backup', 'Backup current .env files (creates timestamped snapshot)')
-    .option('-f, --force', 'Skip confirmation prompts')
     .option('-d, --dry-run', 'Preview changes without writing files')
     .option('-l, --list', 'List available backup snapshots'),
-  ['envi backup', 'envi backup -d', 'envi backup -f', 'envi backup --list'],
-).action(async (options: { force?: boolean; dryRun?: boolean; list?: boolean } & GlobalOptions) => {
+  ['envi backup', 'envi backup -d', 'envi backup --list'],
+).action(async (options: { dryRun?: boolean; list?: boolean } & GlobalOptions) => {
   await withGlobalOptions(options, () =>
     backupCommand({
-      force: options.force ?? false,
       dryRun: options.dryRun ?? false,
       list: options.list ?? false,
     }),
@@ -560,16 +560,16 @@ addExamples(
 addExamples(
   cli
     .command('restore', 'Restore .env files from backup')
-    .option('-f, --force', 'Skip confirmation prompts (uses most recent backup)')
     .option('-d, --dry-run', 'Preview changes without writing files')
+    .option('--snapshot <id>', 'Restore a specific snapshot id instead of latest')
     .option('-l, --list', 'List available backup snapshots'),
-  ['envi restore', 'envi restore --list', 'envi restore -f', 'envi restore -d'],
-).action(async (options: { force?: boolean; dryRun?: boolean; list?: boolean } & GlobalOptions) => {
+  ['envi restore', 'envi restore --list', 'envi restore --snapshot 2026-03-07T15-39-54-840Z', 'envi restore -d'],
+).action(async (options: { dryRun?: boolean; list?: boolean; snapshot?: string } & GlobalOptions) => {
   await withGlobalOptions(options, () =>
     restoreCommand({
-      force: options.force ?? false,
       dryRun: options.dryRun ?? false,
       list: options.list ?? false,
+      ...(options.snapshot ? { snapshot: options.snapshot } : {}),
     }),
   )
 })

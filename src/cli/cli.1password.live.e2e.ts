@@ -110,7 +110,7 @@ describe('live 1Password CLI e2e', () => {
 
   test('sync and diff cover dry-run, write, local drift, and --only', async () => {
     await withWorkspace(async (workspaceDir) => {
-      const preview = await runCliJson(workspaceDir, ['--json', 'sync', '-d', '-f'])
+      const preview = await runCliJson(workspaceDir, ['--json', 'sync', '-d'])
       expect(preview.command).toBe('sync')
       expect(preview.ok).toBe(true)
       expect(preview.data.options.dryRun).toBe(true)
@@ -118,7 +118,7 @@ describe('live 1Password CLI e2e', () => {
 
       expect(await Bun.file(path.join(workspaceDir, 'apps', 'api', '.env')).exists()).toBe(false)
 
-      const synced = await runCliJson(workspaceDir, ['--json', 'sync', '-f', '--no-backup'])
+      const synced = await runCliJson(workspaceDir, ['--json', 'sync', '--no-backup'])
       expect(synced.command).toBe('sync')
       expect(synced.ok).toBe(true)
       expect(synced.data.summary.success).toBe(3)
@@ -155,7 +155,7 @@ describe('live 1Password CLI e2e', () => {
 
   test('run injects template secrets and env-file secrets', async () => {
     await withWorkspace(async (workspaceDir) => {
-      await runCliJson(workspaceDir, ['--json', 'sync', '-f', '--no-backup'])
+      await runCliJson(workspaceDir, ['--json', 'sync', '--no-backup'])
 
       const templateRun = await runCli(workspaceDir, [
         '--quiet',
@@ -188,19 +188,19 @@ describe('live 1Password CLI e2e', () => {
 
   test('backup and restore recover synced env files end to end', async () => {
     await withWorkspace(async (workspaceDir) => {
-      await runCliJson(workspaceDir, ['--json', 'sync', '-f', '--no-backup'])
+      await runCliJson(workspaceDir, ['--json', 'sync', '--no-backup'])
 
       const apiEnvPath = path.join(workspaceDir, 'apps', 'api', '.env')
       const original = await Bun.file(apiEnvPath).text()
 
-      const backup = await runCliJson(workspaceDir, ['--json', 'backup', '-f'])
+      const backup = await runCliJson(workspaceDir, ['--json', 'backup'])
       expect(backup.command).toBe('backup')
       expect(backup.ok).toBe(true)
       expect(backup.data.backedUp).toBe(3)
 
       await Bun.write(apiEnvPath, 'BROKEN=1\n')
 
-      const restore = await runCliJson(workspaceDir, ['--json', 'restore', '-f'])
+      const restore = await runCliJson(workspaceDir, ['--json', 'restore'])
       expect(restore.command).toBe('restore')
       expect(restore.ok).toBe(true)
       expect(restore.data.restored).toBe(3)

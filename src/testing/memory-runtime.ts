@@ -25,6 +25,12 @@ export function createMemoryRuntime(args: {
     async mkdirp() {
       // no-op for memory
     },
+    async renamePath() {
+      // no-op for memory
+    },
+    async removePath() {
+      // no-op for memory
+    },
     async stat() {
       return null
     },

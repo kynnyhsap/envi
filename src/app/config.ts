@@ -45,9 +45,7 @@ export function getConfig(): RuntimeConfig {
 }
 
 export function generateBackupTimestamp(): string {
-  const now = new Date()
-  const pad = (n: number) => n.toString().padStart(2, '0')
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`
+  return new Date().toISOString().replace(/:/g, '-').replace(/\./g, '-')
 }
 
 export function parseOnlyFlag(value: string | undefined): string[] | undefined {

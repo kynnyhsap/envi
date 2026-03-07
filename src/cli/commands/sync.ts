@@ -112,10 +112,9 @@ function displayChanges(changes: Change[]): {
   return { newCount, updateCount, customCount, unchangedCount }
 }
 
-export async function syncCommand(options: { force: boolean; dryRun: boolean; noBackup: boolean }): Promise<void> {
+export async function syncCommand(options: { dryRun: boolean; noBackup: boolean }): Promise<void> {
   const { config, engine } = createCommandContext()
   const result = await engine.sync({
-    force: options.force,
     dryRun: options.dryRun,
     noBackup: options.noBackup,
     includeSecrets: !config.json,
@@ -128,9 +127,6 @@ export async function syncCommand(options: { force: boolean; dryRun: boolean; no
 
   if (options.dryRun) {
     log.info(pc.yellow('  Running in dry-run mode'))
-  }
-  if (options.force) {
-    log.info(pc.yellow('  Running in force mode (no prompts)'))
   }
 
   for (const pathResult of result.data.paths) {

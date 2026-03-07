@@ -154,7 +154,6 @@ export interface DiffOperationOptions {
 export type DiffResult = JsonEnvelope<DiffData, 'diff'>
 
 export interface SyncOperationOptions {
-  force?: boolean
   dryRun?: boolean
   noBackup?: boolean
   /** Include secret values in output (unsafe). Default: false */
@@ -172,7 +171,6 @@ export interface SyncPathData {
 
 export interface SyncData {
   options: {
-    force: boolean
     dryRun: boolean
     noBackup: boolean
   }
@@ -267,7 +265,9 @@ export interface BackupSnapshotFileData {
 }
 
 export interface BackupSnapshotData {
+  id: string
   timestamp: string
+  isLatest: boolean
   path: string
   files: BackupSnapshotFileData[]
 }
@@ -276,7 +276,6 @@ export interface BackupData {
   backupDir: string
   snapshots?: BackupSnapshotData[]
   dryRun?: boolean
-  force?: boolean
   found?: number
   backupRoot?: string | null
   files?: string[]
@@ -285,7 +284,6 @@ export interface BackupData {
 }
 
 export interface BackupOperationOptions {
-  force?: boolean
   dryRun?: boolean
   list?: boolean
 }
@@ -296,9 +294,9 @@ export interface RestoreData {
   backupDir: string
   snapshots?: BackupSnapshotData[]
   selectedSnapshot?: string
+  selectedSnapshotPath?: string
   files?: string[]
   dryRun?: boolean
-  force?: boolean
   wouldOverwrite?: string[]
   wouldRestore?: string[]
   restored?: number
@@ -307,9 +305,9 @@ export interface RestoreData {
 }
 
 export interface RestoreOperationOptions {
-  force?: boolean
   dryRun?: boolean
   list?: boolean
+  snapshot?: string
 }
 
 export type RestoreResult = JsonEnvelope<RestoreData, 'restore'> | JsonEnvelope<RestoreData, 'restore.list'>

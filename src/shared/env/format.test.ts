@@ -69,6 +69,13 @@ describe('formatBackupTimestamp', () => {
     expect(result).toContain(')')
   })
 
+  it('should format iso-like backup timestamps with timeago', () => {
+    const result = formatBackupTimestamp('2026-03-07T15-39-54-840Z')
+    expect(result).toContain('2026-03-07 15:39:54 UTC')
+    expect(result).toContain('(')
+    expect(result).toContain(')')
+  })
+
   it('should return original string if no time part', () => {
     expect(formatBackupTimestamp('2024-03-15')).toBe('2024-03-15')
   })

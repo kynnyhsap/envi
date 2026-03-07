@@ -13,6 +13,15 @@ export function redactSecret(value: string): string {
 }
 
 export function formatBackupTimestamp(ts: string): string {
+  if (ts.includes('T') && ts.endsWith('Z')) {
+    const normalized = ts.replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/, 'T$1:$2:$3.$4Z')
+    const parsed = new Date(normalized)
+    if (!Number.isNaN(parsed.getTime())) {
+      const formatted = normalized.replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC')
+      return `${formatted} ${pc.dim(`(${timeago(parsed)})`)}`
+    }
+  }
+
   const [date, time] = ts.split('_')
   if (!time) return ts
 

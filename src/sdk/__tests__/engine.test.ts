@@ -57,7 +57,7 @@ describe('sdk engine (smoke)', () => {
       },
     })
 
-    const result = await engine.sync({ dryRun: true, force: true })
+    const result = await engine.sync({ dryRun: true })
     expect(result.command).toBe('sync')
     expect(result.data.paths.length).toBe(1)
   })

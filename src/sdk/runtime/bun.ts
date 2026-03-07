@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { mkdir, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 
 import type { FileStat, RuntimeAdapter } from './contracts'
@@ -48,6 +48,14 @@ export function createBunRuntimeAdapter(): RuntimeAdapter {
 
     async mkdirp(dirPath: string) {
       await mkdir(dirPath, { recursive: true })
+    },
+
+    async renamePath(fromPath: string, toPath: string) {
+      await rename(fromPath, toPath)
+    },
+
+    async removePath(targetPath: string) {
+      await rm(targetPath, { recursive: true, force: true })
     },
 
     async stat(filePath: string) {

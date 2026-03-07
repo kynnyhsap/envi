@@ -5,10 +5,11 @@ import { mapWithConcurrency } from '../../shared/concurrency'
 import { computeChanges } from '../../shared/env/diff'
 import { mergeEnvFiles } from '../../shared/env/merge'
 import { parseEnvFile, serializeEnvFile } from '../../shared/env/parse'
-import type { Change, EnvFile } from '../../shared/env/types'
+import type { EnvFile } from '../../shared/env/types'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
 import type { ExecutionContext, Issue, SyncData, SyncOperationOptions, SyncPathData, SyncResult } from '../types'
+import { createLatestSnapshot } from './backup-helpers'
 import { checkProviderReady } from './provider-check'
 import { redactChanges } from './redact'
 import { injectResolvedSecrets } from './resolve-secrets'
@@ -24,84 +25,29 @@ function getSyncPathConcurrency(): number {
 async function createAutoBackup(ctx: ExecutionContext, envFilePaths: string[]): Promise<void> {
   if (envFilePaths.length === 0) return
 
-  const rootDir = ctx.options.rootDir ? path.resolve(ctx.options.rootDir) : ctx.runtime.cwd()
-  const timestamp = generateBackupTimestamp()
-  const backupRoot = path.join(rootDir, ctx.options.backupDir, timestamp)
-
-  await mapWithConcurrency(envFilePaths, getSyncPathConcurrency(), async (absoluteFile) => {
-    const exists = await ctx.runtime.exists(absoluteFile)
-    if (!exists) return
-
-    const relative = path.relative(rootDir, absoluteFile)
-    const backupPath = path.join(backupRoot, relative)
-    const backupDirPath = path.dirname(backupPath)
-    try {
-      await ctx.runtime.mkdirp(backupDirPath)
-      const content = await ctx.runtime.readText(absoluteFile)
-      await ctx.runtime.writeText(backupPath, content)
-    } catch {
-      // Silent backup failure (matches previous auto-backup intent)
-    }
-  })
-}
-
-function countChanges(changes: Change[]) {
-  return {
-    newCount: changes.filter((c) => c.type === 'new').length,
-    updatedCount: changes.filter((c) => c.type === 'updated').length,
-    customCount: changes.filter((c) => c.type === 'local_modified' || c.type === 'custom').length,
-    unchangedCount: changes.filter((c) => c.type === 'unchanged').length,
-  }
-}
-
-async function confirmIfNeeded(
-  ctx: ExecutionContext,
-  args: {
-    envSwitched: boolean
-    fromEnv: string | undefined
-    toEnv: string
-    newCount: number
-    updatedCount: number
-  },
-): Promise<{ confirmed: boolean; issue?: Issue }> {
-  if (ctx.prompts?.confirm === undefined) {
-    return {
-      confirmed: false,
-      issue: {
-        code: 'PROMPT_REQUIRED',
-        message: 'Confirmation required but no prompt adapter provided. Use force=true or provide prompts.confirm.',
-      },
+  const rootPrefix = `${ctx.runtime.cwd().replace(/\\/g, '/')}/`
+  const existingRelativePaths: string[] = []
+  for (const absoluteFile of envFilePaths) {
+    if (await ctx.runtime.exists(absoluteFile)) {
+      existingRelativePaths.push(absoluteFile.replace(/\\/g, '/').replace(rootPrefix, ''))
     }
   }
 
-  if (args.envSwitched) {
-    const msg = `Switch from ${args.fromEnv ?? 'unknown'} to ${args.toEnv}? All secrets will be updated.`
-    const confirmed = await ctx.prompts.confirm(msg, true)
-    return { confirmed }
+  try {
+    await createLatestSnapshot(ctx, {
+      id: generateBackupTimestamp(),
+      createdAt: new Date().toISOString(),
+      filePaths: existingRelativePaths,
+    })
+  } catch {
+    // Silent backup failure (matches previous auto-backup intent)
   }
-
-  if (args.updatedCount > 0 || args.newCount > 0) {
-    let msg = ''
-    if (args.updatedCount > 0 && args.newCount > 0) {
-      msg = `${args.updatedCount} secrets will be updated and ${args.newCount} new vars added. Continue?`
-    } else if (args.updatedCount > 0) {
-      msg = `${args.updatedCount} secrets will be updated. Continue?`
-    } else {
-      msg = `${args.newCount} new vars will be added. Continue?`
-    }
-
-    const confirmed = await ctx.prompts.confirm(msg, true)
-    return { confirmed }
-  }
-
-  return { confirmed: true }
 }
 
 async function processEnvPath(
   ctx: ExecutionContext,
   pathInfo: SyncPathData['pathInfo'],
   options: {
-    force: boolean
     dryRun: boolean
     includeSecrets: boolean
   },
@@ -169,8 +115,6 @@ async function processEnvPath(
 
   const rawChanges = computeChanges(template, injectedResult.injected, local, envSwitched)
   const changes = options.includeSecrets ? rawChanges : redactChanges(rawChanges)
-  const counts = countChanges(rawChanges)
-
   if (options.dryRun) {
     return {
       data: {
@@ -182,31 +126,6 @@ async function processEnvPath(
         message: 'Dry run - no changes written',
       },
       issues,
-    }
-  }
-
-  if (!options.force) {
-    const confirm = await confirmIfNeeded(ctx, {
-      envSwitched,
-      fromEnv: local?.sourceEnv,
-      toEnv: currentEnv,
-      newCount: counts.newCount,
-      updatedCount: counts.updatedCount,
-    })
-
-    if (confirm.issue) issues.push(confirm.issue)
-    if (!confirm.confirmed) {
-      return {
-        data: {
-          pathInfo,
-          success: false,
-          skipped: true,
-          changes,
-          envSwitched,
-          message: 'Skipped by user',
-        },
-        issues,
-      }
     }
   }
 
@@ -243,7 +162,6 @@ async function processEnvPath(
 }
 
 export async function syncOperation(ctx: ExecutionContext, options: SyncOperationOptions = {}): Promise<SyncResult> {
-  const force = options.force ?? false
   const dryRun = options.dryRun ?? false
   const noBackup = options.noBackup ?? false
   const includeSecrets = options.includeSecrets ?? false
@@ -254,7 +172,7 @@ export async function syncOperation(ctx: ExecutionContext, options: SyncOperatio
       command: 'sync',
       ok: false,
       data: {
-        options: { force, dryRun, noBackup },
+        options: { dryRun, noBackup },
         paths: [],
         summary: { success: 0, failed: 0, skipped: 0, new: 0, updated: 0, custom: 0 },
       },
@@ -282,13 +200,13 @@ export async function syncOperation(ctx: ExecutionContext, options: SyncOperatio
   let totalUpdated = 0
   let totalCustom = 0
 
-  const canParallelize = force || dryRun
+  const canParallelize = true
   const pathWork = canParallelize
     ? await mapWithConcurrency(envPaths, getSyncPathConcurrency(), async (pathInfo) =>
-        processEnvPath(ctx, pathInfo, { force, dryRun, includeSecrets }),
+        processEnvPath(ctx, pathInfo, { dryRun, includeSecrets }),
       )
     : await mapWithConcurrency(envPaths, 1, async (pathInfo) =>
-        processEnvPath(ctx, pathInfo, { force, dryRun, includeSecrets }),
+        processEnvPath(ctx, pathInfo, { dryRun, includeSecrets }),
       )
 
   for (const result of pathWork) {
@@ -311,7 +229,7 @@ export async function syncOperation(ctx: ExecutionContext, options: SyncOperatio
   }
 
   const data: SyncData = {
-    options: { force, dryRun, noBackup },
+    options: { dryRun, noBackup },
     paths: pathResults,
     summary: {
       success,

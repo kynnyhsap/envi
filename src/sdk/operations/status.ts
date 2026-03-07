@@ -1,13 +1,10 @@
-import path from 'node:path'
-
 import { mapWithConcurrency } from '../../shared/concurrency'
 import { parseEnvFile } from '../../shared/env/parse'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
 import type { ExecutionContext, StatusData, StatusResult, StatusPathData } from '../types'
+import { listBackupSnapshots } from './backup-helpers'
 import { getProviderReadiness } from './provider-check'
-
-const SNAPSHOT_RE = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/
 const DEFAULT_STATUS_PATH_CONCURRENCY = 8
 
 function getStatusPathConcurrency(): number {
@@ -17,17 +14,9 @@ function getStatusPathConcurrency(): number {
 }
 
 async function getBackupInfo(ctx: ExecutionContext): Promise<{ count: number; latestTimestamp?: string }> {
-  const rootDir = ctx.options.rootDir ? path.resolve(ctx.options.rootDir) : ctx.runtime.cwd()
-  const backupRoot = path.join(rootDir, ctx.options.backupDir)
-
-  if (!(await ctx.runtime.exists(backupRoot))) {
-    return { count: 0 }
-  }
-
-  const dirs = await ctx.runtime.listDirs(backupRoot)
-  const snapshots = dirs.filter((d) => SNAPSHOT_RE.test(d)).sort((a, b) => b.localeCompare(a))
+  const snapshots = await listBackupSnapshots(ctx)
   if (snapshots.length === 0) return { count: 0 }
-  const latestTimestamp = snapshots[0]
+  const latestTimestamp = snapshots[0]?.timestamp
   if (!latestTimestamp) return { count: snapshots.length }
   return { count: snapshots.length, latestTimestamp }
 }
