@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { Command } from 'commander'
+import { cac } from 'cac'
 import pc from 'picocolors'
 
 import {
@@ -28,7 +28,7 @@ import { DEFAULT_ENVIRONMENT } from './utils/variables'
 
 function showHelp(): void {
   console.info('')
-  console.info(pc.bold(pc.cyan('envi')) + pc.dim(` v${VERSION}`) + ' - Manage .env files with secret providers')
+  console.info(pc.bold(pc.cyan('envi')) + pc.dim(` v${VERSION}`) + ' - Manage .env files with 1Password')
   console.info('')
   console.info(pc.bold('USAGE'))
   console.info(`  ${pc.cyan('envi')} ${pc.yellow('<command>')} ${pc.dim('[options]')}`)
@@ -75,58 +75,11 @@ function showHelp(): void {
   console.info('')
 }
 
-interface CommandOption {
-  flags: string
-  description: string
-}
-
-interface CommandHelp {
-  name: string
-  description: string
-  options?: CommandOption[]
-  examples?: string[]
-}
-
-function showCommandHelp(cmd: CommandHelp): void {
-  console.info('')
-  console.info(pc.bold(pc.cyan(`envi ${cmd.name}`)) + ` - ${cmd.description}`)
-  console.info('')
-  console.info(pc.bold('USAGE'))
-  console.info(`  ${pc.cyan('envi')} ${pc.yellow(cmd.name)} ${pc.dim('[options]')}`)
-
-  if (cmd.options && cmd.options.length > 0) {
-    console.info('')
-    console.info(pc.bold('OPTIONS'))
-    for (const opt of cmd.options) {
-      console.info(`  ${pc.green(opt.flags.padEnd(20))} ${opt.description}`)
-    }
-  }
-
-  if (cmd.examples && cmd.examples.length > 0) {
-    console.info('')
-    console.info(pc.bold('EXAMPLES'))
-    for (const example of cmd.examples) {
-      console.info(`  ${pc.dim('$')} ${example}`)
-    }
-  }
-
-  console.info('')
-}
-
-function configureCommandHelp(cmd: Command, help: CommandHelp): Command {
-  return cmd.configureHelp({
-    formatHelp: () => {
-      showCommandHelp(help)
-      return ''
-    },
-  })
-}
-
 interface GlobalOptions {
   quiet?: boolean
   json?: boolean
   env?: string
-  providerOpt?: string[]
+  providerOpt?: string | string[]
   config?: string
   only?: string
   output?: string
@@ -134,14 +87,16 @@ interface GlobalOptions {
   backupDir?: string
 }
 
-function parseProviderOpts(opts: string[] | undefined): Record<string, string> {
-  if (!opts) return {}
+function parseProviderOpts(opts: string | string[] | undefined): Record<string, string> {
+  const values = Array.isArray(opts) ? opts : opts ? [opts] : []
+  const entries = values.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+  if (entries.length === 0) return {}
+
   const result: Record<string, string> = {}
-  for (const entry of opts) {
+  for (const entry of entries) {
     const eq = entry.indexOf('=')
     if (eq === -1) {
-      console.error(pc.red(`Invalid --provider-opt format: "${entry}" (expected key=value)`))
-      process.exit(1)
+      throw new Error(`Invalid --provider-opt format: "${entry}" (expected key=value)`)
     }
     result[entry.slice(0, eq)] = entry.slice(eq + 1)
   }
@@ -158,47 +113,40 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
     const msg = error instanceof Error ? error.message : String(error)
     const isDefaultMissing = options.config === undefined && msg.startsWith('Config file not found:')
     if (!isDefaultMissing) {
-      console.error(pc.red(msg))
-      process.exit(1)
+      throw error
     }
   }
 
   const cliProviderOpts = parseProviderOpts(options.providerOpt)
 
-  let resolved
-  try {
-    const configFile: Record<string, unknown> = {}
-    if (fileConfig.environment !== undefined) configFile['environment'] = fileConfig.environment
-    if (fileConfig.provider !== undefined) configFile['provider'] = fileConfig.provider
-    if (fileConfig.providerOptions !== undefined) configFile['providerOptions'] = fileConfig.providerOptions
-    if (fileConfig.paths !== undefined) configFile['paths'] = fileConfig.paths
-    if (fileConfig.outputFile !== undefined) configFile['outputFile'] = fileConfig.outputFile
-    if (fileConfig.templateFile !== undefined) configFile['templateFile'] = fileConfig.templateFile
-    if (fileConfig.backupDir !== undefined) configFile['backupDir'] = fileConfig.backupDir
-    if (fileConfig.quiet !== undefined) configFile['quiet'] = fileConfig.quiet
-    if (fileConfig.json !== undefined) configFile['json'] = fileConfig.json
+  const configFile: Record<string, unknown> = {}
+  if (fileConfig.environment !== undefined) configFile['environment'] = fileConfig.environment
+  if (fileConfig.provider !== undefined) configFile['provider'] = fileConfig.provider
+  if (fileConfig.providerOptions !== undefined) configFile['providerOptions'] = fileConfig.providerOptions
+  if (fileConfig.paths !== undefined) configFile['paths'] = fileConfig.paths
+  if (fileConfig.outputFile !== undefined) configFile['outputFile'] = fileConfig.outputFile
+  if (fileConfig.templateFile !== undefined) configFile['templateFile'] = fileConfig.templateFile
+  if (fileConfig.backupDir !== undefined) configFile['backupDir'] = fileConfig.backupDir
+  if (fileConfig.quiet !== undefined) configFile['quiet'] = fileConfig.quiet
+  if (fileConfig.json !== undefined) configFile['json'] = fileConfig.json
 
-    const overrides: Record<string, unknown> = {}
-    if (options.env !== undefined) overrides['environment'] = options.env
-    if (options.providerOpt !== undefined && options.providerOpt.length > 0)
-      overrides['providerOptions'] = cliProviderOpts
-    const onlyPaths = parseOnlyFlag(options.only)
-    if (onlyPaths !== undefined) overrides['paths'] = onlyPaths
-    if (options.output !== undefined) overrides['outputFile'] = options.output
-    if (options.template !== undefined) overrides['templateFile'] = options.template
-    if (options.backupDir !== undefined) overrides['backupDir'] = options.backupDir
-    if (options.quiet !== undefined) overrides['quiet'] = options.quiet
-    if (options.json !== undefined) overrides['json'] = options.json
-
-    resolved = resolveRuntimeOptions({
-      configFile: configFile as any,
-      overrides: overrides as any,
-    })
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    console.error(pc.red(msg))
-    process.exit(1)
+  const overrides: Record<string, unknown> = {}
+  if (options.env !== undefined) overrides['environment'] = options.env
+  if (options.providerOpt !== undefined && options.providerOpt.length > 0) {
+    overrides['providerOptions'] = cliProviderOpts
   }
+  const onlyPaths = parseOnlyFlag(options.only)
+  if (onlyPaths !== undefined) overrides['paths'] = onlyPaths
+  if (options.output !== undefined) overrides['outputFile'] = options.output
+  if (options.template !== undefined) overrides['templateFile'] = options.template
+  if (options.backupDir !== undefined) overrides['backupDir'] = options.backupDir
+  if (options.quiet !== undefined) overrides['quiet'] = options.quiet
+  if (options.json !== undefined) overrides['json'] = options.json
+
+  const resolved = resolveRuntimeOptions({
+    configFile: configFile as any,
+    overrides: overrides as any,
+  })
 
   const quiet = resolved.quiet || resolved.json
 
@@ -215,195 +163,163 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
   })
 }
 
-const program = new Command()
+function addExamples(command: ReturnType<typeof cli.command>, examples: string[]): ReturnType<typeof cli.command> {
+  for (const example of examples) {
+    command.example(example)
+  }
+  return command
+}
 
-program
-  .name('envi')
-  .description('Manage .env files with secret providers')
-  .version(VERSION, '-v, --version', 'Show version number')
-  .option('-q, --quiet', 'Suppress non-essential output')
-  .option('--json', 'Output machine-readable JSON')
-  .option('-e, --env <name>', `Environment name for \${ENV} substitution`)
-  .option(
-    '--provider-opt <key=value>',
-    'Provider-specific option (repeatable)',
-    (val: string, acc: string[]) => {
-      acc.push(val)
-      return acc
-    },
-    [] as string[],
-  )
-  .option('--config <path>', 'Load config from JSON file')
-  .option('--only <paths>', 'Only process specified paths (comma-separated)')
-  .option('--output <file>', `Output file name (default: ${DEFAULT_OUTPUT_FILE})`)
-  .option('--template <file>', `Template file name (default: ${DEFAULT_TEMPLATE_FILE})`)
-  .option('--backup-dir <dir>', `Backup directory (default: ${DEFAULT_BACKUP_DIR})`)
+async function withGlobalOptions(options: GlobalOptions, run: () => Promise<void>): Promise<void> {
+  await applyGlobalOptions(options)
+  await run()
+}
 
-configureCommandHelp(program.command('status').description('Show .env status and auth'), {
-  name: 'status',
-  description: 'Show .env status and auth',
-  examples: ['envi status', 'envi status --only engine/api'],
-}).action(async () => {
-  await applyGlobalOptions(program.opts())
-  await statusCommand()
+function toErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  if (message.startsWith('Unknown command')) {
+    return message.replace('Unknown command', 'unknown command')
+  }
+  return message
+}
+
+const rawArgs = process.argv.slice(2)
+if (rawArgs.length === 1 && ['-v', '--version'].includes(rawArgs[0]!)) {
+  console.info(VERSION)
+  process.exit(0)
+}
+
+if (rawArgs.length === 0 || (rawArgs.length === 1 && ['-h', '--help'].includes(rawArgs[0]!))) {
+  showHelp()
+  process.exit(0)
+}
+
+const cli = cac('envi')
+
+cli.help()
+
+cli.option('-q, --quiet', 'Suppress non-essential output')
+cli.option('--json', 'Output machine-readable JSON')
+cli.option('-e, --env <name>', 'Environment name for ${ENV} substitution')
+cli.option('--provider-opt <key=value>', 'Provider-specific option (repeatable)')
+cli.option('--config <path>', 'Load config from JSON file')
+cli.option('--only <paths>', 'Only process specified paths (comma-separated)')
+cli.option('--output <file>', `Output file name (default: ${DEFAULT_OUTPUT_FILE})`)
+cli.option('--template <file>', `Template file name (default: ${DEFAULT_TEMPLATE_FILE})`)
+cli.option('--backup-dir <dir>', `Backup directory (default: ${DEFAULT_BACKUP_DIR})`)
+
+addExamples(cli.command('status', 'Show .env status and auth'), [
+  'envi status',
+  'envi status --only engine/api',
+]).action(async (options) => {
+  await withGlobalOptions(options as GlobalOptions, () => statusCommand())
 })
 
-configureCommandHelp(
-  program
-    .command('diff')
-    .description('Show differences between local .env and provider')
+addExamples(
+  cli
+    .command('diff', 'Show differences between local .env and provider')
     .option('-p, --path <path>', 'Check specific path only'),
-  {
-    name: 'diff',
-    description: 'Show differences between local .env and provider',
-    options: [{ flags: '-p, --path <path>', description: 'Check specific path only' }],
-    examples: ['envi diff', 'envi diff --path engine/api'],
-  },
-).action(async (options) => {
-  await applyGlobalOptions(program.opts())
-  await diffCommand({
-    path: options.path,
-  })
+  ['envi diff', 'envi diff --path engine/api'],
+).action(async (options: { path?: string } & GlobalOptions) => {
+  await withGlobalOptions(options, () => diffCommand(options.path ? { path: options.path } : {}))
 })
 
-configureCommandHelp(
-  program
-    .command('sync')
-    .description('Sync .env files from templates')
+addExamples(
+  cli
+    .command('sync', 'Sync .env files from templates')
     .option('-f, --force', 'Skip confirmation prompts')
     .option('-d, --dry-run', 'Preview changes without writing files')
     .option('--no-backup', 'Skip automatic backup before syncing'),
-  {
-    name: 'sync',
-    description: 'Sync .env files from templates',
-    options: [
-      { flags: '-f, --force', description: 'Skip confirmation prompts' },
-      { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
-      { flags: '--no-backup', description: 'Skip automatic backup before syncing' },
-    ],
-    examples: ['envi sync', 'envi sync -d', 'envi sync -f', 'envi sync --no-backup', 'envi sync --only engine/api'],
-  },
-).action(async (options) => {
-  await applyGlobalOptions(program.opts())
-  await syncCommand({
-    force: options.force ?? false,
-    dryRun: options.dryRun ?? false,
-    noBackup: options.backup === false,
-  })
+  ['envi sync', 'envi sync -d', 'envi sync -f', 'envi sync --no-backup', 'envi sync --only engine/api'],
+).action(async (options: { force?: boolean; dryRun?: boolean; backup?: boolean } & GlobalOptions) => {
+  await withGlobalOptions(options, () =>
+    syncCommand({
+      force: options.force ?? false,
+      dryRun: options.dryRun ?? false,
+      noBackup: options.backup === false,
+    }),
+  )
 })
 
-configureCommandHelp(program.command('resolve <reference>').description('Resolve one secret reference to its value'), {
-  name: 'resolve <reference>',
-  description: 'Resolve one op:// reference to its secret value',
-  examples: ['envi resolve op://core-${ENV}/engine-api/SECRET'],
-}).action(async (reference: string) => {
-  await applyGlobalOptions(program.opts())
-  await resolveCommand({ reference })
+addExamples(cli.command('resolve <reference>', 'Resolve one secret reference to its value'), [
+  'envi resolve op://core-${ENV}/engine-api/SECRET',
+]).action(async (reference: string, options: GlobalOptions) => {
+  await withGlobalOptions(options, () => resolveCommand({ reference }))
 })
 
-configureCommandHelp(
-  program
-    .command('backup')
-    .description('Backup current .env files (creates timestamped snapshot)')
+addExamples(
+  cli
+    .command('backup', 'Backup current .env files (creates timestamped snapshot)')
     .option('-f, --force', 'Skip confirmation prompts')
     .option('-d, --dry-run', 'Preview changes without writing files')
     .option('-l, --list', 'List available backup snapshots'),
-  {
-    name: 'backup',
-    description: 'Backup current .env files (creates timestamped snapshot)',
-    options: [
-      { flags: '-f, --force', description: 'Skip confirmation prompts' },
-      { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
-      { flags: '-l, --list', description: 'List available backup snapshots' },
-    ],
-    examples: ['envi backup', 'envi backup -d', 'envi backup -f', 'envi backup --list'],
-  },
-).action(async (options) => {
-  await applyGlobalOptions(program.opts())
-  await backupCommand({
-    force: options.force ?? false,
-    dryRun: options.dryRun ?? false,
-    list: options.list ?? false,
-  })
+  ['envi backup', 'envi backup -d', 'envi backup -f', 'envi backup --list'],
+).action(async (options: { force?: boolean; dryRun?: boolean; list?: boolean } & GlobalOptions) => {
+  await withGlobalOptions(options, () =>
+    backupCommand({
+      force: options.force ?? false,
+      dryRun: options.dryRun ?? false,
+      list: options.list ?? false,
+    }),
+  )
 })
 
-configureCommandHelp(
-  program
-    .command('restore')
-    .description('Restore .env files from backup')
+addExamples(
+  cli
+    .command('restore', 'Restore .env files from backup')
     .option('-f, --force', 'Skip confirmation prompts (uses most recent backup)')
     .option('-d, --dry-run', 'Preview changes without writing files')
     .option('-l, --list', 'List available backup snapshots'),
-  {
-    name: 'restore',
-    description: 'Restore .env files from backup',
-    options: [
-      { flags: '-f, --force', description: 'Skip confirmation prompts (uses most recent backup)' },
-      { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
-      { flags: '-l, --list', description: 'List available backup snapshots' },
-    ],
-    examples: ['envi restore', 'envi restore --list', 'envi restore -f', 'envi restore -d'],
-  },
-).action(async (options) => {
-  await applyGlobalOptions(program.opts())
-  await restoreCommand({
-    force: options.force ?? false,
-    dryRun: options.dryRun ?? false,
-    list: options.list ?? false,
-  })
+  ['envi restore', 'envi restore --list', 'envi restore -f', 'envi restore -d'],
+).action(async (options: { force?: boolean; dryRun?: boolean; list?: boolean } & GlobalOptions) => {
+  await withGlobalOptions(options, () =>
+    restoreCommand({
+      force: options.force ?? false,
+      dryRun: options.dryRun ?? false,
+      list: options.list ?? false,
+    }),
+  )
 })
 
-const runCmd = program
-  .command('run')
-  .description('Run a command with secrets injected as environment variables')
-  .option('--env-file <files...>', 'Load additional .env files (may contain secret refs)')
-  .option('--no-template', 'Skip loading templates')
-  .allowUnknownOption(true)
-  .allowExcessArguments(true)
-
-configureCommandHelp(runCmd, {
-  name: 'run',
-  description: 'Run a command with secrets injected as environment variables',
-  options: [
-    { flags: '--env-file <files...>', description: 'Load additional .env files (may contain secret refs)' },
-    { flags: '--no-template', description: 'Skip loading templates, use --env-file only' },
-  ],
-  examples: [
+addExamples(
+  cli
+    .command('run [...command]', 'Run a command with secrets injected as environment variables')
+    .option('--env-file <files...>', 'Load additional .env files (may contain secret refs)')
+    .option('--no-template', 'Skip loading templates')
+    .allowUnknownOptions(),
+  [
     'envi run -- node index.js',
     'envi run -- npm start',
     'envi run --env-file .env.local -- node index.js',
     'envi run --no-template --env-file .env.secrets -- ./deploy.sh',
     'envi run -e prod -- node server.js',
   ],
-}).action(async (options, cmd) => {
-  await applyGlobalOptions(program.opts())
-  const childCommand = cmd.args
-  await runCommand(childCommand, {
-    envFile: options.envFile,
-    noTemplate: options.template === false,
-  })
+).action(async (command: string[] | string, options: { envFile?: string[]; template?: boolean } & GlobalOptions) => {
+  const childCommand = Array.isArray(command) ? command : command ? [command] : []
+  await withGlobalOptions(options, () =>
+    runCommand(childCommand, {
+      ...(options.envFile ? { envFile: options.envFile } : {}),
+      noTemplate: options.template === false,
+    }),
+  )
 })
 
-configureCommandHelp(
-  program
-    .command('validate')
-    .description('Validate all secret references in templates')
+addExamples(
+  cli
+    .command('validate', 'Validate all secret references in templates')
     .option('-r, --remote', 'Check references against provider (slower, requires auth)'),
-  {
-    name: 'validate',
-    description: 'Validate all secret references in templates',
-    options: [{ flags: '-r, --remote', description: 'Check references against provider (slower, requires auth)' }],
-    examples: ['envi validate', 'envi validate --remote', 'envi validate --only engine/api'],
-  },
-).action(async (options) => {
-  await applyGlobalOptions(program.opts())
-  await validateCommand({ remote: options.remote ?? false })
+  ['envi validate', 'envi validate --remote', 'envi validate --only engine/api'],
+).action(async (options: { remote?: boolean } & GlobalOptions) => {
+  await withGlobalOptions(options, () => validateCommand({ remote: options.remote ?? false }))
 })
 
-const arg = process.argv[2]
-if (process.argv.length === 2 || (process.argv.length === 3 && arg !== undefined && ['-h', '--help'].includes(arg))) {
-  showHelp()
-  process.exit(0)
+try {
+  const parsed = cli.parse(process.argv, { run: false })
+  if (!cli.matchedCommand && parsed.args[0]) {
+    throw new Error(`unknown command ${parsed.args[0]}`)
+  }
+  await cli.runMatchedCommand()
+} catch (error) {
+  console.error(toErrorMessage(error))
+  process.exit(1)
 }
-
-program.parse()
