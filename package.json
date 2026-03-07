@@ -10,8 +10,6 @@
     "dist/sdk",
     "README.md",
     "AGENTS.md",
-    "PERSONALITY.md",
-    "ROADMAP.md",
     "examples"
   ],
   "type": "module",
