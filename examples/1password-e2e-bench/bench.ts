@@ -28,7 +28,7 @@ const configPath = path.join(exampleDir, 'envi.json')
 const baseTemplatePath = path.join(exampleDir, 'template', '.env.example')
 
 const scenarios: Scenario[] = [
-  { name: 'sync (dry-run)', args: ['sync', '-f', '-d', '--no-backup'] },
+  { name: 'sync (dry-run)', args: ['sync', '-d', '--no-backup'] },
   { name: 'diff', args: ['diff'] },
   { name: 'run (resolve only)', args: ['run', '--', '/usr/bin/true'] },
 ]

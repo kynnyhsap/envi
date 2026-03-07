@@ -103,7 +103,7 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
   },
   backup: {
     name: 'backup',
-    description: 'Backup current .env files (creates timestamped snapshot)',
+    description: 'Backup current environment files (creates timestamped snapshot)',
     usage: 'envi backup [options]',
     options: [
       { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
@@ -113,7 +113,7 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
   },
   restore: {
     name: 'restore',
-    description: 'Restore .env files from backup',
+    description: 'Restore environment files from backup',
     usage: 'envi restore [options]',
     options: [
       { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
@@ -267,8 +267,8 @@ function showHelp(commandName?: string): void {
   console.info(`  ${pc.yellow('diff')}                Show differences between local and provider`)
   console.info(`  ${pc.yellow('sync')}                Sync .env files from templates`)
   console.info(`  ${pc.yellow('resolve')}             Resolve one or more secret references`)
-  console.info(`  ${pc.yellow('backup')}              Backup current .env files (timestamped)`)
-  console.info(`  ${pc.yellow('restore')}             Restore .env files from backup`)
+  console.info(`  ${pc.yellow('backup')}              Backup current environment files (timestamped)`)
+  console.info(`  ${pc.yellow('restore')}             Restore environment files from backup`)
   console.info(`  ${pc.yellow('run')}                 Run a command with secrets as env vars`)
   console.info(`  ${pc.yellow('validate')}            Validate all secret references in templates`)
   console.info('')
@@ -544,7 +544,7 @@ addExamples(cli.command('resolve [...references]', 'Resolve one or more secret r
 
 addExamples(
   cli
-    .command('backup', 'Backup current .env files (creates timestamped snapshot)')
+    .command('backup', 'Backup current environment files (creates timestamped snapshot)')
     .option('-d, --dry-run', 'Preview changes without writing files')
     .option('-l, --list', 'List available backup snapshots'),
   ['envi backup', 'envi backup -d', 'envi backup --list'],
@@ -559,7 +559,7 @@ addExamples(
 
 addExamples(
   cli
-    .command('restore', 'Restore .env files from backup')
+    .command('restore', 'Restore environment files from backup')
     .option('-d, --dry-run', 'Preview changes without writing files')
     .option('--snapshot <id>', 'Restore a specific snapshot id instead of latest')
     .option('-l, --list', 'List available backup snapshots'),

@@ -33,7 +33,7 @@ Rename default config from `envi.json` to `envi.config.json` and add support for
 **Status: Needs design.** Interactive command that bootstraps secrets in the provider from a template file. Parses `.env.example` (or a user-specified file), detects all secret references, and creates the corresponding vaults/items/fields in the configured provider.
 
 - Interactive by default — prompts for values, vault selection, etc.
-- Non-interactive mode with `-f` flag for CI/scripting
+- Non-interactive mode for CI/scripting
 - Open question: how to handle secrets that already exist in the provider (skip, overwrite, prompt?)
 - Open question: should it also generate `envi.config.json` as part of setup?
 

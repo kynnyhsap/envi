@@ -44,7 +44,7 @@ export async function restoreCommand(options: { dryRun: boolean; list: boolean; 
     printIssuesAndExit(result.issues)
   }
 
-  log.banner('Restore .env Files from Backup')
+  log.banner('Restore Environment Files from Backup')
 
   if (result.data.dryRun) {
     log.info(pc.yellow('  Running in dry-run mode'))

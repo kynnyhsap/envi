@@ -330,6 +330,26 @@ describe('CLI e2e tests', () => {
       expect(stdout).toContain('Backed up')
     })
 
+    it('should backup configured output files from config', async () => {
+      await Bun.write(
+        join(TEST_DIR, 'envi.json'),
+        JSON.stringify(
+          {
+            outputFile: '.env.local',
+          },
+          null,
+          2,
+        ) + '\n',
+      )
+      await Bun.write(join(TEST_DIR, 'test-app/.env.local'), 'TEST_VAR=test_value\n')
+
+      const { stdout, exitCode } = await runCli('backup')
+
+      expect(exitCode).toBe(0)
+      expect(stdout).toContain('test-app/.env.local')
+      expect(await Bun.file(join(BACKUP_DIR, 'latest/test-app/.env.local')).exists()).toBe(true)
+    })
+
     it('should return machine output in json mode', async () => {
       await Bun.write(join(TEST_DIR, 'test-app/.env'), 'TEST_VAR=test_value\n')
 
@@ -626,6 +646,27 @@ describe('CLI e2e tests', () => {
   })
 
   describe('edge cases', () => {
+    it('should fail for examples setup with a missing token, not broken imports', async () => {
+      const proc = Bun.spawn(['bun', 'run', 'examples/setup.ts'], {
+        cwd: join(TEST_DIR, '..', '..', '..'),
+        env: {
+          ...process.env,
+          ENVI_1PASSWORD_EXAMPLES_TOKEN: '',
+          ENVI_1PASSWORD_E2E_SERVICE_ACCOUNT_TOKEN: '',
+          ENVI_1PASSWORD_BENCH_TOKEN: '',
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+
+      const exitCode = await proc.exited
+      const stderr = await new Response(proc.stderr).text()
+
+      expect(exitCode).toBe(1)
+      expect(stderr).toContain('Missing example 1Password token in .env.local')
+      expect(stderr).not.toContain('Cannot find module')
+    })
+
     it('should handle unknown command gracefully', async () => {
       const { stderr, exitCode } = await runCli('unknown-command')
 
