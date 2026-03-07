@@ -43,7 +43,7 @@ export async function backupOperation(
         files: [],
         backedUp: 0,
       },
-      issues: [{ code: 'NO_FILES', message: 'No .env files found to backup' }],
+      issues: [{ code: 'NO_FILES', message: 'No environment files found to backup' }],
       options: ctx.options,
       providerId: ctx.provider.id,
     })

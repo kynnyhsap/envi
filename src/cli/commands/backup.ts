@@ -65,12 +65,12 @@ export async function backupCommand(options: { dryRun: boolean; list: boolean })
 
   const files = result.data.files ?? []
   if (files.length === 0) {
-    log.warn('No .env files found to backup')
+    log.warn('No environment files found to backup')
     return
   }
 
   log.info('')
-  log.info(`  Found ${pc.green(String(files.length))} .env file(s):`)
+  log.info(`  Found ${pc.green(String(files.length))} file(s):`)
   log.info('')
   for (const file of files) {
     log.file(file)

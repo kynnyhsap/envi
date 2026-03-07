@@ -7,9 +7,9 @@ import {
   type VaultOverview,
 } from '@1password/sdk'
 
-import { VERSION } from '../src/config'
-import { loadRootEnvLocal } from '../src/test-helpers/local-env'
-import { grantUserViewAccess } from '../src/test-helpers/onepassword-e2e'
+import { VERSION } from '../src/app/config'
+import { loadRootEnvLocal } from '../src/testing/local-env'
+import { grantUserViewAccess } from '../src/testing/onepassword-e2e'
 
 export const EXAMPLE_VAULT_TITLE = 'envi-example'
 export const LEGACY_EXAMPLE_VAULT_TITLES = ['envi-example-local', 'envi-example-staging', 'envi-example-prod']

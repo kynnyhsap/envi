@@ -279,7 +279,7 @@ describe('CLI e2e tests', () => {
       const { stdout, exitCode } = await runCli('backup')
 
       expect(exitCode).toBe(0)
-      expect(stdout).toContain('No .env files found to backup')
+      expect(stdout).toContain('No environment files found to backup')
     })
 
     it('should backup existing .env files into latest snapshot', async () => {

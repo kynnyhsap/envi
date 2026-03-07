@@ -77,7 +77,7 @@ export function getBackupRootInfo(
 
 export async function findEnvFilesForBackup(ctx: ExecutionContext): Promise<string[]> {
   const rootDir = getRootDir(ctx.options, ctx.runtime)
-  return ctx.runtime.findFilesNamed(rootDir, '.env', [ctx.options.backupDir])
+  return ctx.runtime.findFilesNamed(rootDir, ctx.options.outputFile, [ctx.options.backupDir])
 }
 
 async function collectSnapshotFiles(
