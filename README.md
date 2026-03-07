@@ -174,8 +174,8 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 | `sync`     | Sync `.env` files from templates                                    |
 | `resolve`  | Resolve one or more secret references and print the secret values   |
 | `run`      | Run a command with secrets injected as env vars                     |
-| `backup`   | Backup all `.env` files (`latest` plus archived snapshots)          |
-| `restore`  | Restore `.env` files from the latest or a specific backup snapshot  |
+| `backup`   | Backup current output files (`latest` plus archived snapshots)      |
+| `restore`  | Restore output files from the latest or a specific backup snapshot  |
 | `validate` | Validate secret reference format (use `--remote` to check provider) |
 
 ### Common Options
@@ -444,7 +444,7 @@ jobs:
 
 ## Backup System
 
-Backups are stored in timestamped directories under `.env-backup/`:
+Backups are stored under `.env-backup/` and mirror your configured output filename (`.env` by default, but custom outputs like `.env.local` are backed up too):
 
 ```
 .env-backup/

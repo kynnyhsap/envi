@@ -28,34 +28,38 @@ op item create \
 
 ```bash
 # Use .env.tpl as the template instead of .env.example
-envi sync --template .env.tpl
+envi sync --template-file .env.tpl
 ```
 
 ### Custom output name
 
 ```bash
 # Write to .env.local instead of .env
-envi sync --template .env.tpl --output .env.local
+envi sync --template-file .env.tpl --output .env.local
 ```
 
 ### Both custom
 
 ```bash
 # Read from .env.tpl, write to .env.development
-envi sync --template .env.tpl --output .env.development
+envi sync --template-file .env.tpl --output .env.development
 ```
 
 ### With other commands
 
 ```bash
 # Diff against custom files
-envi diff --template .env.tpl --output .env.local
+envi diff --template-file .env.tpl --output .env.local
 
 # Validate custom template
-envi validate --template .env.tpl
+envi validate --template-file .env.tpl
 
 # Run with custom template
-envi run --template .env.tpl -- node server.js
+envi run --template-file .env.tpl -- node server.js
+
+# Backup and restore the configured output file
+envi backup --config envi.json
+envi restore --config envi.json
 ```
 
 ### Via config file
