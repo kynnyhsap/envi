@@ -33,34 +33,37 @@ Manage `.env` files with 1Password. Sync secrets into local `.env` files while p
 
 ```bash
 # Show help
-bun envi
+envi
 
 # Check status (includes auth check)
-bun envi status
+envi status
 
 # Show differences between local and provider
-bun envi diff
+envi diff
 
 # Sync .env files from templates
-bun envi sync
+envi sync
 
 # Force sync without prompts
-bun envi sync -f
+envi sync -f
 
 # Preview changes without writing
-bun envi sync -d
+envi sync -d
 
 # Validate all secret references
-bun envi validate
+envi validate
 
 # Resolve one secret reference directly
-bun envi resolve op://core-${ENV}/engine-api/SECRET
+envi resolve op://core-${ENV}/engine-api/SECRET
+
+# Resolve multiple references (newline-separated output)
+envi resolve op://core-${ENV}/engine-api/SECRET op://core-${ENV}/engine-api/JWT_SECRET
 
 # Run a command with secrets as env vars
-bun envi run -- node index.js
+envi run -- node index.js
 
 # Machine-readable output (same envelope as SDK)
-bun envi --json diff
+envi --json diff
 ```
 
 ## SDK
@@ -116,24 +119,24 @@ Envi only supports 1Password. It can resolve secrets through the JavaScript SDK 
 
 ```bash
 # Default (SDK backend)
-bun envi status
+envi status
 
 # Auto (SDK first, then CLI fallback)
-bun envi status --provider-opt backend=auto
+envi status --provider-opt backend=auto
 
 # Force CLI only
-bun envi status --provider-opt backend=cli
+envi status --provider-opt backend=cli
 
 # Force SDK only
-bun envi status --provider-opt backend=sdk
+envi status --provider-opt backend=sdk
 
 # Use a specific op binary
-bun envi status --provider-opt cliBinary=/usr/local/bin/op
+envi status --provider-opt cliBinary=/usr/local/bin/op
 
 # Secret resolution strategy tuning (1Password)
-bun envi sync --provider-opt resolveMode=batch
-bun envi sync --provider-opt resolveChunkSize=150
-bun envi sync --provider-opt resolveConcurrency=12
+envi sync --provider-opt resolveMode=batch
+envi sync --provider-opt resolveChunkSize=150
+envi sync --provider-opt resolveConcurrency=12
 ```
 
 **Performance provider options (1Password):**
@@ -172,7 +175,7 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 | `status`   | Show status and auth check                                          |
 | `diff`     | Show differences between local `.env` and provider                  |
 | `sync`     | Sync `.env` files from templates                                    |
-| `resolve`  | Resolve one secret reference and print the secret                   |
+| `resolve`  | Resolve one or more secret references and print the secret values   |
 | `run`      | Run a command with secrets injected as env vars                     |
 | `backup`   | Backup all `.env` files (timestamped snapshots)                     |
 | `restore`  | Restore `.env` files from backup (interactive)                      |
@@ -190,6 +193,8 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 | `--provider-opt <k=v>` | 1Password backend option (repeatable)                         |
 | `--config <path>`      | Load config from JSON file                                    |
 | `--only <paths>`       | Filter which paths to process                                 |
+| `--template-file <f>`  | Override the template filename                                |
+| `--backup-dir <dir>`   | Override the backup directory                                 |
 
 ## Examples
 
@@ -238,8 +243,23 @@ DATABASE_URL=op://core-${ENV}/engine-api/DATABASE_URL
 
 When `--json` is enabled, Envi prints a stable JSON envelope intended for scripting.
 
-- Core commands (`status`, `diff`, `sync`, `validate`, `resolve`, `run`) print the exact SDK envelope.
+- Core commands (`status`, `diff`, `sync`, `validate`, `resolve`, `run`, `backup`, `restore`) print the exact SDK envelope.
 - Outputs stay redacted by default except when a command intentionally surfaces a secret, like `resolve`.
+
+### Resolve Output
+
+`resolve` supports one or more references.
+
+```bash
+# Single value
+envi resolve op://core-${ENV}/engine-api/SECRET
+
+# Multiple values
+envi resolve op://core-${ENV}/engine-api/SECRET op://core-${ENV}/engine-api/JWT_SECRET
+```
+
+- Plain output prints one resolved value per line, in the same order as the input references.
+- `--json` returns the normal SDK envelope; single-reference output uses `data.secret`, while multi-reference output uses `data.inputs` and `data.results`.
 
 ### Output Format
 
@@ -351,14 +371,14 @@ Vault: core-prod
 
 ```bash
 # Local development (default)
-bun envi sync
+envi sync
 
 # Specific environment
-bun envi sync -e dev
-bun envi sync -e prod
+envi sync -e dev
+envi sync -e prod
 
 # CI/CD (1Password)
-OP_SERVICE_ACCOUNT_TOKEN="..." bun envi sync -e prod -f -q
+OP_SERVICE_ACCOUNT_TOKEN="..." envi sync -e prod -f -q
 ```
 
 ### Flexible Patterns
@@ -387,10 +407,10 @@ To restrict which templates are processed:
 
 ```bash
 # Only process a specific subdirectory
-bun envi sync --only engine/api
+envi sync --only engine/api
 
 # Multiple paths (comma-separated)
-bun envi diff --only engine/api,console
+envi diff --only engine/api,console
 ```
 
 ## CI/CD Integration
@@ -401,7 +421,7 @@ For automated environments, configure 1Password service account credentials.
 
 ```bash
 export OP_SERVICE_ACCOUNT_TOKEN="your-token"
-bun envi sync --force
+envi sync --force
 ```
 
 ### GitHub Actions (1Password)
@@ -423,7 +443,7 @@ jobs:
       - name: Sync .env files
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-        run: bun envi sync -e prod -f -q
+        run: envi sync -e prod -f -q
 ```
 
 ## Backup System
@@ -443,13 +463,13 @@ Backups are stored in timestamped directories under `.env-backup/`:
 
 ```bash
 # List all backup snapshots
-bun envi restore --list
+envi restore --list
 
 # List backups (same info)
-bun envi backup --list
+envi backup --list
 
 # Restore from most recent backup
-bun envi restore -f
+envi restore -f
 ```
 
 ## Development
@@ -462,6 +482,10 @@ bun install
 # Run tests
 bun test
 bun run test:e2e:1password
+
+# Typecheck and lint
+bun run typecheck
+bun run lint
 
 # Run CLI directly
 bun run src/cli.ts status
