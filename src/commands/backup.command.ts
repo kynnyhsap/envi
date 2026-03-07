@@ -1,101 +1,40 @@
-import { $ } from 'bun'
 import pc from 'picocolors'
 
 import { getConfig, generateBackupTimestamp } from '../config'
 import { log } from '../logger'
 import { stringifyEnvelope } from '../sdk'
-import { promptConfirm, formatBackupTimestamp } from '../utils'
+import { formatBackupTimestamp, promptConfirm } from '../utils'
+import {
+  backupFilesToRoot,
+  findBackupSnapshots,
+  findEnvFilesForBackup,
+  getBackupRoot,
+  summarizeSnapshot,
+} from '../utils/backups'
 
-/**
- * Silently backup specific .env files before overwriting.
- * Used by setup command to create automatic backups.
- * Returns the backup path if successful, null if no files to backup.
- */
 export async function createAutoBackup(filePaths: string[]): Promise<string | null> {
   if (filePaths.length === 0) return null
 
   const config = getConfig()
-  const timestamp = generateBackupTimestamp()
-  const backupRoot = `${config.backupDir}/${timestamp}`
+  const existingFiles: string[] = []
 
-  let successCount = 0
-
-  for (const file of filePaths) {
-    const fileExists = await Bun.file(file).exists()
-    if (!fileExists) continue
-
-    const backupPath = `${backupRoot}/${file}`
-    const backupDirPath = backupPath.substring(0, backupPath.lastIndexOf('/'))
-
-    try {
-      await $`mkdir -p ${backupDirPath}`.quiet()
-      const content = await Bun.file(file).text()
-      await Bun.write(backupPath, content)
-      successCount++
-    } catch {
-      // Silently skip failed backups
+  for (const filePath of filePaths) {
+    if (await Bun.file(filePath).exists()) {
+      existingFiles.push(filePath)
     }
   }
 
-  return successCount > 0 ? backupRoot : null
-}
+  if (existingFiles.length === 0) return null
 
-interface BackupSnapshot {
-  timestamp: string
-  path: string
-  files: { path: string; size: number }[]
-}
-
-async function findBackupSnapshots(): Promise<BackupSnapshot[]> {
-  const config = getConfig()
-  const snapshots: BackupSnapshot[] = []
-
-  const backupDirFile = Bun.file(config.backupDir)
-  try {
-    await backupDirFile.stat()
-  } catch {
-    return []
-  }
-
-  const glob = new Bun.Glob('*')
-  for await (const entry of glob.scan({ cwd: config.backupDir, onlyFiles: false })) {
-    if (!/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(entry)) continue
-
-    const snapshotPath = `${config.backupDir}/${entry}`
-    const files: { path: string; size: number }[] = []
-
-    const envGlob = new Bun.Glob('**/.env*')
-    for await (const envFile of envGlob.scan({ cwd: snapshotPath, dot: true })) {
-      const backupPath = `${snapshotPath}/${envFile}`
-      const file = Bun.file(backupPath)
-
-      try {
-        const stat = await file.stat()
-        files.push({
-          path: envFile,
-          size: stat?.size ?? 0,
-        })
-      } catch {
-        // Skip files we can't stat
-      }
-    }
-
-    if (files.length > 0) {
-      snapshots.push({
-        timestamp: entry,
-        path: snapshotPath,
-        files,
-      })
-    }
-  }
-
-  return snapshots.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  const backupRoot = getBackupRoot(config.backupDir, generateBackupTimestamp())
+  const result = await backupFilesToRoot(existingFiles, backupRoot)
+  return result.backedUp > 0 ? backupRoot : null
 }
 
 export async function listBackupsCommand(): Promise<void> {
   const config = getConfig()
   if (config.json) {
-    const snapshots = await findBackupSnapshots()
+    const snapshots = await findBackupSnapshots(config.backupDir)
     const envelope = {
       schemaVersion: 1,
       command: 'backup.list',
@@ -121,7 +60,7 @@ export async function listBackupsCommand(): Promise<void> {
 
   log.banner('Available Backups')
 
-  const snapshots = await findBackupSnapshots()
+  const snapshots = await findBackupSnapshots(config.backupDir)
 
   if (snapshots.length === 0) {
     log.info('')
@@ -138,13 +77,10 @@ export async function listBackupsCommand(): Promise<void> {
   log.info('')
 
   for (const snapshot of snapshots) {
-    const totalSize = snapshot.files.reduce((sum, f) => sum + f.size, 0)
-    const sizeKb = (totalSize / 1024).toFixed(1)
-    log.info(
-      `  ${pc.cyan(formatBackupTimestamp(snapshot.timestamp))}  ${pc.dim(`(${snapshot.files.length} files, ${sizeKb}KB)`)}`,
-    )
+    const { fileCount, sizeKb } = summarizeSnapshot(snapshot)
+    log.info(`  ${pc.cyan(formatBackupTimestamp(snapshot.timestamp))}  ${pc.dim(`(${fileCount} files, ${sizeKb}KB)`)}`)
     for (const file of snapshot.files) {
-      log.detail(`  ${file.path}`)
+      log.detail(`  ${file.originalPath}`)
     }
     log.info('')
   }
@@ -159,14 +95,7 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
   }
 
   if (config.json) {
-    const envFiles: string[] = []
-
-    const glob = new Bun.Glob('**/.env')
-    for await (const entry of glob.scan({ cwd: '.', dot: true })) {
-      if (!entry.includes('node_modules') && !entry.startsWith(config.backupDir)) {
-        envFiles.push(entry)
-      }
-    }
+    const envFiles = await findEnvFilesForBackup(config.backupDir)
 
     if (envFiles.length === 0) {
       const envelope = {
@@ -192,8 +121,7 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
       return
     }
 
-    const timestamp = generateBackupTimestamp()
-    const backupRoot = `${config.backupDir}/${timestamp}`
+    const backupRoot = getBackupRoot(config.backupDir, generateBackupTimestamp())
 
     if (!options.dryRun && !options.force) {
       const envelope = {
@@ -249,38 +177,22 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
       return
     }
 
-    let successCount = 0
-    const errors: Array<{ path: string; error: string }> = []
-
-    for (const file of envFiles) {
-      const backupPath = `${backupRoot}/${file}`
-      const backupDirPath = backupPath.substring(0, backupPath.lastIndexOf('/'))
-
-      try {
-        await $`mkdir -p ${backupDirPath}`.quiet()
-        const content = await Bun.file(file).text()
-        await Bun.write(backupPath, content)
-        successCount++
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        errors.push({ path: file, error: msg })
-      }
-    }
+    const backupResult = await backupFilesToRoot(envFiles, backupRoot)
 
     const envelope = {
       schemaVersion: 1,
       command: 'backup',
-      ok: errors.length === 0,
+      ok: backupResult.errors.length === 0,
       data: {
         dryRun: false,
         force: true,
         found: envFiles.length,
         backupRoot,
         files: envFiles,
-        backedUp: successCount,
-        errors,
+        backedUp: backupResult.backedUp,
+        errors: backupResult.errors,
       },
-      issues: errors.map((e) => ({ code: 'BACKUP_FAILED', message: e.error, path: e.path })),
+      issues: backupResult.errors.map((e) => ({ code: 'BACKUP_FAILED', message: e.error, path: e.path })),
       meta: {
         environment: config.environment,
         provider: config.provider,
@@ -289,7 +201,7 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
     }
 
     process.stdout.write(stringifyEnvelope(envelope))
-    process.exitCode = errors.length === 0 ? 0 : 1
+    process.exitCode = backupResult.errors.length === 0 ? 0 : 1
     return
   }
 
@@ -299,22 +211,14 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
     log.info(pc.yellow('  Running in dry-run mode'))
   }
 
-  const envFiles: string[] = []
-
-  const glob = new Bun.Glob('**/.env')
-  for await (const entry of glob.scan({ cwd: '.', dot: true })) {
-    if (!entry.includes('node_modules') && !entry.startsWith(config.backupDir)) {
-      envFiles.push(entry)
-    }
-  }
+  const envFiles = await findEnvFilesForBackup(config.backupDir)
 
   if (envFiles.length === 0) {
     log.warn('No .env files found to backup')
     return
   }
 
-  const timestamp = generateBackupTimestamp()
-  const backupRoot = `${config.backupDir}/${timestamp}`
+  const backupRoot = getBackupRoot(config.backupDir, generateBackupTimestamp())
 
   log.info('')
   log.info(`  Found ${pc.green(String(envFiles.length))} .env file(s):`)
@@ -344,28 +248,20 @@ export async function backupCommand(options: { force: boolean; dryRun: boolean; 
   log.header('Creating backups...')
   log.info('')
 
-  let successCount = 0
+  const backupResult = await backupFilesToRoot(envFiles, backupRoot)
 
   for (const file of envFiles) {
-    const backupPath = `${backupRoot}/${file}`
-    const backupDirPath = backupPath.substring(0, backupPath.lastIndexOf('/'))
-
-    try {
-      await $`mkdir -p ${backupDirPath}`.quiet()
-      const content = await Bun.file(file).text()
-      await Bun.write(backupPath, content)
-      log.success(`Backed up ${file}`)
-      successCount++
-    } catch (error) {
+    const error = backupResult.errors.find((entry) => entry.path === file)
+    if (error) {
       log.fail(`Failed to backup ${file}`)
-      if (error instanceof Error) {
-        log.detail(error.message)
-      }
+      log.detail(error.error)
+      continue
     }
+    log.success(`Backed up ${file}`)
   }
 
   log.banner('Summary')
   log.info('')
-  log.info(`  Backed up: ${pc.green(String(successCount))} file(s) to ${backupRoot}/`)
+  log.info(`  Backed up: ${pc.green(String(backupResult.backedUp))} file(s) to ${backupRoot}/`)
   log.info('')
 }

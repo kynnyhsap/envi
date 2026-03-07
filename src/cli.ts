@@ -1,23 +1,5 @@
 #!/usr/bin/env bun
 
-/**
- * envi - Manage .env files with secret providers.
- *
- * Usage:
- *   envi <command> [options]
- *
- * Commands:
- *   status              Show .env status and auth
- *   diff                Show differences between local and provider
- *   sync                Sync .env files from templates
- *   resolve             Resolve one secret reference
- *   backup              Backup current .env files
- *   restore             Restore .env files from backup
- *   validate            Validate all secret references in templates
- *
- * Run 'envi <command> --help' for command-specific options.
- */
-
 import { Command } from 'commander'
 import pc from 'picocolors'
 
@@ -152,7 +134,6 @@ interface GlobalOptions {
   backupDir?: string
 }
 
-/** Parse `--provider-opt key=value` entries into a record. */
 function parseProviderOpts(opts: string[] | undefined): Record<string, string> {
   if (!opts) return {}
   const result: Record<string, string> = {}
@@ -168,7 +149,6 @@ function parseProviderOpts(opts: string[] | undefined): Record<string, string> {
 }
 
 async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
-  // Load config file (base layer)
   let fileConfig: ConfigFile = {}
   const configPath = options.config ?? 'envi.json'
 
@@ -183,7 +163,6 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
     }
   }
 
-  // Provider options: config file <- CLI --provider-opt (CLI wins)
   const cliProviderOpts = parseProviderOpts(options.providerOpt)
 
   let resolved
@@ -374,7 +353,6 @@ configureCommandHelp(
   })
 })
 
-// The run command uses allowUnknownOption + passThroughOptions so everything after `--` is captured
 const runCmd = program
   .command('run')
   .description('Run a command with secrets injected as environment variables')
@@ -399,7 +377,6 @@ configureCommandHelp(runCmd, {
   ],
 }).action(async (options, cmd) => {
   await applyGlobalOptions(program.opts())
-  // Everything after `--` ends up in cmd.args
   const childCommand = cmd.args
   await runCommand(childCommand, {
     envFile: options.envFile,
@@ -423,7 +400,6 @@ configureCommandHelp(
   await validateCommand({ remote: options.remote ?? false })
 })
 
-// Show custom help when no command is provided or when -h/--help is passed to main program
 const arg = process.argv[2]
 if (process.argv.length === 2 || (process.argv.length === 3 && arg !== undefined && ['-h', '--help'].includes(arg))) {
   showHelp()

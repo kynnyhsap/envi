@@ -5,69 +5,9 @@ import { getConfig } from '../config'
 import { log } from '../logger'
 import { stringifyEnvelope } from '../sdk'
 import { promptConfirm, formatBackupTimestamp } from '../utils'
+import { findBackupSnapshots, summarizeSnapshot, type BackupFileRecord, type BackupSnapshot } from '../utils/backups'
 
-interface BackupSnapshot {
-  timestamp: string
-  path: string
-  files: BackupFile[]
-}
-
-interface BackupFile {
-  backupPath: string
-  originalPath: string
-  size: number
-  modifiedAt: Date
-}
-
-async function findBackupSnapshots(): Promise<BackupSnapshot[]> {
-  const config = getConfig()
-  const snapshots: BackupSnapshot[] = []
-
-  const backupDirFile = Bun.file(config.backupDir)
-  try {
-    await backupDirFile.stat()
-  } catch {
-    return []
-  }
-
-  const glob = new Bun.Glob('*')
-  for await (const entry of glob.scan({ cwd: config.backupDir, onlyFiles: false })) {
-    if (!/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/.test(entry)) continue
-
-    const snapshotPath = `${config.backupDir}/${entry}`
-    const files: BackupFile[] = []
-
-    const envGlob = new Bun.Glob('**/.env*')
-    for await (const envFile of envGlob.scan({ cwd: snapshotPath, dot: true })) {
-      const backupPath = `${snapshotPath}/${envFile}`
-      const file = Bun.file(backupPath)
-
-      try {
-        const stat = await file.stat()
-        files.push({
-          backupPath,
-          originalPath: envFile,
-          size: stat?.size ?? 0,
-          modifiedAt: stat?.mtime ? new Date(stat.mtime) : new Date(),
-        })
-      } catch {
-        // Skip files we can't stat
-      }
-    }
-
-    if (files.length > 0) {
-      snapshots.push({
-        timestamp: entry,
-        path: snapshotPath,
-        files,
-      })
-    }
-  }
-
-  return snapshots.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-}
-
-async function restoreFile(backup: BackupFile, options: { force: boolean; dryRun: boolean }): Promise<boolean> {
+async function restoreFile(backup: BackupFileRecord, options: { force: boolean; dryRun: boolean }): Promise<boolean> {
   const targetFile = Bun.file(backup.originalPath)
   const targetExists = await targetFile.exists()
 
@@ -108,7 +48,7 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
   const config = getConfig()
 
   if (config.json) {
-    const snapshots = await findBackupSnapshots()
+    const snapshots = await findBackupSnapshots(config.backupDir)
 
     if (snapshots.length === 0) {
       const envelope = {
@@ -265,7 +205,7 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
     log.info(pc.yellow('  Running in dry-run mode'))
   }
 
-  const snapshots = await findBackupSnapshots()
+  const snapshots = await findBackupSnapshots(config.backupDir)
 
   if (snapshots.length === 0) {
     log.fail(`No backups found in ${config.backupDir}/`)
@@ -281,9 +221,8 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
     log.info('')
 
     for (const snapshot of snapshots) {
-      const totalSize = snapshot.files.reduce((sum, f) => sum + f.size, 0)
-      const sizeKb = (totalSize / 1024).toFixed(1)
-      log.info(`  ${pc.cyan(snapshot.timestamp)}  ${pc.dim(`(${snapshot.files.length} files, ${sizeKb}KB)`)}`)
+      const { fileCount, sizeKb } = summarizeSnapshot(snapshot)
+      log.info(`  ${pc.cyan(snapshot.timestamp)}  ${pc.dim(`(${fileCount} files, ${sizeKb}KB)`)}`)
       for (const file of snapshot.files) {
         log.detail(`  ${file.originalPath}`)
       }
@@ -306,12 +245,10 @@ export async function restoreCommand(options: { force: boolean; dryRun: boolean;
     log.info('')
     log.info(`  Found 1 backup: ${pc.cyan(formatBackupTimestamp(selectedSnapshot.timestamp))}`)
   } else if (options.force) {
-    // In force mode, use the most recent backup
     selectedSnapshot = firstSnapshot
     log.info('')
     log.info(`  Using most recent backup: ${pc.cyan(formatBackupTimestamp(selectedSnapshot.timestamp))}`)
   } else {
-    // Interactive selection
     log.info('')
     try {
       const answer = await select({

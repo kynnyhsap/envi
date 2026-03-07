@@ -17,6 +17,7 @@ export {
 export type { Provider, ProviderType, SecretReference, SecretReferenceValidationResult } from '../providers'
 
 export type {
+  EnviCommand,
   EnviEngine,
   RuntimeOptions,
   RuntimeOptionsInput,

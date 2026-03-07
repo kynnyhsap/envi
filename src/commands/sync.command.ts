@@ -1,11 +1,10 @@
 import { Table } from 'console-table-printer'
 import pc from 'picocolors'
 
-import { getConfig } from '../config'
 import { log } from '../logger'
-import { stringifyEnvelope } from '../sdk'
+import { isSecretReference } from '../sdk'
 import { truncateValue, redactSecret, type Change } from '../utils'
-import { createCliEngine } from './engine'
+import { createCommandContext, maybeWriteJsonResult } from './common'
 
 function formatValue(value: string, isSecret: boolean): string {
   if (isSecret) {
@@ -16,7 +15,7 @@ function formatValue(value: string, isSecret: boolean): string {
 
 function isSecretValue(templateValue: string | undefined): boolean {
   if (!templateValue) return false
-  return templateValue.trim().startsWith('op://')
+  return isSecretReference(templateValue)
 }
 
 function displayChanges(changes: Change[]): {
@@ -113,8 +112,7 @@ function displayChanges(changes: Change[]): {
 }
 
 export async function syncCommand(options: { force: boolean; dryRun: boolean; noBackup: boolean }): Promise<void> {
-  const config = getConfig()
-  const engine = createCliEngine()
+  const { config, engine } = createCommandContext()
   const result = await engine.sync({
     force: options.force,
     dryRun: options.dryRun,
@@ -122,11 +120,7 @@ export async function syncCommand(options: { force: boolean; dryRun: boolean; no
     includeSecrets: !config.json,
   })
 
-  if (config.json) {
-    process.stdout.write(stringifyEnvelope(result))
-    process.exitCode = result.ok ? 0 : 1
-    return
-  }
+  if (maybeWriteJsonResult(result, config.json)) return
 
   log.banner('Environment Sync')
   log.info(`  Environment: ${pc.cyan(config.environment)}`)

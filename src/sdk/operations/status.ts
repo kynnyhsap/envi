@@ -4,7 +4,8 @@ import { mapWithConcurrency } from '../../utils/concurrency'
 import { parseEnvFile } from '../../utils/parse'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
-import type { ExecutionContext, Issue, StatusData, StatusResult, StatusPathData } from '../types'
+import type { ExecutionContext, StatusData, StatusResult, StatusPathData } from '../types'
+import { getProviderReadiness } from './provider-check'
 
 const SNAPSHOT_RE = /^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$/
 const DEFAULT_STATUS_PATH_CONCURRENCY = 8
@@ -73,23 +74,8 @@ async function getPathStatus(ctx: ExecutionContext, pathInfo: StatusPathData['pa
 }
 
 export async function statusOperation(ctx: ExecutionContext): Promise<StatusResult> {
-  const issues: Issue[] = []
-
-  const availability = await ctx.provider.checkAvailability()
-  const authResult = availability.available
-    ? await ctx.provider.verifyAuth()
-    : { success: false, error: 'Provider unavailable' }
-  const authInfo = ctx.provider.getAuthInfo()
-  const hints = authResult.success ? { lines: [] } : ctx.provider.getAuthFailureHints()
-
-  if (!availability.available) {
-    issues.push({ code: 'PROVIDER_UNAVAILABLE', message: 'No authentication method available for provider' })
-  } else if (!authResult.success) {
-    issues.push({
-      code: 'AUTH_FAILED',
-      message: authResult.error ? `Authentication failed: ${authResult.error}` : 'Authentication failed',
-    })
-  }
+  const readiness = await getProviderReadiness(ctx)
+  const { availability, auth: authResult, authInfo, hints, issues } = readiness
 
   const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
   const statuses = await mapWithConcurrency(envPaths, getStatusPathConcurrency(), async (pathInfo) =>

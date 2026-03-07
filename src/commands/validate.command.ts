@@ -1,25 +1,19 @@
 import pc from 'picocolors'
 
-import { getConfig } from '../config'
 import { log } from '../logger'
-import { stringifyEnvelope } from '../sdk'
 import { hasUnresolvedVariables } from '../utils/variables'
-import { createCliEngine } from './engine'
+import { createCommandContext, maybeWriteJsonResult } from './common'
 
 function formatReference(reference: string): string {
   const trimmed = reference.trim()
 
-  // Find the scheme
-  const schemes = ['op://']
-  for (const scheme of schemes) {
-    if (trimmed.startsWith(scheme)) {
-      const path = trimmed.slice(scheme.length)
-      const parts = path.split('/')
-      const [vault, item, ...rest] = parts
-      const field = rest.join('/')
+  if (trimmed.startsWith('op://')) {
+    const path = trimmed.slice('op://'.length)
+    const parts = path.split('/')
+    const [vault, item, ...rest] = parts
+    const field = rest.join('/')
 
-      return pc.dim(scheme) + pc.blue(vault ?? '') + pc.dim('/') + pc.cyan(item ?? '') + pc.dim('/') + pc.yellow(field)
-    }
+    return pc.dim('op://') + pc.blue(vault ?? '') + pc.dim('/') + pc.cyan(item ?? '') + pc.dim('/') + pc.yellow(field)
   }
 
   return trimmed
@@ -31,20 +25,15 @@ interface ValidateOptions {
 
 export async function validateCommand(options: ValidateOptions = {}): Promise<void> {
   const isRemote = options.remote ?? false
-  const { environment } = getConfig()
-  const engine = createCliEngine()
+  const { config, engine } = createCommandContext()
   const result = await engine.validate({ remote: isRemote })
 
-  if (getConfig().json) {
-    process.stdout.write(stringifyEnvelope(result))
-    process.exitCode = result.ok ? 0 : 1
-    return
-  }
+  if (maybeWriteJsonResult(result, config.json)) return
 
   log.banner('Validate Secret References')
 
   log.info('')
-  log.info(`  Environment: ${pc.cyan(environment)}`)
+  log.info(`  Environment: ${pc.cyan(config.environment)}`)
   log.info(`  Provider: ${pc.cyan(result.meta.provider)}`)
   if (isRemote) {
     log.info('  Validating references against provider...')

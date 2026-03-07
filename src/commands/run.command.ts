@@ -1,26 +1,10 @@
-/**
- * Run command — execute a command with secrets injected as environment variables.
- *
- * Reads .env.example templates, resolves all secret references via the configured provider,
- * and passes the resolved key=value pairs as environment variables to the child process.
- *
- * Usage:
- *   envi run -- node index.js
- *   envi run --env-file .env.local -- node index.js
- *   envi run --no-template -- ./deploy.sh
- */
-
 import pc from 'picocolors'
 
-import { getConfig } from '../config'
 import { log } from '../logger'
-import { stringifyEnvelope } from '../sdk'
-import { createCliEngine } from './engine'
+import { createCommandContext, maybeWriteJsonResult, printIssuesAndExit } from './common'
 
 interface RunOptions {
-  /** Additional .env files to load (bare key=value, may contain secret refs) */
   envFile?: string[]
-  /** Skip loading templates */
   noTemplate?: boolean
 }
 
@@ -30,19 +14,14 @@ export async function runCommand(command: string[], options: RunOptions = {}): P
     process.exit(1)
   }
 
-  const config = getConfig()
-  const engine = createCliEngine()
+  const { config, engine } = createCommandContext()
   const resolved = await engine.resolveRunEnvironment({
     ...(options.envFile ? { envFile: options.envFile } : {}),
     ...(options.noTemplate ? { noTemplate: true } : {}),
     includeSecrets: !config.json,
   })
 
-  if (config.json) {
-    process.stdout.write(stringifyEnvelope(resolved))
-    process.exitCode = resolved.ok ? 0 : 1
-    return
-  }
+  if (maybeWriteJsonResult(resolved, config.json)) return
 
   if (!config.quiet) {
     log.banner('Run')
@@ -52,10 +31,7 @@ export async function runCommand(command: string[], options: RunOptions = {}): P
   }
 
   if (!resolved.ok) {
-    for (const issue of resolved.issues) {
-      log.fail(issue.message)
-    }
-    process.exit(1)
+    printIssuesAndExit(resolved.issues)
   }
 
   if (!config.quiet) {

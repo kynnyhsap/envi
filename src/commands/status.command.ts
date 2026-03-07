@@ -1,21 +1,14 @@
 import pc from 'picocolors'
 
-import { getConfig } from '../config'
 import { log } from '../logger'
-import { stringifyEnvelope } from '../sdk'
 import { formatBackupTimestamp } from '../utils'
-import { createCliEngine } from './engine'
+import { createCommandContext, maybeWriteJsonResult } from './common'
 
 export async function statusCommand(): Promise<void> {
-  const config = getConfig()
-  const engine = createCliEngine()
+  const { config, engine } = createCommandContext()
   const result = await engine.status()
 
-  if (config.json) {
-    process.stdout.write(stringifyEnvelope(result))
-    process.exitCode = 0
-    return
-  }
+  if (maybeWriteJsonResult(result, config.json)) return
 
   log.banner('Environment Status')
   log.info(`  Environment: ${pc.cyan(config.environment)}`)

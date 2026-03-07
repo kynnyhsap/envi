@@ -18,7 +18,17 @@ export { mergeEnvFiles } from './merge'
 export { truncateValue, redactSecret, formatBackupTimestamp } from './format'
 
 // Helpers
-export { promptConfirm, withTimeout, checkPrerequisites } from './helpers'
+export { promptConfirm, withTimeout } from './helpers'
+
+// Backups
+export type { BackupFileRecord, BackupSnapshot } from './backups'
+export {
+  backupFilesToRoot,
+  findBackupSnapshots,
+  findEnvFilesForBackup,
+  getBackupRoot,
+  summarizeSnapshot,
+} from './backups'
 
 // Paths
 export type { EnvPathInfo } from './paths'

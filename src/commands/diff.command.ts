@@ -1,10 +1,8 @@
 import pc from 'picocolors'
 
-import { getConfig } from '../config'
 import { log } from '../logger'
-import { stringifyEnvelope } from '../sdk'
 import { type Change, type EnvPathInfo } from '../utils'
-import { createCliEngine } from './engine'
+import { createCommandContext, maybeWriteJsonResult } from './common'
 
 function maskValue(value: string, maxLen = 40): string {
   if (value.length <= 8) return value
@@ -48,8 +46,7 @@ function displayGitStyleDiff(changes: Change[], pathInfo: EnvPathInfo): void {
 }
 
 export async function diffCommand(options: { path?: string }): Promise<void> {
-  const config = getConfig()
-  const engine = createCliEngine()
+  const { config, engine } = createCommandContext()
   const result = await engine.diff(
     config.json
       ? options.path
@@ -61,11 +58,7 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
         },
   )
 
-  if (config.json) {
-    process.stdout.write(stringifyEnvelope(result))
-    process.exitCode = result.ok ? 0 : 1
-    return
-  }
+  if (maybeWriteJsonResult(result, config.json)) return
 
   log.banner('Environment Diff')
   log.info(`  Environment: ${pc.cyan(config.environment)}`)
