@@ -101,8 +101,40 @@ describe('sdk engine (smoke)', () => {
     const result = await engine.resolveSecret({ reference: 'op://core-${ENV}/api/API_KEY' })
     expect(result.command).toBe('resolve')
     expect(result.ok).toBe(true)
-    expect(result.data.nativeReference).toBe('op://core-local/api/API_KEY')
-    expect(result.data.secret).toBe('resolved(op://core-local/api/API_KEY)')
+    expect('results' in result.data).toBe(false)
+    if (!('results' in result.data)) {
+      expect(result.data.nativeReference).toBe('op://core-local/api/API_KEY')
+      expect(result.data.secret).toBe('resolved(op://core-local/api/API_KEY)')
+    }
+  })
+
+  it('resolveSecret resolves multiple references in order', async () => {
+    const engine = createEnviEngine({
+      provider: createFakeProvider(),
+      options: {
+        provider: '1password',
+        environment: 'local',
+      },
+    })
+
+    const result = await engine.resolveSecret({
+      reference: 'op://core-${ENV}/api/API_KEY',
+      references: ['op://core-${ENV}/api/API_KEY', 'op://core-${ENV}/api/JWT_SECRET'],
+    })
+
+    expect(result.command).toBe('resolve')
+    expect(result.ok).toBe(true)
+    expect('results' in result.data).toBe(true)
+    if ('results' in result.data) {
+      expect(result.data.results.map((entry) => entry.nativeReference)).toEqual([
+        'op://core-local/api/API_KEY',
+        'op://core-local/api/JWT_SECRET',
+      ])
+      expect(result.data.results.map((entry) => entry.secret)).toEqual([
+        'resolved(op://core-local/api/API_KEY)',
+        'resolved(op://core-local/api/JWT_SECRET)',
+      ])
+    }
   })
 
   it('status captures authInfo after verifyAuth', async () => {

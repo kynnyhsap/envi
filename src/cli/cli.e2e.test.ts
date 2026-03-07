@@ -126,6 +126,15 @@ describe('CLI e2e tests', () => {
       expect(output).toContain('Invalid reference')
       expect(output).toContain('vault/item/field')
     })
+
+    it('should reject multiple malformed references and report each issue', async () => {
+      const { stdout, stderr, exitCode } = await runCli('resolve', 'not-a-secret', 'op://vault/item')
+
+      expect(exitCode).toBe(1)
+      const output = stdout + stderr
+      expect(output).toContain('must start with op://')
+      expect(output).toContain('vault/item/field')
+    })
   })
 
   describe('--version', () => {

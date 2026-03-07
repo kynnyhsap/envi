@@ -221,14 +221,24 @@ export type ValidateResult = JsonEnvelope<ValidateData, 'validate'>
 
 export interface ResolveSecretOperationOptions {
   reference: string
+  references?: string[]
 }
 
-export interface ResolveSecretData {
+export interface ResolveSecretEntryData {
   input: string
   resolvedReference: string
   nativeReference: string
   secret: string
 }
+
+export type ResolveSecretSingleData = ResolveSecretEntryData
+
+export interface ResolveSecretMultipleData {
+  inputs: string[]
+  results: ResolveSecretEntryData[]
+}
+
+export type ResolveSecretData = ResolveSecretSingleData | ResolveSecretMultipleData
 
 export type ResolveSecretResult = JsonEnvelope<ResolveSecretData, 'resolve'>
 

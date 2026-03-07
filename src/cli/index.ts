@@ -255,10 +255,12 @@ addExamples(
   )
 })
 
-addExamples(cli.command('resolve <reference>', 'Resolve one secret reference to its value'), [
+addExamples(cli.command('resolve [...references]', 'Resolve one or more secret references to their values'), [
   'envi resolve op://core-${ENV}/engine-api/SECRET',
-]).action(async (reference: string, options: GlobalOptions) => {
-  await withGlobalOptions(options, () => resolveCommand({ reference }))
+  'envi resolve op://vault/app/API_KEY op://vault/app/JWT_SECRET',
+]).action(async (references: string[] | string, options: GlobalOptions) => {
+  const parsedReferences = Array.isArray(references) ? references : typeof references === 'string' ? [references] : []
+  await withGlobalOptions(options, () => resolveCommand({ references: parsedReferences }))
 })
 
 addExamples(

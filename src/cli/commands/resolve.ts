@@ -1,12 +1,13 @@
 import { createCommandContext, maybeWriteJsonResult, printIssuesAndExit } from './common'
 
 interface ResolveCommandOptions {
-  reference: string
+  references: string[]
 }
 
 export async function resolveCommand(options: ResolveCommandOptions): Promise<void> {
   const { config, engine } = createCommandContext()
-  const result = await engine.resolveSecret({ reference: options.reference })
+  const [firstReference = ''] = options.references
+  const result = await engine.resolveSecret({ reference: firstReference, references: options.references })
 
   if (maybeWriteJsonResult(result, config.json)) return
 
@@ -15,5 +16,7 @@ export async function resolveCommand(options: ResolveCommandOptions): Promise<vo
   }
 
   const suffix = process.stdout.isTTY ? '\n' : ''
-  process.stdout.write(`${result.data.secret}${suffix}`)
+  const output =
+    'results' in result.data ? result.data.results.map((entry) => entry.secret).join('\n') : result.data.secret
+  process.stdout.write(`${output}${suffix}`)
 }

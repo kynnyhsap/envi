@@ -78,18 +78,33 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('resolve returns secret values in plain and json modes', async () => {
+  test('resolve returns single and multiple secret values in plain and json modes', async () => {
     await withWorkspace(async (workspaceDir) => {
       const reference = `op://${getVaultName()}/api-envs/DATABASE_URL`
+      const secondReference = `op://${getVaultName()}/api-envs/JWT_SECRET`
 
       const plain = await runCli(workspaceDir, ['--quiet', 'resolve', reference])
       expect(plain.stdout.trim()).toBe(getSeedFieldValue('api-envs', 'DATABASE_URL'))
+
+      const multiPlain = await runCli(workspaceDir, ['--quiet', 'resolve', reference, secondReference])
+      expect(multiPlain.stdout.trim()).toBe(
+        [getSeedFieldValue('api-envs', 'DATABASE_URL'), getSeedFieldValue('api-envs', 'JWT_SECRET')].join('\n'),
+      )
 
       const resolved = await runCliJson(workspaceDir, ['--json', 'resolve', reference])
       expect(resolved.command).toBe('resolve')
       expect(resolved.ok).toBe(true)
       expect(resolved.data.secret).toBe(getSeedFieldValue('api-envs', 'DATABASE_URL'))
       expect(resolved.data.resolvedReference).toBe(reference)
+
+      const multiResolved = await runCliJson(workspaceDir, ['--json', 'resolve', reference, secondReference])
+      expect(multiResolved.command).toBe('resolve')
+      expect(multiResolved.ok).toBe(true)
+      expect(multiResolved.data.inputs).toEqual([reference, secondReference])
+      expect(multiResolved.data.results.map((entry: { secret: string }) => entry.secret)).toEqual([
+        getSeedFieldValue('api-envs', 'DATABASE_URL'),
+        getSeedFieldValue('api-envs', 'JWT_SECRET'),
+      ])
     })
   })
 
