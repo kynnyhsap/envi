@@ -24,6 +24,8 @@
     "cli": "bun run src/cli.ts",
     "bench:e2e": "bun run examples/1password-e2e-bench/bench.ts",
     "envi": "bun run src/cli.ts",
+    "examples:cleanup": "bun run examples/cleanup.ts",
+    "examples:setup": "bun run examples/setup.ts",
     "test": "bun test",
     "test:e2e:1password": "bun test --timeout 600000 ./src/cli.1password.live.e2e.ts",
     "typecheck": "tsgo --noEmit",

@@ -2,6 +2,8 @@
 
 This example is wired to the live `envi-test` 1Password vault and is meant for performance work.
 
+The benchmark now runs in a temporary workspace outside the repo, so it does not pollute `examples/` or show up in normal template discovery.
+
 ## What it benchmarks
 
 - Real secret resolution through 1Password CLI service account auth
