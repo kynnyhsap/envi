@@ -42,6 +42,7 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 - Process/platform boundaries shared across CLI/SDK/providers live in `src/shared/process/*` and `src/sdk/runtime/*` (avoid provider -> SDK imports to prevent cycles).
 - Canonical machine output is the SDK JSON envelope (`src/sdk/json.ts`); CLI `--json` prints it directly (no reshaping).
 - SDK results are safe by default (redacted); operations that surface values support `includeSecrets` as an explicit escape hatch.
+- CLI flows are non-interactive by default. Prefer `--dry-run` for previewing changes; do not add confirmation prompts back unless explicitly requested.
 
 ## 1Password Scope
 

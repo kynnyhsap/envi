@@ -44,9 +44,6 @@ envi diff
 # Sync .env files from templates
 envi sync
 
-# Force sync without prompts
-envi sync -f
-
 # Preview changes without writing
 envi sync -d
 
@@ -177,8 +174,8 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 | `sync`     | Sync `.env` files from templates                                    |
 | `resolve`  | Resolve one or more secret references and print the secret values   |
 | `run`      | Run a command with secrets injected as env vars                     |
-| `backup`   | Backup all `.env` files (timestamped snapshots)                     |
-| `restore`  | Restore `.env` files from backup (interactive)                      |
+| `backup`   | Backup all `.env` files (`latest` plus archived snapshots)          |
+| `restore`  | Restore `.env` files from the latest or a specific backup snapshot  |
 | `validate` | Validate secret reference format (use `--remote` to check provider) |
 
 ### Common Options
@@ -186,7 +183,6 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 | Option                 | Description                                                   |
 | ---------------------- | ------------------------------------------------------------- |
 | `-d, --dry-run`        | Preview changes without writing files                         |
-| `-f, --force`          | Skip confirmation prompts                                     |
 | `-q, --quiet`          | Suppress non-essential output                                 |
 | `--json`               | Output machine-readable JSON (same envelope as SDK)           |
 | `-e, --env <name>`     | Environment name for `${ENV}` substitution (default: `local`) |
@@ -195,6 +191,7 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 | `--only <paths>`       | Filter which paths to process                                 |
 | `--template-file <f>`  | Override the template filename                                |
 | `--backup-dir <dir>`   | Override the backup directory                                 |
+| `--snapshot <id>`      | Restore a specific backup snapshot id                         |
 
 ## Examples
 
@@ -235,9 +232,8 @@ DATABASE_URL=op://core-${ENV}/engine-api/DATABASE_URL
 1. **Read template** - Parse `.env.example` file
 2. **Resolve secrets** - Use 1Password to fetch secrets
 3. **Show changes** - Display table of NEW, UPDATED, UNCHANGED variables
-4. **Confirm** - Prompt for confirmation if there are changes (skip with `--force`)
-5. **Smart merge** - Combine with existing `.env`, preserving your customizations
-6. **Write output** - Save merged result to `.env`
+4. **Smart merge** - Combine with existing `.env`, preserving your customizations
+5. **Write output** - Save merged result to `.env`
 
 ### JSON Output
 
@@ -378,7 +374,7 @@ envi sync -e dev
 envi sync -e prod
 
 # CI/CD (1Password)
-OP_SERVICE_ACCOUNT_TOKEN="..." envi sync -e prod -f -q
+OP_SERVICE_ACCOUNT_TOKEN="..." envi sync -e prod -q
 ```
 
 ### Flexible Patterns
@@ -421,7 +417,7 @@ For automated environments, configure 1Password service account credentials.
 
 ```bash
 export OP_SERVICE_ACCOUNT_TOKEN="your-token"
-envi sync --force
+envi sync
 ```
 
 ### GitHub Actions (1Password)
@@ -443,7 +439,7 @@ jobs:
       - name: Sync .env files
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-        run: envi sync -e prod -f -q
+        run: envi sync -e prod -q
 ```
 
 ## Backup System
@@ -452,12 +448,22 @@ Backups are stored in timestamped directories under `.env-backup/`:
 
 ```
 .env-backup/
-├── 2024-01-27_14-30-00/
+├── latest/
+│   ├── .envi-backup.json
 │   ├── engine/api/.env
 │   └── console/.env
-├── 2024-01-26_10-00-00/
+├── 2026-03-07T15-39-54-840Z/
+│   ├── .envi-backup.json
+│   ├── engine/api/.env
+│   └── console/.env
+├── 2026-03-06T10-00-00-000Z/
+│   ├── .envi-backup.json
 │   └── engine/api/.env
 ```
+
+- `latest/` is always the most recent backup for quick restore and inspection.
+- When a new backup is created, the previous `latest/` is archived to its timestamp id.
+- Each snapshot stores metadata in `.envi-backup.json`.
 
 ### Managing Backups
 
@@ -468,8 +474,11 @@ envi restore --list
 # List backups (same info)
 envi backup --list
 
-# Restore from most recent backup
-envi restore -f
+# Restore from the latest backup
+envi restore
+
+# Restore a specific archived snapshot
+envi restore --snapshot 2026-03-07T15-39-54-840Z
 ```
 
 ## Development
