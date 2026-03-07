@@ -1,5 +1,5 @@
 import { isSecretReference } from '../../providers'
-import type { Change } from '../../utils/types'
+import type { Change } from '../../shared/env/types'
 
 export function redactChanges(changes: Change[]): Change[] {
   return changes.map((change) => {

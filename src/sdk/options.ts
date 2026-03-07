@@ -1,6 +1,6 @@
-import { DEFAULT_BACKUP_DIR, DEFAULT_OUTPUT_FILE, DEFAULT_PROVIDER, DEFAULT_TEMPLATE_FILE } from '../config'
+import { DEFAULT_BACKUP_DIR, DEFAULT_OUTPUT_FILE, DEFAULT_PROVIDER, DEFAULT_TEMPLATE_FILE } from '../app/config'
 import type { ProviderType } from '../providers'
-import { DEFAULT_ENVIRONMENT } from '../utils/variables'
+import { DEFAULT_ENVIRONMENT } from '../shared/env/variables'
 import type { RuntimeOptions, RuntimeOptionsInput } from './types'
 
 export function resolveRuntimeOptions(input: RuntimeOptionsInput = {}): RuntimeOptions {

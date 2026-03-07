@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 
-import { createFakeProvider } from '../../test-helpers/fake-provider'
-import { createMemoryRuntime } from '../../test-helpers/memory-runtime'
+import { createFakeProvider } from '../../testing/fake-provider'
+import { createMemoryRuntime } from '../../testing/memory-runtime'
 import { createEnviEngine, stringifyEnvelope } from '../index'
 
 describe('sdk engine (smoke)', () => {

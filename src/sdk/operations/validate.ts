@@ -1,6 +1,6 @@
 import { isSecretReference, toNativeReference, validateSecretReferenceFormat } from '../../providers'
-import { parseEnvFile } from '../../utils/parse'
-import { substituteVariables, hasUnresolvedVariables } from '../../utils/variables'
+import { parseEnvFile } from '../../shared/env/parse'
+import { hasUnresolvedVariables, substituteVariables } from '../../shared/env/variables'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
 import type {

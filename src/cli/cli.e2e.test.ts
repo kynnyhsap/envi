@@ -2,9 +2,9 @@ import { $ } from 'bun'
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import { join } from 'path'
 
-import { BACKUP_FOLDER_NAME } from './config'
+import { BACKUP_FOLDER_NAME } from '../app/config'
 
-const CLI_PATH = join(import.meta.dir, 'cli.ts')
+const CLI_PATH = join(import.meta.dir, '..', 'cli.ts')
 const TEST_DIR = join(import.meta.dir, '.test-workspace')
 const BACKUP_DIR = join(TEST_DIR, BACKUP_FOLDER_NAME)
 

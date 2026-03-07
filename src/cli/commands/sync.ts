@@ -1,9 +1,10 @@
 import { Table } from 'console-table-printer'
 import pc from 'picocolors'
 
-import { log } from '../logger'
-import { isSecretReference } from '../sdk'
-import { truncateValue, redactSecret, type Change } from '../utils'
+import { log } from '../../app/logger'
+import { isSecretReference } from '../../sdk'
+import { redactSecret, truncateValue } from '../../shared/env/format'
+import type { Change } from '../../shared/env/types'
 import { createCommandContext, maybeWriteJsonResult } from './common'
 
 function formatValue(value: string, isSecret: boolean): string {

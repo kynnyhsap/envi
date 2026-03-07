@@ -1,7 +1,7 @@
 import pc from 'picocolors'
 
-import { log } from '../logger'
-import { formatBackupTimestamp } from '../utils'
+import { log } from '../../app/logger'
+import { formatBackupTimestamp } from '../../shared/env/format'
 import { createCommandContext, maybeWriteJsonResult } from './common'
 
 export async function statusCommand(): Promise<void> {

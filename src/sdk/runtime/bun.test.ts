@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-import { createFakeProvider } from '../../test-helpers/fake-provider'
+import { createFakeProvider } from '../../testing/fake-provider'
 import { createEnviEngine } from '../engine'
 import { createBunRuntimeAdapter } from './bun'
 

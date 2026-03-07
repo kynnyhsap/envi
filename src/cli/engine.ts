@@ -1,6 +1,6 @@
-import { getConfig, getProvider } from '../config'
+import { getConfig, getProvider } from '../app/config'
 import { createBunRuntimeAdapter, createEnviEngine } from '../sdk'
-import { promptConfirm } from '../utils/helpers'
+import { promptConfirm } from '../shared/helpers'
 
 export function createCliEngine() {
   const config = getConfig()

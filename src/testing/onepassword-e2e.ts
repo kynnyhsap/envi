@@ -1,7 +1,7 @@
 import { createClient, ItemCategory, ItemFieldType, type Client, type ItemCreateParams } from '@1password/sdk'
 import { randomUUID } from 'node:crypto'
 
-import { VERSION } from '../config'
+import { VERSION } from '../app/config'
 import { loadRootEnvLocal } from './local-env'
 
 export const E2E_SERVICE_ACCOUNT_TOKEN_ENV = 'ENVI_1PASSWORD_E2E_SERVICE_ACCOUNT_TOKEN'

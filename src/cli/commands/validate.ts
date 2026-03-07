@@ -1,7 +1,7 @@
 import pc from 'picocolors'
 
-import { log } from '../logger'
-import { hasUnresolvedVariables } from '../utils/variables'
+import { log } from '../../app/logger'
+import { hasUnresolvedVariables } from '../../shared/env/variables'
 import { createCommandContext, maybeWriteJsonResult } from './common'
 
 function formatReference(reference: string): string {

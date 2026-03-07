@@ -1,5 +1,5 @@
 import { isSecretReference, toNativeReference, validateSecretReferenceFormat } from '../../providers'
-import { hasUnresolvedVariables, substituteVariables } from '../../utils/variables'
+import { hasUnresolvedVariables, substituteVariables } from '../../shared/env/variables'
 import { makeEnvelope } from '../json'
 import type {
   ExecutionContext,

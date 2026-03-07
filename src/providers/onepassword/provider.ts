@@ -7,10 +7,10 @@
 
 import { createClient, DesktopAuth, type Client } from '@1password/sdk'
 
-import { VERSION } from '../config'
-import { exec, type ExecResult } from '../runtime/exec'
-import { mapWithConcurrency } from '../utils/concurrency'
-import type { AuthInfo, AuthFailureHints, AvailabilityResult, Provider, ResolveSecretsResult } from './provider'
+import { VERSION } from '../../app/config'
+import { mapWithConcurrency } from '../../shared/concurrency'
+import { exec, type ExecResult } from '../../shared/process/exec'
+import type { AuthInfo, AuthFailureHints, AvailabilityResult, Provider, ResolveSecretsResult } from '../provider'
 
 type BackendMode = 'auto' | 'cli' | 'sdk'
 type SelectedBackend = 'cli' | 'sdk'

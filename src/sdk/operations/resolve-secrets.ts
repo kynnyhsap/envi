@@ -1,7 +1,7 @@
 import { isSecretReference, toNativeReference, type Provider } from '../../providers'
-import { parseEnvFile } from '../../utils/parse'
-import type { EnvFile } from '../../utils/types'
-import { hasUnresolvedVariables, substituteVariables } from '../../utils/variables'
+import { parseEnvFile } from '../../shared/env/parse'
+import type { EnvFile } from '../../shared/env/types'
+import { hasUnresolvedVariables, substituteVariables } from '../../shared/env/variables'
 import type { Issue } from '../types'
 
 interface CollectedSecretReference {

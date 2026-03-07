@@ -9,9 +9,9 @@ import {
   grantUserViewAccess,
   loadOnePasswordE2EConfig,
   populateVaultWithEnvItems,
-} from './test-helpers/onepassword-e2e'
+} from '../testing/onepassword-e2e'
 
-const CLI_PATH = path.join(import.meta.dir, 'cli.ts')
+const CLI_PATH = path.join(import.meta.dir, '..', 'cli.ts')
 const WORKSPACE_DIR = path.join(import.meta.dir, '.test-workspace-1password-live')
 
 const e2eConfig = await loadOnePasswordE2EConfig()

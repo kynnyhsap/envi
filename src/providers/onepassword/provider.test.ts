@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 
-import type { ExecResult } from '../runtime/exec'
-import { OnePasswordProvider } from './1password.provider'
+import type { ExecResult } from '../../shared/process/exec'
+import { OnePasswordProvider } from './provider'
 
 function makeExec(handlers: Record<string, (args: string[]) => ExecResult | Promise<ExecResult>>) {
   return async (command: string, args: string[] = []) => {

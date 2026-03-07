@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises'
 
-import packageJson from '../package.json'
-import { createProvider, type Provider, type ProviderType } from './providers'
-import { DEFAULT_ENVIRONMENT } from './utils/variables'
+import packageJson from '../../package.json'
+import { createProvider, type Provider, type ProviderType } from '../providers'
+import { DEFAULT_ENVIRONMENT } from '../shared/env/variables'
 
 export const VERSION = packageJson.version
 

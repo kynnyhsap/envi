@@ -1,11 +1,17 @@
 import { select } from '@inquirer/prompts'
 import pc from 'picocolors'
 
-import { getConfig } from '../config'
-import { log } from '../logger'
-import { stringifyEnvelope } from '../sdk'
-import { promptConfirm, formatBackupTimestamp } from '../utils'
-import { findBackupSnapshots, summarizeSnapshot, type BackupFileRecord, type BackupSnapshot } from '../utils/backups'
+import { getConfig } from '../../app/config'
+import { log } from '../../app/logger'
+import { stringifyEnvelope } from '../../sdk'
+import {
+  findBackupSnapshots,
+  summarizeSnapshot,
+  type BackupFileRecord,
+  type BackupSnapshot,
+} from '../../shared/backup/snapshots'
+import { formatBackupTimestamp } from '../../shared/env/format'
+import { promptConfirm } from '../../shared/helpers'
 
 async function restoreFile(backup: BackupFileRecord, options: { force: boolean; dryRun: boolean }): Promise<boolean> {
   const targetFile = Bun.file(backup.originalPath)

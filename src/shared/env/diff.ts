@@ -1,4 +1,4 @@
-import { isSecretReference } from '../providers'
+import { isSecretReference } from '../../providers'
 import { type EnvFile, type Change } from './types'
 
 /**

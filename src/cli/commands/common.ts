@@ -1,8 +1,8 @@
-import type { RuntimeConfig } from '../config'
-import { getConfig } from '../config'
-import { log } from '../logger'
-import { stringifyEnvelope, type EnviCommand, type EnviEngine, type Issue, type JsonEnvelope } from '../sdk'
-import { createCliEngine } from './engine'
+import type { RuntimeConfig } from '../../app/config'
+import { getConfig } from '../../app/config'
+import { log } from '../../app/logger'
+import { stringifyEnvelope, type EnviCommand, type EnviEngine, type Issue, type JsonEnvelope } from '../../sdk'
+import { createCliEngine } from '../engine'
 
 export function createCommandContext(): { config: RuntimeConfig; engine: EnviEngine } {
   const config = getConfig()

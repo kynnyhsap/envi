@@ -1,6 +1,6 @@
 import pc from 'picocolors'
 
-import { log } from '../logger'
+import { log } from '../../app/logger'
 import { createCommandContext, maybeWriteJsonResult, printIssuesAndExit } from './common'
 
 interface RunOptions {

@@ -1,7 +1,8 @@
 import pc from 'picocolors'
 
-import { log } from '../logger'
-import { type Change, type EnvPathInfo } from '../utils'
+import { log } from '../../app/logger'
+import type { EnvPathInfo } from '../../sdk/types'
+import type { Change } from '../../shared/env/types'
 import { createCommandContext, maybeWriteJsonResult } from './common'
 
 function maskValue(value: string, maxLen = 40): string {

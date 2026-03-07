@@ -1,5 +1,5 @@
 import type { Provider, ProviderType } from '../providers'
-import type { Change } from '../utils/types'
+import type { Change } from '../shared/env/types'
 import type { RuntimeAdapter } from './runtime/contracts'
 
 export const SDK_SCHEMA_VERSION = 1 as const

@@ -1,8 +1,0 @@
-export { statusCommand } from './status.command'
-export { diffCommand } from './diff.command'
-export { syncCommand } from './sync.command'
-export { runCommand } from './run.command'
-export { resolveCommand } from './resolve.command'
-export { backupCommand } from './backup.command'
-export { restoreCommand } from './restore.command'
-export { validateCommand } from './validate.command'

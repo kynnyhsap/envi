@@ -1,16 +1,17 @@
 import pc from 'picocolors'
 
-import { getConfig, generateBackupTimestamp } from '../config'
-import { log } from '../logger'
-import { stringifyEnvelope } from '../sdk'
-import { formatBackupTimestamp, promptConfirm } from '../utils'
+import { generateBackupTimestamp, getConfig } from '../../app/config'
+import { log } from '../../app/logger'
+import { stringifyEnvelope } from '../../sdk'
 import {
   backupFilesToRoot,
   findBackupSnapshots,
   findEnvFilesForBackup,
   getBackupRoot,
   summarizeSnapshot,
-} from '../utils/backups'
+} from '../../shared/backup/snapshots'
+import { formatBackupTimestamp } from '../../shared/env/format'
+import { promptConfirm } from '../../shared/helpers'
 
 export async function createAutoBackup(filePaths: string[]): Promise<string | null> {
   if (filePaths.length === 0) return null

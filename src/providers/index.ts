@@ -9,9 +9,9 @@ export type { Provider, SecretReference, ResolveSecretsResult, AuthInfo } from '
 export { parseSecretReference, validateSecretReferenceFormat } from './provider'
 export type { SecretReferenceValidationResult } from './provider'
 
-export { OnePasswordProvider } from './1password.provider'
+export { OnePasswordProvider } from './onepassword/provider'
 
-import { OnePasswordProvider } from './1password.provider'
+import { OnePasswordProvider } from './onepassword/provider'
 import type { Provider } from './provider'
 
 export type ProviderType = '1password'

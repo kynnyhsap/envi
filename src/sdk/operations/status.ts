@@ -1,7 +1,7 @@
 import path from 'node:path'
 
-import { mapWithConcurrency } from '../../utils/concurrency'
-import { parseEnvFile } from '../../utils/parse'
+import { mapWithConcurrency } from '../../shared/concurrency'
+import { parseEnvFile } from '../../shared/env/parse'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
 import type { ExecutionContext, StatusData, StatusResult, StatusPathData } from '../types'
