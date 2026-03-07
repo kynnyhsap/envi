@@ -186,7 +186,7 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 | `-q, --quiet`          | Suppress non-essential output                                 |
 | `--json`               | Output machine-readable JSON (same envelope as SDK)           |
 | `-e, --env <name>`     | Environment name for `${ENV}` substitution (default: `local`) |
-| `--provider-opt <k=v>` | Provider-specific option (repeatable)                         |
+| `--provider-opt <k=v>` | 1Password backend option (repeatable)                         |
 | `--config <path>`      | Load config from JSON file                                    |
 | `--only <paths>`       | Filter which paths to process                                 |
 
@@ -439,6 +439,7 @@ bun install
 
 # Run tests
 bun test
+bun run test:e2e:1password
 
 # Run CLI directly
 bun run src/cli.ts status

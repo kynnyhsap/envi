@@ -1,9 +1,9 @@
 ---
-description: Research a provider and write references/<provider>.md
+description: Research external secret-manager ideas and write references/<provider>.md
 subtask: true
 ---
 
-You are working in the Envi repo. Create (or update) a comprehensive provider reference document.
+You are working in the Envi repo. Create (or update) a research reference document.
 
 Inputs:
 - Provider slug (lowercase, used for filename): `$1`
@@ -11,7 +11,8 @@ Inputs:
 
 Context:
 - Envi stores provider research docs in `references/`.
-- Follow the style/structure of existing docs in `references/`.
+- Envi is 1Password-only in production code today.
+- Treat these docs as archive/research material unless the code says otherwise.
 
 First, inspect existing references:
 !`ls -la references`
@@ -19,7 +20,6 @@ First, inspect existing references:
 Read at least these for style and integration expectations:
 - @AGENTS.md
 - @references/1password.md
-- @references/proton-pass.md
 
 Task:
 1) Find the official documentation index for the provider. Prefer (in order):
@@ -27,7 +27,7 @@ Task:
    - a docs landing page with navigation
    - search the docs site if no index is available
 
-2) Research only what is relevant to implementing an Envi provider:
+2) Research only what is relevant to evaluating a future Envi integration:
    - CLI usage and environment variables
    - Node.js SDK usage (auth, list/get secrets)
    - Auth methods appropriate for automation (service accounts, machine identities, tokens)
