@@ -9,6 +9,7 @@ Manage `.env` files with 1Password. Sync secrets into local `.env` files while p
 - [Secret References](#secret-references)
 - [1Password](#1password)
 - [Commands](#commands)
+- [Examples](#examples)
 - [How It Works](#how-it-works)
   - [Templates](#templates-envtpl)
   - [Sync Flow](#sync-flow)
@@ -71,7 +72,7 @@ Envi also ships an SDK so you can reuse the exact same engine that powers the CL
 - By default, SDK results redact secret values in outputs intended for logging/automation.
 
 ```ts
-import { createEnviEngine, createRuntimeAdapter, stringifyEnvelope } from 'envi/sdk'
+import { createEnviEngine, createRuntimeAdapter, stringifyEnvelope } from 'envi-cli/sdk'
 
 const engine = createEnviEngine({
   runtime: createRuntimeAdapter(),
@@ -98,12 +99,12 @@ Format: `op://vault/item[/section]/field`
 
 ## 1Password
 
-The recommended provider. Envi prefers the 1Password CLI (`op`) when it's installed, and falls back to the JavaScript SDK when CLI auth isn't available.
+Envi only supports 1Password. It can resolve secrets through the JavaScript SDK or the `op` CLI.
 
 **Authentication** - Choose one:
 
 1. **1Password Desktop App** (recommended for local dev):
-   - Install [1Password desktop app](https://1password.com/downloads/) (beta version required)
+   - Install [1Password desktop app](https://1password.com/downloads/)
    - Enable **"Integrate with other apps"** in Settings > Developer
    - See: [Desktop App Integration](https://developer.1password.com/docs/sdks/desktop-app-integrations/)
 
@@ -190,6 +191,15 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 | `--config <path>`      | Load config from JSON file                                    |
 | `--only <paths>`       | Filter which paths to process                                 |
 
+## Examples
+
+- `examples/README.md` - quick index of the maintained examples
+- `examples/1password-basic/` - simplest single-app setup
+- `examples/1password-monorepo/` - auto-discovered multi-package setup
+- `examples/1password-different-vaults/` - `${ENV}` vault switching
+- `examples/custom-files/` - custom template and output filenames
+- `examples/1password-e2e-bench/` - live benchmark harness
+
 ## How It Works
 
 ### Templates (`.env.example`)
@@ -217,7 +227,7 @@ DATABASE_URL=op://core-${ENV}/engine-api/DATABASE_URL
 When `--json` is enabled, Envi prints a stable JSON envelope intended for scripting.
 
 - Core commands (`status`, `diff`, `sync`, `validate`, `resolve`, `run`) print the exact SDK envelope.
-- Secret values are redacted by default in JSON outputs.
+- Outputs stay redacted by default except when a command intentionally surfaces a secret, like `resolve`.
 
 ### Output Format
 
@@ -272,7 +282,7 @@ Example:
    ```bash
    # my-package/.env.example
    NODE_ENV=development
-    API_KEY=op://core-${ENV}/my-package/API_KEY
+   API_KEY=op://core-${ENV}/my-package/API_KEY
    ```
 
 2. Envi auto-discovers templates by scanning for `**/.env.example` (monorepo-friendly).

@@ -7,6 +7,8 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 
 **Type check:** `bun run typecheck`
 **Test:** `bun test`
+**Live E2E:** `bun run test:e2e:1password` (requires local `.env.local` token)
+**Benchmark:** `bun run bench:e2e` (requires local `.env.local` token)
 **Run CLI:** `bun run src/cli.ts <command>`
 **Build SDK (publish):** `bun run build:sdk`
 
@@ -51,3 +53,5 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 ## Notes
 
 - Code-adjacent `AGENTS.md` files under `src/**/` contain module-specific quirks and are loaded automatically when working in those areas.
+- `examples/` should stay small, 1Password-only, and limited to real supported workflows.
+- Local-only service account tokens live in repo-root `.env.local` (gitignored).
