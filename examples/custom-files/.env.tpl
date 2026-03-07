@@ -1,6 +1,3 @@
-# Custom template file (.env.tpl instead of .env.example)
-# Use --template to tell envi about non-default template names
-
 NODE_ENV=development
 PORT=3000
 

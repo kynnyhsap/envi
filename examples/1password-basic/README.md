@@ -1,10 +1,10 @@
 # 1Password — Basic
 
-The simplest setup: a single `.env.example` with `op://` references pointing to one vault.
+One app, one vault, a few `op://` references.
 
 ## Vault Setup
 
-Create a vault called **example** in 1Password with an item called **api-service** containing these fields:
+Create a vault called `example` and a secure note called `api-service` with these fields:
 
 | Field          | Example Value                              |
 | -------------- | ------------------------------------------ |
@@ -12,20 +12,16 @@ Create a vault called **example** in 1Password with an item called **api-service
 | `DATABASE_URL` | `postgres://user:pass@localhost:5432/mydb` |
 | `JWT_SECRET`   | `super-secret-jwt-key`                     |
 
-### Setup via CLI
-
 ```bash
-# Create the vault
 op vault create example
 
-# Create the item with fields
 op item create \
   --vault example \
-  --category login \
-  --title "api-service" \
-  'API_KEY[password]=sk_live_abc123' \
-  'DATABASE_URL[password]=postgres://user:pass@localhost:5432/mydb' \
-  'JWT_SECRET[password]=super-secret-jwt-key'
+  --category "Secure Note" \
+  --title api-service \
+  'API_KEY[concealed]=sk_live_abc123' \
+  'DATABASE_URL[concealed]=postgres://user:pass@localhost:5432/mydb' \
+  'JWT_SECRET[concealed]=super-secret-jwt-key'
 ```
 
 ## Usage
@@ -41,9 +37,4 @@ envi sync -d
 envi run -- node server.js
 ```
 
-## What Happens
-
-1. Envi reads `.env.example`
-2. Plain values (`NODE_ENV`, `PORT`) are copied as-is
-3. `op://` references are resolved via 1Password
-4. Result is written to `.env`
+`envi sync` reads `.env.example`, resolves the `op://` values from 1Password, and writes `.env`.

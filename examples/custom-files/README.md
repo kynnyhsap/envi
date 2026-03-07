@@ -1,6 +1,6 @@
 # Custom Template & Output Files
 
-By default, envi looks for `.env.example` templates and writes `.env` output files. You can override both with `--template` and `--output` flags.
+By default, Envi looks for `.env.example` and writes `.env`. This example shows the supported custom filename flags.
 
 ## Structure
 
@@ -60,14 +60,7 @@ envi run --template .env.tpl -- node server.js
 
 ### Via config file
 
-Instead of passing flags every time, use an `envi.json` config file:
-
-```json
-{
-  "templateFile": ".env.tpl",
-  "outputFile": ".env.local"
-}
-```
+This folder also includes a working `envi.json`:
 
 ```bash
 envi sync --config envi.json

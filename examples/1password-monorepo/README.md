@@ -1,6 +1,6 @@
 # 1Password — Monorepo
 
-Multiple services in a monorepo, each with their own `.env.example`. Envi auto-discovers all of them.
+Multiple packages, each with its own `.env.example`. Envi auto-discovers them from the repo root.
 
 ## Structure
 
@@ -16,7 +16,7 @@ Multiple services in a monorepo, each with their own `.env.example`. Envi auto-d
 
 ## Vault Setup
 
-Create a vault called **example** with these items:
+Create a vault called `example` with these items:
 
 **api-service**
 | Field | Description |
@@ -36,35 +36,29 @@ Create a vault called **example** with these items:
 | ---------- | ---------------- |
 | `REDIS_URL`| Redis connection |
 
-### Setup via CLI
-
 ```bash
-# Create the vault
 op vault create example
 
-# API service item
 op item create \
   --vault example \
-  --category login \
-  --title "api-service" \
-  'API_KEY[password]=sk_live_abc123' \
-  'DATABASE_URL[password]=postgres://user:pass@localhost:5432/mydb'
+  --category "Secure Note" \
+  --title api-service \
+  'API_KEY[concealed]=sk_live_abc123' \
+  'DATABASE_URL[concealed]=postgres://user:pass@localhost:5432/mydb'
 
-# Web app item
 op item create \
   --vault example \
-  --category login \
-  --title "web-app" \
-  'SESSION_SECRET[password]=session-signing-key-xyz' \
-  'OAUTH_CLIENT_ID[password]=oauth-client-id-123' \
-  'OAUTH_CLIENT_SECRET[password]=oauth-client-secret-456'
+  --category "Secure Note" \
+  --title web-app \
+  'SESSION_SECRET[concealed]=session-signing-key-xyz' \
+  'OAUTH_CLIENT_ID[text]=oauth-client-id-123' \
+  'OAUTH_CLIENT_SECRET[concealed]=oauth-client-secret-456'
 
-# Worker item
 op item create \
   --vault example \
-  --category login \
-  --title "worker" \
-  'REDIS_URL[password]=redis://localhost:6379'
+  --category "Secure Note" \
+  --title worker \
+  'REDIS_URL[concealed]=redis://localhost:6379'
 ```
 
 ## Usage
@@ -80,6 +74,4 @@ envi sync --only api
 envi sync -d
 ```
 
-## How Auto-Discovery Works
-
-When you run `envi sync` from the monorepo root, Envi scans for all `.env.example` files and creates a `.env` next to each one. No configuration needed.
+Run `envi sync` from the monorepo root and Envi will create one `.env` beside each discovered `.env.example`.
