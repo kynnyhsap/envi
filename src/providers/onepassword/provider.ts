@@ -18,9 +18,6 @@ type ResolveMode = 'auto' | 'batch' | 'sequential'
 
 const DEFAULT_RESOLVE_CHUNK_SIZE = 100
 const DEFAULT_RESOLVE_CONCURRENCY = 8
-
-/** Timeout (ms) for 1Password SDK client creation. Desktop app IPC can hang indefinitely
- *  when the app is running but CLI integration is disabled or unresponsive. */
 const SDK_TIMEOUT_MS = 10_000
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
@@ -40,7 +37,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 }
 
 interface OnePasswordDeps {
-  exec?: (command: string, args?: string[]) => Promise<ExecResult>
+  exec?: (command: string, args?: string[], timeoutMs?: number) => Promise<ExecResult>
   createClient?: typeof createClient
   DesktopAuth?: typeof DesktopAuth
 }
@@ -71,7 +68,7 @@ export class OnePasswordProvider implements Provider {
   private readonly accountName: string | undefined
   private detectedAccountName: string | undefined
 
-  private readonly _exec: (command: string, args?: string[]) => Promise<ExecResult>
+  private readonly _exec: (command: string, args?: string[], timeoutMs?: number) => Promise<ExecResult>
   private readonly _createClient: typeof createClient
   private readonly _DesktopAuth: typeof DesktopAuth
 
@@ -459,10 +456,9 @@ export class OnePasswordProvider implements Provider {
     if (result.exitCode === 0) return { available: true }
 
     const err = `${result.stderr}\n${result.stdout}`
-    if (looksLikeCommandNotFound(err)) {
+    if (looksLikeCommandNotFound(err) || looksLikeTimeout(err)) {
       return { available: false }
     }
-    // If the binary exists but exited non-zero, treat as available.
     return { available: true }
   }
 
@@ -492,8 +488,6 @@ export class OnePasswordProvider implements Provider {
       statusLines.push('OP_ACCOUNT_NAME: not set')
     }
 
-    // We consider desktop auth "available" when the app is running; the auth attempt may still
-    // fail with a more specific error.
     const available = appRunning
     return { available, statusLines }
   }
@@ -672,9 +666,12 @@ function normalizeCliError(result: ExecResult, commandLabel: string): string {
   return `${commandLabel} exited with code ${result.exitCode}`
 }
 
-/** Check if the 1Password desktop app process is running. */
 async function is1PasswordAppRunning(run: (command: string, args?: string[]) => Promise<ExecResult>): Promise<boolean> {
   if (process.platform === 'win32') return false
   const result = await run('pgrep', ['-x', '1Password'])
   return result.exitCode === 0
+}
+
+function looksLikeTimeout(text: string): boolean {
+  return text.toLowerCase().includes('timed out')
 }

@@ -3,8 +3,6 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 
-/** Default timeout (ms) for child processes. Prevents hangs when e.g. `op` CLI
- *  waits indefinitely for an unresponsive 1Password desktop app. */
 const DEFAULT_TIMEOUT_MS = 10_000
 
 export interface ExecResult {
@@ -21,7 +19,6 @@ export async function exec(command: string, args: string[] = [], timeoutMs?: num
     })
     return { exitCode: 0, stdout: stdout ?? '', stderr: stderr ?? '' }
   } catch (error: any) {
-    // node kills the process with SIGTERM on timeout; error.killed is set
     if (error?.killed) {
       return {
         exitCode: 1,

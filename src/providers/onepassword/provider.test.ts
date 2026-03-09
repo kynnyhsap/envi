@@ -155,6 +155,31 @@ describe('OnePasswordProvider (backend selection)', () => {
     })
   })
 
+  it('treats timed out CLI availability checks as unavailable', async () => {
+    await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: 'token', OP_ACCOUNT_NAME: undefined }, async () => {
+      let createClientCalls = 0
+      const exec = makeExec({
+        'op --version': () => ({ exitCode: 1, stdout: '', stderr: 'Command timed out after 10000ms' }),
+      })
+
+      const provider = new OnePasswordProvider(
+        { backend: 'auto' },
+        {
+          exec,
+          createClient: async () => {
+            createClientCalls++
+            return { vaults: { list: async () => [] }, secrets: { resolve: async () => '' } } as any
+          },
+        },
+      )
+
+      const auth = await provider.verifyAuth()
+      expect(auth.success).toBe(true)
+      expect(provider.getAuthInfo().type).toBe('service-account')
+      expect(createClientCalls).toBe(1)
+    })
+  })
+
   it('desktop auth auto-detects personal account when OP_ACCOUNT_NAME is unset', async () => {
     await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: undefined, OP_ACCOUNT_NAME: undefined }, async () => {
       let createClientCalls = 0

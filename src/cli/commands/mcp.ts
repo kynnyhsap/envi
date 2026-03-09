@@ -12,27 +12,29 @@ import type {
   ValidateOperationOptions,
 } from '../../sdk/types'
 
-/** Strip keys whose value is `undefined` so exact-optional-property types are satisfied. */
-function strip<T>(obj: Record<string, unknown>): T {
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(obj)) {
-    if (v !== undefined) out[k] = v
-  }
-  return out as T
-}
-
-function makeEngine(args: {
+interface ScopedArgs {
   only?: string | undefined
   environment?: string | undefined
-}): ReturnType<typeof createEnviEngine> {
+}
+
+function splitOnlyPaths(only?: string): string[] | undefined {
+  if (!only) return undefined
+  const paths = only
+    .split(',')
+    .map((path) => path.trim())
+    .filter((path) => path.length > 0)
+  return paths.length > 0 ? paths : undefined
+}
+
+function makeEngine(args: ScopedArgs): ReturnType<typeof createEnviEngine> {
   const opts: CreateEngineOptions = {}
 
-  const overrides: Record<string, unknown> = {}
-  if (args.only) overrides['paths'] = args.only.split(',').map((p) => p.trim())
-  if (args.environment) overrides['environment'] = args.environment
-
-  if (Object.keys(overrides).length > 0) {
-    opts.options = overrides as NonNullable<CreateEngineOptions['options']>
+  const paths = splitOnlyPaths(args.only)
+  if (paths || args.environment) {
+    opts.options = {
+      ...(paths ? { paths } : {}),
+      ...(args.environment ? { environment: args.environment } : {}),
+    }
   }
 
   return createEnviEngine(opts)
@@ -100,7 +102,10 @@ export async function mcpCommand(): Promise<void> {
     },
     async (args) => {
       const engine = makeEngine(args)
-      const result = await engine.sync(strip<SyncOperationOptions>({ dryRun: args.dryRun, noBackup: args.noBackup }))
+      const result = await engine.sync({
+        ...(args.dryRun !== undefined ? { dryRun: args.dryRun } : {}),
+        ...(args.noBackup !== undefined ? { noBackup: args.noBackup } : {}),
+      } satisfies SyncOperationOptions)
       return text(result)
     },
   )
@@ -119,7 +124,9 @@ export async function mcpCommand(): Promise<void> {
     },
     async (args) => {
       const engine = makeEngine(args)
-      const result = await engine.validate(strip<ValidateOperationOptions>({ remote: args.remote }))
+      const result = await engine.validate({
+        ...(args.remote !== undefined ? { remote: args.remote } : {}),
+      } satisfies ValidateOperationOptions)
       return text(result)
     },
   )
@@ -161,7 +168,10 @@ export async function mcpCommand(): Promise<void> {
     },
     async (args) => {
       const engine = makeEngine(args)
-      const result = await engine.backup(strip<BackupOperationOptions>({ dryRun: args.dryRun, list: args.list }))
+      const result = await engine.backup({
+        ...(args.dryRun !== undefined ? { dryRun: args.dryRun } : {}),
+        ...(args.list !== undefined ? { list: args.list } : {}),
+      } satisfies BackupOperationOptions)
       return text(result)
     },
   )
@@ -180,9 +190,11 @@ export async function mcpCommand(): Promise<void> {
     },
     async (args) => {
       const engine = makeEngine(args)
-      const result = await engine.restore(
-        strip<RestoreOperationOptions>({ snapshot: args.snapshot, dryRun: args.dryRun, list: args.list }),
-      )
+      const result = await engine.restore({
+        ...(args.snapshot !== undefined ? { snapshot: args.snapshot } : {}),
+        ...(args.dryRun !== undefined ? { dryRun: args.dryRun } : {}),
+        ...(args.list !== undefined ? { list: args.list } : {}),
+      } satisfies RestoreOperationOptions)
       return text(result)
     },
   )
