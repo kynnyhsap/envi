@@ -19,6 +19,26 @@ type ResolveMode = 'auto' | 'batch' | 'sequential'
 const DEFAULT_RESOLVE_CHUNK_SIZE = 100
 const DEFAULT_RESOLVE_CONCURRENCY = 8
 
+/** Timeout (ms) for 1Password SDK client creation. Desktop app IPC can hang indefinitely
+ *  when the app is running but CLI integration is disabled or unresponsive. */
+const SDK_TIMEOUT_MS = 10_000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms)
+    promise.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e)
+      },
+    )
+  })
+}
+
 interface OnePasswordDeps {
   exec?: (command: string, args?: string[]) => Promise<ExecResult>
   createClient?: typeof createClient
@@ -505,7 +525,11 @@ export class OnePasswordProvider implements Provider {
 
     try {
       const client = await this.getSdkClient()
-      await client.vaults.list(undefined)
+      await withTimeout(
+        client.vaults.list(undefined),
+        SDK_TIMEOUT_MS,
+        'Timed out listing vaults (is desktop app integration enabled?)',
+      )
       this.selectedBackend = 'sdk'
       this.authVerified = true
       return { success: true }
@@ -531,11 +555,15 @@ export class OnePasswordProvider implements Provider {
     const token = process.env['OP_SERVICE_ACCOUNT_TOKEN']
     const auth = token ? token : await this.getDesktopAuth()
 
-    this.sdkClient = await this._createClient({
-      auth,
-      integrationName: 'envi-cli',
-      integrationVersion: VERSION,
-    })
+    this.sdkClient = await withTimeout(
+      this._createClient({
+        auth,
+        integrationName: 'envi-cli',
+        integrationVersion: VERSION,
+      }),
+      SDK_TIMEOUT_MS,
+      'Timed out connecting to 1Password (is desktop app integration enabled?)',
+    )
 
     return this.sdkClient
   }
