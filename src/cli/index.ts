@@ -73,14 +73,14 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
     name: 'status',
     description: 'Show .env status and auth',
     usage: 'envi status [options]',
-    examples: ['envi status', 'envi status --only engine/api'],
+    examples: ['envi status', 'envi status --only apps/api'],
   },
   diff: {
     name: 'diff',
     description: 'Show differences between local and provider',
     usage: 'envi diff [options]',
     options: [{ flags: '-p, --path <path>', description: 'Check specific path only' }],
-    examples: ['envi diff', 'envi diff --path engine/api'],
+    examples: ['envi diff', 'envi diff --path apps/api'],
   },
   sync: {
     name: 'sync',
@@ -90,7 +90,7 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
       { flags: '-d, --dry-run', description: 'Preview changes without writing files' },
       { flags: '--no-backup', description: 'Skip automatic backup before syncing' },
     ],
-    examples: ['envi sync', 'envi sync -d', 'envi sync --no-backup', 'envi sync --only engine/api'],
+    examples: ['envi sync', 'envi sync -d', 'envi sync --no-backup', 'envi sync --only apps/api'],
   },
   resolve: {
     name: 'resolve',
@@ -148,7 +148,7 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
     description: 'Validate all secret references in templates',
     usage: 'envi validate [options]',
     options: [{ flags: '-r, --remote', description: 'Check references against provider (slower, requires auth)' }],
-    examples: ['envi validate', 'envi validate --remote', 'envi validate --only engine/api'],
+    examples: ['envi validate', 'envi validate --remote', 'envi validate --only apps/api'],
   },
 }
 
@@ -157,7 +157,7 @@ const ROOT_HELP_EXAMPLES = [
   'envi status',
   'envi diff',
   'envi sync -d                    # dry run',
-  'envi sync --only engine/api     # single path',
+  'envi sync --only apps/api     # single path',
   'envi resolve op://vault/item/field',
   'envi backup',
   'envi restore --list',
@@ -503,18 +503,17 @@ cli.option('--output <file>', `Output file name (default: ${DEFAULT_OUTPUT_FILE}
 cli.option('--template-file <file>', `Template file name (default: ${DEFAULT_TEMPLATE_FILE})`)
 cli.option('--backup-dir <dir>', `Backup directory (default: ${DEFAULT_BACKUP_DIR})`)
 
-addExamples(cli.command('status', 'Show .env status and auth'), [
-  'envi status',
-  'envi status --only engine/api',
-]).action(async (options) => {
-  await withGlobalOptions(options as GlobalOptions, () => statusCommand())
-})
+addExamples(cli.command('status', 'Show .env status and auth'), ['envi status', 'envi status --only apps/api']).action(
+  async (options) => {
+    await withGlobalOptions(options as GlobalOptions, () => statusCommand())
+  },
+)
 
 addExamples(
   cli
     .command('diff', 'Show differences between local .env and provider')
     .option('-p, --path <path>', 'Check specific path only'),
-  ['envi diff', 'envi diff --path engine/api'],
+  ['envi diff', 'envi diff --path apps/api'],
 ).action(async (options: { path?: string } & GlobalOptions) => {
   await withGlobalOptions(options, () => diffCommand(options.path ? { path: options.path } : {}))
 })
@@ -524,7 +523,7 @@ addExamples(
     .command('sync', 'Sync .env files from templates')
     .option('-d, --dry-run', 'Preview changes without writing files')
     .option('--no-backup', 'Skip automatic backup before syncing'),
-  ['envi sync', 'envi sync -d', 'envi sync --no-backup', 'envi sync --only engine/api'],
+  ['envi sync', 'envi sync -d', 'envi sync --no-backup', 'envi sync --only apps/api'],
 ).action(async (options: { dryRun?: boolean; backup?: boolean } & GlobalOptions) => {
   await withGlobalOptions(options, () =>
     syncCommand({
@@ -615,7 +614,7 @@ addExamples(
   cli
     .command('validate', 'Validate all secret references in templates')
     .option('-r, --remote', 'Check references against provider (slower, requires auth)'),
-  ['envi validate', 'envi validate --remote', 'envi validate --only engine/api'],
+  ['envi validate', 'envi validate --remote', 'envi validate --only apps/api'],
 ).action(async (options: { remote?: boolean } & GlobalOptions) => {
   await withGlobalOptions(options, () => validateCommand({ remote: options.remote ?? false }))
 })
