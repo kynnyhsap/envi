@@ -92,7 +92,10 @@ export async function findVaultByTitle(client: Client, title: string): Promise<V
   return vaults.find((vault) => vault.title === title)
 }
 
-export async function ensureExampleVault(client: Client, config: ExampleConfig): Promise<VaultOverview> {
+export async function ensureExampleVault(
+  client: Client,
+  config: ExampleConfig,
+): Promise<{ id: string; title: string }> {
   const existing = await findVaultByTitle(client, EXAMPLE_VAULT_TITLE)
   const vault =
     existing ??

@@ -254,26 +254,6 @@ describe('CLI e2e tests', () => {
     })
   })
 
-  // NOTE: status command tests are skipped because they call 1Password CLI
-  // which can hang or trigger authentication prompts during automated testing.
-  describe.skip('status command (requires 1Password)', () => {
-    it('should run status command explicitly', async () => {
-      const { stdout, exitCode } = await runCli('status')
-
-      expect(exitCode).toBe(0)
-      expect(stdout).toContain('Environment Status')
-      expect(stdout).toContain('Configured Paths')
-      expect(stdout).toContain('Summary')
-    })
-
-    it('should show no-template status for paths without .env.example', async () => {
-      const { stdout, exitCode } = await runCli('status')
-
-      expect(exitCode).toBe(0)
-      expect(stdout).toContain('no template')
-    })
-  })
-
   describe('backup command', () => {
     it('should warn when no .env files to backup', async () => {
       const { stdout, exitCode } = await runCli('backup')
@@ -348,6 +328,39 @@ describe('CLI e2e tests', () => {
       expect(exitCode).toBe(0)
       expect(stdout).toContain('test-app/.env.local')
       expect(await Bun.file(join(BACKUP_DIR, 'latest/test-app/.env.local')).exists()).toBe(true)
+    })
+
+    it('should backup only scoped paths when --only is used', async () => {
+      await Bun.write(join(TEST_DIR, 'test-app/.env'), 'TEST_VAR=test_value\n')
+      await $`mkdir -p ${TEST_DIR}/another-app`.quiet()
+      await Bun.write(join(TEST_DIR, 'another-app/.env'), 'OTHER_VAR=other_value\n')
+
+      const { stdout, exitCode } = await runCli('--only', 'test-app', 'backup')
+
+      expect(exitCode).toBe(0)
+      expect(stdout).toContain('test-app/.env')
+      expect(stdout).not.toContain('another-app/.env')
+      expect(await Bun.file(join(BACKUP_DIR, 'latest/test-app/.env')).exists()).toBe(true)
+      expect(await Bun.file(join(BACKUP_DIR, 'latest/another-app/.env')).exists()).toBe(false)
+    })
+
+    it('should backup arbitrary configured output filenames', async () => {
+      await Bun.write(
+        join(TEST_DIR, 'envi.json'),
+        JSON.stringify(
+          {
+            outputFile: 'secrets.local',
+          },
+          null,
+          2,
+        ) + '\n',
+      )
+      await Bun.write(join(TEST_DIR, 'test-app/secrets.local'), 'TEST_VAR=test_value\n')
+
+      const { exitCode } = await runCli('backup')
+
+      expect(exitCode).toBe(0)
+      expect(await Bun.file(join(BACKUP_DIR, 'latest/test-app/secrets.local')).exists()).toBe(true)
     })
 
     it('should return machine output in json mode', async () => {
@@ -504,56 +517,59 @@ describe('CLI e2e tests', () => {
       expect(exitCode).toBe(0)
       expect(await Bun.file(join(TEST_DIR, 'test-app/.env')).text()).toBe('ARCHIVED_VAR=archived\n')
     })
-  })
 
-  // NOTE: sync command tests are skipped because they require 1Password CLI
-  // which triggers permission dialogs during automated testing.
-  // The sync command is tested manually and via the prerequisite checks.
-  describe.skip('sync command (requires 1Password)', () => {
-    it('should show dry-run mode messages', async () => {
-      const { stdout } = await runCli('sync', '-d')
+    it('should restore only scoped paths when --only is used', async () => {
+      await createBackupSnapshot({
+        files: {
+          'test-app/.env': 'API_VAR=api\n',
+          'another-app/.env': 'WEB_VAR=web\n',
+        },
+      })
 
-      expect(stdout).toContain('dry-run mode')
+      await $`mkdir -p ${TEST_DIR}/test-app ${TEST_DIR}/another-app`.quiet()
+      const { exitCode } = await runCli('--only', 'test-app', 'restore')
+
+      expect(exitCode).toBe(0)
+      expect(await Bun.file(join(TEST_DIR, 'test-app/.env')).text()).toBe('API_VAR=api\n')
+      expect(await Bun.file(join(TEST_DIR, 'another-app/.env')).exists()).toBe(false)
     })
 
-    it('should show banner', async () => {
-      const { stdout } = await runCli('sync', '-d')
+    it('should fail when the requested snapshot id does not exist', async () => {
+      await createBackupSnapshot({
+        files: { 'test-app/.env': 'LATEST_VAR=latest\n' },
+      })
 
-      expect(stdout).toContain('Environment Sync')
+      const { stdout, exitCode } = await runCli('restore', '--snapshot', 'missing-snapshot')
+
+      expect(exitCode).toBe(1)
+      expect(stdout).toContain('Snapshot not found: missing-snapshot')
     })
 
-    it('should create backup by default before syncing', async () => {
-      await Bun.write(join(TEST_DIR, 'test-app/.env'), 'EXISTING=value\n')
+    it('should list and restore snapshots even with invalid metadata', async () => {
+      await createBackupSnapshot({
+        files: { 'test-app/secrets.local': 'TOKEN=restored\n' },
+      })
+      await Bun.write(join(BACKUP_DIR, 'latest/.envi-backup.json'), '{not-valid-json\n')
+      await Bun.write(
+        join(TEST_DIR, 'envi.json'),
+        JSON.stringify(
+          {
+            outputFile: 'secrets.local',
+          },
+          null,
+          2,
+        ) + '\n',
+      )
+      await $`mkdir -p ${TEST_DIR}/test-app`.quiet()
 
-      await runCli('sync')
+      const listed = await runCli('restore', '--list')
+      expect(listed.exitCode).toBe(0)
+      expect(listed.stdout).toContain('latest')
+      expect(listed.stdout).toContain('test-app/secrets.local')
 
-      // Verify backup was created
-      const glob = new Bun.Glob('**/test-app/.env')
-      const files: string[] = []
-      for await (const entry of glob.scan({ cwd: BACKUP_DIR, dot: true })) {
-        files.push(entry)
-      }
-      expect(files.length).toBeGreaterThan(0)
-    })
-
-    it('should skip backup when --no-backup is used', async () => {
-      await Bun.write(join(TEST_DIR, 'test-app/.env'), 'EXISTING=value\n')
-
-      await runCli('sync', '--no-backup')
-
-      // Verify no backup was created
-      const backupDirExists = await Bun.file(BACKUP_DIR).exists()
-      expect(backupDirExists).toBe(false)
-    })
-
-    it('should skip backup in dry-run mode regardless of --no-backup', async () => {
-      await Bun.write(join(TEST_DIR, 'test-app/.env'), 'EXISTING=value\n')
-
-      await runCli('sync', '-d')
-
-      // dry-run already skips backup
-      const backupDirExists = await Bun.file(BACKUP_DIR).exists()
-      expect(backupDirExists).toBe(false)
+      const restored = await runCli('restore')
+      expect(restored.exitCode).toBe(0)
+      expect(await Bun.file(join(TEST_DIR, 'test-app/secrets.local')).text()).toBe('TOKEN=restored\n')
     })
   })
 

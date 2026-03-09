@@ -2,6 +2,7 @@ import path from 'node:path'
 
 import { makeEnvelope } from '../json'
 import { getRootDir } from '../paths'
+import { resolveAllEnvPaths } from '../paths'
 import type { ExecutionContext, Issue, RestoreOperationOptions, RestoreResult } from '../types'
 import { findSnapshotBySelector, listBackupSnapshots, toBackupSnapshotData } from './backup-helpers'
 
@@ -94,11 +95,19 @@ export async function restoreOperation(
     })
   }
 
+  let selectedFiles = selectedSnapshot.files
+  if (ctx.options.paths.length > 0) {
+    const rootDir = getRootDir(ctx.options, ctx.runtime)
+    const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
+    const allowed = new Set(envPaths.map((pathInfo) => path.relative(rootDir, pathInfo.envPath).replace(/\\/g, '/')))
+    selectedFiles = selectedFiles.filter((file) => allowed.has(file.originalPath))
+  }
+
   if (dryRun) {
     const wouldOverwrite: string[] = []
     const wouldRestore: string[] = []
     const rootDir = getRootDir(ctx.options, ctx.runtime)
-    for (const file of selectedSnapshot.files) {
+    for (const file of selectedFiles) {
       const exists = await ctx.runtime.exists(path.join(rootDir, file.originalPath))
       if (exists) wouldOverwrite.push(file.originalPath)
       else wouldRestore.push(file.originalPath)
@@ -111,7 +120,7 @@ export async function restoreOperation(
         backupDir: ctx.options.backupDir,
         selectedSnapshot: selectedSnapshot.id,
         selectedSnapshotPath: selectedSnapshot.path,
-        files: selectedSnapshot.files.map((file) => file.originalPath),
+        files: selectedFiles.map((file) => file.originalPath),
         dryRun: true,
         wouldOverwrite,
         wouldRestore,
@@ -127,7 +136,7 @@ export async function restoreOperation(
   const issues: Issue[] = []
   const errors: Array<{ path: string; error: string }> = []
 
-  for (const file of selectedSnapshot.files) {
+  for (const file of selectedFiles) {
     const result = await restoreFile(ctx, file, { dryRun: false })
     if (result.restored) {
       restored++
@@ -147,7 +156,7 @@ export async function restoreOperation(
       backupDir: ctx.options.backupDir,
       selectedSnapshot: selectedSnapshot.id,
       selectedSnapshotPath: selectedSnapshot.path,
-      files: selectedSnapshot.files.map((file) => file.originalPath),
+      files: selectedFiles.map((file) => file.originalPath),
       dryRun: false,
       restored,
       failed,

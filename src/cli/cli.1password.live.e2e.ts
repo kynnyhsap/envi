@@ -1,8 +1,9 @@
 import type { Client } from '@1password/sdk'
 import { beforeAll, afterAll, describe, expect, test } from 'bun:test'
-import { mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { cp, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import { replaceManagedItems } from '../../examples/common'
 import {
   createOnePasswordE2EClient,
   createTemporaryVault,
@@ -23,24 +24,36 @@ if (!e2eConfig) {
 
 let client: Client
 let vault: { id: string; title: string } | null = null
+let exampleVault: { id: string; title: string } | null = null
 
 describe('live 1Password CLI e2e', () => {
   beforeAll(async () => {
     client = await createOnePasswordE2EClient(e2eConfig.token)
     vault = await createTemporaryVault(client)
+    exampleVault = await createTemporaryVault(client)
 
     await grantUserViewAccess({
       token: e2eConfig.token,
       vaultId: vault.id,
       userEmail: e2eConfig.userEmail,
     })
+    await grantUserViewAccess({
+      token: e2eConfig.token,
+      vaultId: exampleVault.id,
+      userEmail: e2eConfig.userEmail,
+    })
     await populateVaultWithEnvItems(client, vault.id)
+    await replaceManagedItems(client, exampleVault.id)
   })
 
   afterAll(async () => {
     if (vault) {
       await client.vaults.delete(vault.id)
       vault = null
+    }
+    if (exampleVault) {
+      await client.vaults.delete(exampleVault.id)
+      exampleVault = null
     }
   })
 
@@ -51,6 +64,8 @@ describe('live 1Password CLI e2e', () => {
       expect(plain.stdout).toContain('1Password')
       expect(plain.stdout).toContain('Authenticated')
       expect(plain.stdout).toContain('Configured Paths')
+      expect(plain.stdout).toContain('Summary')
+      expect(plain.stdout).toContain('3 missing')
 
       const status = await runCliJson(workspaceDir, ['--json', 'status'])
       expect(status.command).toBe('status')
@@ -110,19 +125,28 @@ describe('live 1Password CLI e2e', () => {
 
   test('sync and diff cover dry-run, write, local drift, and --only', async () => {
     await withWorkspace(async (workspaceDir) => {
+      // dry-run shows banner and mode message, does not write files or create backups
+      const dryRunPlain = await runCli(workspaceDir, ['sync', '-d'])
+      expect(dryRunPlain.stdout).toContain('Environment Sync')
+      expect(dryRunPlain.stdout).toContain('dry-run mode')
+
       const preview = await runCliJson(workspaceDir, ['--json', 'sync', '-d'])
       expect(preview.command).toBe('sync')
       expect(preview.ok).toBe(true)
       expect(preview.data.options.dryRun).toBe(true)
       expect(preview.data.summary.success).toBe(3)
 
+      // dry-run must not write env files or create backups
       expect(await Bun.file(path.join(workspaceDir, 'apps', 'api', '.env')).exists()).toBe(false)
+      expect(await Bun.file(path.join(workspaceDir, '.env-backup')).exists()).toBe(false)
 
+      // --no-backup sync: writes files but creates no backup
       const synced = await runCliJson(workspaceDir, ['--json', 'sync', '--no-backup'])
       expect(synced.command).toBe('sync')
       expect(synced.ok).toBe(true)
       expect(synced.data.summary.success).toBe(3)
       expect(synced.data.summary.failed).toBe(0)
+      expect(await Bun.file(path.join(workspaceDir, '.env-backup')).exists()).toBe(false)
 
       const apiEnvPath = path.join(workspaceDir, 'apps', 'api', '.env')
       const apiEnv = await Bun.file(apiEnvPath).text()
@@ -207,6 +231,141 @@ describe('live 1Password CLI e2e', () => {
 
       const restored = await Bun.file(apiEnvPath).text()
       expect(restored).toBe(original)
+
+      const status = await runCliJson(workspaceDir, ['--json', 'status'])
+      expect(status.data.backups.count).toBe(1)
+    })
+  })
+
+  test('sync creates a backup by default when env files already exist', async () => {
+    await withWorkspace(async (workspaceDir) => {
+      await runCliJson(workspaceDir, ['--json', 'sync', '--no-backup'])
+
+      const apiEnvPath = path.join(workspaceDir, 'apps', 'api', '.env')
+      const original = await Bun.file(apiEnvPath).text()
+      await Bun.write(apiEnvPath, original.replace('JWT_SECRET=', 'JWT_SECRET=locally-modified-'))
+
+      const synced = await runCliJson(workspaceDir, ['--json', 'sync'])
+      expect(synced.command).toBe('sync')
+      expect(synced.ok).toBe(true)
+      expect(await Bun.file(path.join(workspaceDir, '.env-backup', 'latest', 'apps', 'api', '.env')).exists()).toBe(
+        true,
+      )
+    })
+  })
+
+  test('1password-basic example works end to end', async () => {
+    await withExampleWorkspace('1password-basic', async (workspaceDir) => {
+      const status = await runCliJson(workspaceDir, ['--json', 'status'])
+      expect(status.command).toBe('status')
+      expect(status.ok).toBe(true)
+      expect(status.data.summary.missing).toBe(1)
+
+      const validate = await runCliJson(workspaceDir, ['--json', 'validate'])
+      expect(validate.ok).toBe(true)
+      expect(validate.data.summary.invalid).toBe(0)
+
+      const preview = await runCliJson(workspaceDir, ['--json', 'sync', '-d'])
+      expect(preview.ok).toBe(true)
+      expect(preview.data.summary.success).toBe(1)
+
+      const sync = await runCliJson(workspaceDir, ['--json', 'sync'])
+      expect(sync.ok).toBe(true)
+      expect(await Bun.file(path.join(workspaceDir, '.env')).exists()).toBe(true)
+
+      const resolved = await runCli(workspaceDir, [
+        '--quiet',
+        'resolve',
+        `op://${getExampleVaultName()}/api-service/JWT_SECRET`,
+      ])
+      expect(resolved.stdout.trim()).toBe('jwt_example_secret_123')
+
+      const run = await runCli(workspaceDir, ['--quiet', 'run', '--', 'printenv', 'JWT_SECRET'])
+      expect(run.stdout.trim()).toBe('jwt_example_secret_123')
+
+      const diff = await runCliJson(workspaceDir, ['--json', 'diff'])
+      expect(diff.ok).toBe(true)
+      expect(diff.data.summary.hasAnyChanges).toBe(false)
+
+      const backup = await runCliJson(workspaceDir, ['--json', 'backup'])
+      expect(backup.ok).toBe(true)
+
+      await Bun.write(path.join(workspaceDir, '.env'), 'BROKEN=1\n')
+      const restore = await runCliJson(workspaceDir, ['--json', 'restore'])
+      expect(restore.ok).toBe(true)
+      expect(await Bun.file(path.join(workspaceDir, '.env')).text()).toContain('JWT_SECRET=jwt_example_secret_123')
+    })
+  })
+
+  test('1password-monorepo example works end to end', async () => {
+    await withExampleWorkspace('1password-monorepo', async (workspaceDir) => {
+      const sync = await runCliJson(workspaceDir, ['--json', 'sync'])
+      expect(sync.ok).toBe(true)
+      expect(sync.data.summary.success).toBe(3)
+
+      const diff = await runCliJson(workspaceDir, ['--json', '--only', 'web', 'diff'])
+      expect(diff.ok).toBe(true)
+      expect(diff.data.paths).toHaveLength(1)
+      expect(diff.data.summary.hasAnyChanges).toBe(false)
+
+      const run = await runCli(workspaceDir, ['--quiet', '--only', 'web', 'run', '--', 'printenv', 'SESSION_SECRET'])
+      expect(run.stdout.trim()).toBe('session_example_secret_456')
+
+      const backup = await runCliJson(workspaceDir, ['--json', 'backup'])
+      expect(backup.ok).toBe(true)
+      expect(backup.data.backedUp).toBe(3)
+
+      const listed = await runCliJson(workspaceDir, ['--json', 'restore', '--list'])
+      expect(listed.ok).toBe(true)
+      expect(listed.data.snapshots[0].files).toHaveLength(3)
+    })
+  })
+
+  test('1password-environments example switches by environment', async () => {
+    await withExampleWorkspace('1password-environments', async (workspaceDir) => {
+      const localSync = await runCliJson(workspaceDir, ['--json', 'sync'])
+      expect(localSync.ok).toBe(true)
+      expect(await Bun.file(path.join(workspaceDir, '.env')).text()).toContain('API_KEY=sk_local_example_123')
+
+      const stagingSync = await runCliJson(workspaceDir, ['--json', '-e', 'staging', 'sync'])
+      expect(stagingSync.ok).toBe(true)
+      expect(await Bun.file(path.join(workspaceDir, '.env')).text()).toContain('API_KEY=sk_staging_example_123')
+
+      const resolved = await runCli(workspaceDir, [
+        '--quiet',
+        '-e',
+        'prod',
+        'resolve',
+        `op://${getExampleVaultName()}/api-service-\${ENV}/API_KEY`,
+      ])
+      expect(resolved.stdout.trim()).toBe('sk_prod_example_123')
+
+      const run = await runCli(workspaceDir, ['--quiet', '-e', 'prod', 'run', '--', 'printenv', 'STRIPE_SECRET'])
+      expect(run.stdout.trim()).toBe('stripe_prod_example_123')
+    })
+  })
+
+  test('custom-files example works with config-backed output files', async () => {
+    await withExampleWorkspace('custom-files', async (workspaceDir) => {
+      const sync = await runCliJson(workspaceDir, ['--json', '--config', 'envi.json', 'sync'])
+      expect(sync.ok).toBe(true)
+      expect(await Bun.file(path.join(workspaceDir, '.env.local')).exists()).toBe(true)
+
+      const diff = await runCliJson(workspaceDir, ['--json', '--config', 'envi.json', 'diff'])
+      expect(diff.ok).toBe(true)
+      expect(diff.data.summary.hasAnyChanges).toBe(false)
+
+      const run = await runCli(workspaceDir, ['--quiet', '--config', 'envi.json', 'run', '--', 'printenv', 'API_KEY'])
+      expect(run.stdout.trim()).toBe('sk_example_basic_123')
+
+      const backup = await runCliJson(workspaceDir, ['--json', '--config', 'envi.json', 'backup'])
+      expect(backup.ok).toBe(true)
+      expect(backup.data.files).toContain('.env.local')
+
+      await Bun.write(path.join(workspaceDir, '.env.local'), 'BROKEN=1\n')
+      const restore = await runCliJson(workspaceDir, ['--json', '--config', 'envi.json', 'restore'])
+      expect(restore.ok).toBe(true)
+      expect(await Bun.file(path.join(workspaceDir, '.env.local')).text()).toContain('API_KEY=sk_example_basic_123')
     })
   })
 })
@@ -218,6 +377,13 @@ function getVaultName(): string {
   return vault.title
 }
 
+function getExampleVaultName(): string {
+  if (!exampleVault) {
+    throw new Error('Example vault not initialized')
+  }
+  return exampleVault.title
+}
+
 async function withWorkspace(run: (workspaceDir: string) => Promise<void>): Promise<void> {
   const workspaceDir = await mkdtemp(WORKSPACE_PREFIX)
 
@@ -226,6 +392,36 @@ async function withWorkspace(run: (workspaceDir: string) => Promise<void>): Prom
     await run(workspaceDir)
   } finally {
     await rm(workspaceDir, { recursive: true, force: true })
+  }
+}
+
+async function withExampleWorkspace(exampleName: string, run: (workspaceDir: string) => Promise<void>): Promise<void> {
+  const workspaceDir = await mkdtemp(WORKSPACE_PREFIX)
+  const exampleDir = path.join(workspaceDir, 'workspace')
+
+  try {
+    await cp(path.join(import.meta.dir, '..', '..', 'examples', exampleName), exampleDir, { recursive: true })
+    await rewriteWorkspaceVaultRefs(exampleDir, 'envi-example', getExampleVaultName())
+    await run(exampleDir)
+  } finally {
+    await rm(workspaceDir, { recursive: true, force: true })
+  }
+}
+
+async function rewriteWorkspaceVaultRefs(workspaceDir: string, fromVault: string, toVault: string): Promise<void> {
+  const entries = await readdir(workspaceDir, { withFileTypes: true })
+
+  for (const entry of entries) {
+    const entryPath = path.join(workspaceDir, entry.name)
+    if (entry.isDirectory()) {
+      await rewriteWorkspaceVaultRefs(entryPath, fromVault, toVault)
+      continue
+    }
+
+    if (!(entry.name.startsWith('.env') || entry.name === 'envi.json')) continue
+
+    const content = await readFile(entryPath, 'utf8')
+    await writeFile(entryPath, content.replaceAll(fromVault, toVault), 'utf8')
   }
 }
 

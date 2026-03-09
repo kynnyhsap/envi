@@ -1,6 +1,7 @@
 import path from 'node:path'
 
 import { getRootDir } from '../paths'
+import { resolveAllEnvPaths } from '../paths'
 import type { BackupSnapshotData, ExecutionContext } from '../types'
 
 const SNAPSHOT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/
@@ -77,6 +78,19 @@ export function getBackupRootInfo(
 
 export async function findEnvFilesForBackup(ctx: ExecutionContext): Promise<string[]> {
   const rootDir = getRootDir(ctx.options, ctx.runtime)
+
+  if (ctx.options.paths.length > 0) {
+    const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
+    const matches: string[] = []
+
+    for (const pathInfo of envPaths) {
+      if (!(await ctx.runtime.exists(pathInfo.envPath))) continue
+      matches.push(path.relative(rootDir, pathInfo.envPath).replace(/\\/g, '/'))
+    }
+
+    return matches.sort((a, b) => a.localeCompare(b))
+  }
+
   return ctx.runtime.findFilesNamed(rootDir, ctx.options.outputFile, [ctx.options.backupDir])
 }
 
@@ -84,12 +98,10 @@ async function collectSnapshotFiles(
   ctx: ExecutionContext,
   snapshotAbsolute: string,
 ): Promise<BackupSnapshotInternalFile[]> {
-  const filesRelative = await ctx.runtime.findFilesWithPrefix(snapshotAbsolute, '.env')
+  const filesRelative = await ctx.runtime.findFilesNamed(snapshotAbsolute, ctx.options.outputFile)
   const files: BackupSnapshotInternalFile[] = []
 
   for (const fileRelative of filesRelative) {
-    if (fileRelative === SNAPSHOT_METADATA_FILE) continue
-
     const backupPath = path.join(snapshotAbsolute, fileRelative)
     const stat = await ctx.runtime.stat(backupPath)
     files.push({
