@@ -5,90 +5,98 @@ Comprehensive reference for working with 1Password CLI (`op`) and the JavaScript
 ## Documentation Index
 
 ### Getting Started
-| Topic | URL |
-|-------|-----|
-| CLI Overview | https://developer.1password.com/docs/cli/ |
-| Use Cases | https://developer.1password.com/docs/cli/use-cases |
+
+| Topic                 | URL                                                  |
+| --------------------- | ---------------------------------------------------- |
+| CLI Overview          | https://developer.1password.com/docs/cli/            |
+| Use Cases             | https://developer.1password.com/docs/cli/use-cases   |
 | Get Started (Install) | https://developer.1password.com/docs/cli/get-started |
-| Example Scripts | https://developer.1password.com/docs/cli/scripts |
+| Example Scripts       | https://developer.1password.com/docs/cli/scripts     |
 
 ### Configuration
-| Topic | URL |
-|-------|-----|
-| Verify Installer | https://developer.1password.com/docs/cli/verify |
-| Install on Server | https://developer.1password.com/docs/cli/install-server |
+
+| Topic              | URL                                                         |
+| ------------------ | ----------------------------------------------------------- |
+| Verify Installer   | https://developer.1password.com/docs/cli/verify             |
+| Install on Server  | https://developer.1password.com/docs/cli/install-server     |
 | Config Directories | https://developer.1password.com/docs/cli/config-directories |
-| Check for Updates | https://developer.1password.com/docs/cli/reference/update |
-| Uninstall | https://developer.1password.com/docs/cli/uninstall |
+| Check for Updates  | https://developer.1password.com/docs/cli/reference/update   |
+| Uninstall          | https://developer.1password.com/docs/cli/uninstall          |
 
 ### Authentication & Sign-in
-| Topic | URL |
-|-------|-----|
-| App Integration (Biometrics) | https://developer.1password.com/docs/cli/app-integration |
-| Sign in Manually | https://developer.1password.com/docs/cli/sign-in-manually |
-| Sign in with SSO | https://developer.1password.com/docs/cli/sign-in-sso |
-| Multiple Accounts | https://developer.1password.com/docs/cli/use-multiple-accounts |
+
+| Topic                        | URL                                                            |
+| ---------------------------- | -------------------------------------------------------------- |
+| App Integration (Biometrics) | https://developer.1password.com/docs/cli/app-integration       |
+| Sign in Manually             | https://developer.1password.com/docs/cli/sign-in-manually      |
+| Sign in with SSO             | https://developer.1password.com/docs/cli/sign-in-sso           |
+| Multiple Accounts            | https://developer.1password.com/docs/cli/use-multiple-accounts |
 
 ### CLI Command Reference
-| Command | URL |
-|---------|-----|
-| Reference Overview | https://developer.1password.com/docs/cli/reference |
-| Best Practices | https://developer.1password.com/docs/cli/best-practices |
-| `op account` | https://developer.1password.com/docs/cli/reference/management-commands/account |
-| `op connect` | https://developer.1password.com/docs/cli/reference/management-commands/connect |
-| `op document` | https://developer.1password.com/docs/cli/reference/management-commands/document |
-| `op events-api` | https://developer.1password.com/docs/cli/reference/management-commands/events-api |
-| `op group` | https://developer.1password.com/docs/cli/reference/management-commands/group |
-| `op item` | https://developer.1password.com/docs/cli/reference/management-commands/item |
-| `op plugin` | https://developer.1password.com/docs/cli/reference/management-commands/plugin |
+
+| Command              | URL                                                                                    |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| Reference Overview   | https://developer.1password.com/docs/cli/reference                                     |
+| Best Practices       | https://developer.1password.com/docs/cli/best-practices                                |
+| `op account`         | https://developer.1password.com/docs/cli/reference/management-commands/account         |
+| `op connect`         | https://developer.1password.com/docs/cli/reference/management-commands/connect         |
+| `op document`        | https://developer.1password.com/docs/cli/reference/management-commands/document        |
+| `op events-api`      | https://developer.1password.com/docs/cli/reference/management-commands/events-api      |
+| `op group`           | https://developer.1password.com/docs/cli/reference/management-commands/group           |
+| `op item`            | https://developer.1password.com/docs/cli/reference/management-commands/item            |
+| `op plugin`          | https://developer.1password.com/docs/cli/reference/management-commands/plugin          |
 | `op service-account` | https://developer.1password.com/docs/cli/reference/management-commands/service-account |
-| `op user` | https://developer.1password.com/docs/cli/reference/management-commands/user |
-| `op vault` | https://developer.1password.com/docs/cli/reference/management-commands/vault |
-| `op completion` | https://developer.1password.com/docs/cli/reference/commands/completion |
-| `op inject` | https://developer.1password.com/docs/cli/reference/commands/inject |
-| `op read` | https://developer.1password.com/docs/cli/reference/commands/read |
-| `op run` | https://developer.1password.com/docs/cli/reference/commands/run |
-| `op signin` | https://developer.1password.com/docs/cli/reference/commands/signin |
-| `op signout` | https://developer.1password.com/docs/cli/reference/commands/signout |
-| `op update` | https://developer.1password.com/docs/cli/reference/commands/update |
-| `op whoami` | https://developer.1password.com/docs/cli/reference/commands/whoami |
+| `op user`            | https://developer.1password.com/docs/cli/reference/management-commands/user            |
+| `op vault`           | https://developer.1password.com/docs/cli/reference/management-commands/vault           |
+| `op completion`      | https://developer.1password.com/docs/cli/reference/commands/completion                 |
+| `op inject`          | https://developer.1password.com/docs/cli/reference/commands/inject                     |
+| `op read`            | https://developer.1password.com/docs/cli/reference/commands/read                       |
+| `op run`             | https://developer.1password.com/docs/cli/reference/commands/run                        |
+| `op signin`          | https://developer.1password.com/docs/cli/reference/commands/signin                     |
+| `op signout`         | https://developer.1password.com/docs/cli/reference/commands/signout                    |
+| `op update`          | https://developer.1password.com/docs/cli/reference/commands/update                     |
+| `op whoami`          | https://developer.1password.com/docs/cli/reference/commands/whoami                     |
 
 ### Concepts & Reference
-| Topic | URL |
-|-------|-----|
-| Environment Variables | https://developer.1password.com/docs/cli/environment-variables |
-| Item Fields | https://developer.1password.com/docs/cli/item-fields |
-| Item JSON Template | https://developer.1password.com/docs/cli/item-template-json |
+
+| Topic                   | URL                                                              |
+| ----------------------- | ---------------------------------------------------------------- |
+| Environment Variables   | https://developer.1password.com/docs/cli/environment-variables   |
+| Item Fields             | https://developer.1password.com/docs/cli/item-fields             |
+| Item JSON Template      | https://developer.1password.com/docs/cli/item-template-json      |
 | Secret Reference Syntax | https://developer.1password.com/docs/cli/secret-reference-syntax |
-| Template Syntax | https://developer.1password.com/docs/cli/secrets-template-syntax |
-| Vault Permissions | https://developer.1password.com/docs/cli/vault-permissions |
-| User States | https://developer.1password.com/docs/cli/user-states |
+| Template Syntax         | https://developer.1password.com/docs/cli/secrets-template-syntax |
+| Vault Permissions       | https://developer.1password.com/docs/cli/vault-permissions       |
+| User States             | https://developer.1password.com/docs/cli/user-states             |
 
 ### Security & Integration
-| Topic | URL |
-|-------|-----|
+
+| Topic                    | URL                                                               |
+| ------------------------ | ----------------------------------------------------------------- |
 | App Integration Security | https://developer.1password.com/docs/cli/app-integration-security |
-| Use with Connect Server | https://developer.1password.com/docs/connect/cli |
+| Use with Connect Server  | https://developer.1password.com/docs/connect/cli                  |
 
 ### SDK Documentation
-| Topic | URL |
-|-------|-----|
-| SDK Overview | https://developer.1password.com/docs/sdks |
+
+| Topic                           | URL                                                                |
+| ------------------------------- | ------------------------------------------------------------------ |
+| SDK Overview                    | https://developer.1password.com/docs/sdks                          |
 | Desktop App Integrations (beta) | https://developer.1password.com/docs/sdks/desktop-app-integrations |
-| Load Secrets | https://developer.1password.com/docs/sdks/load-secrets |
-| Manage Items | https://developer.1password.com/docs/sdks/manage-items |
-| Manage Files | https://developer.1password.com/docs/sdks/files |
-| Share Items | https://developer.1password.com/docs/sdks/share-items |
-| List Vaults & Items | https://developer.1password.com/docs/sdks/list-vaults-items |
-| Manage Vaults (beta) | https://developer.1password.com/docs/sdks/vaults |
-| Manage Groups (beta) | https://developer.1password.com/docs/sdks/groups |
-| Supported Functionality | https://developer.1password.com/docs/sdks/functionality |
-| Concepts | https://developer.1password.com/docs/sdks/concepts |
-| JavaScript SDK (GitHub) | https://github.com/1Password/onepassword-sdk-js/ |
+| Load Secrets                    | https://developer.1password.com/docs/sdks/load-secrets             |
+| Manage Items                    | https://developer.1password.com/docs/sdks/manage-items             |
+| Manage Files                    | https://developer.1password.com/docs/sdks/files                    |
+| Share Items                     | https://developer.1password.com/docs/sdks/share-items              |
+| List Vaults & Items             | https://developer.1password.com/docs/sdks/list-vaults-items        |
+| Manage Vaults (beta)            | https://developer.1password.com/docs/sdks/vaults                   |
+| Manage Groups (beta)            | https://developer.1password.com/docs/sdks/groups                   |
+| Supported Functionality         | https://developer.1password.com/docs/sdks/functionality            |
+| Concepts                        | https://developer.1password.com/docs/sdks/concepts                 |
+| JavaScript SDK (GitHub)         | https://github.com/1Password/onepassword-sdk-js/                   |
 
 ### Other
-| Topic | URL |
-|-------|-----|
+
+| Topic         | URL                                                    |
+| ------------- | ------------------------------------------------------ |
 | Release Notes | https://app-updates.agilebits.com/product_history/CLI2 |
 
 ---
@@ -128,6 +136,7 @@ Set `APP_ENV=dev` or `APP_ENV=prod` to resolve to different vaults.
 ### Template syntax (for `op inject`)
 
 Secret references in template files can be:
+
 - **Unenclosed**: `op://vault/item/field` — ends at first unsupported character
 - **Enclosed**: `{{ op://vault/item/field }}` — wrapped in `{{ }}`
 
@@ -139,6 +148,7 @@ Default values: `${VAR:-default}`
 ## CLI Authentication Methods
 
 ### 1. Desktop App Integration (recommended)
+
 - Enable in 1Password app: **Settings > Developer > Integrate with 1Password CLI**
 - Authenticates via biometrics (Touch ID, Windows Hello, system auth)
 - Sessions auto-refresh, expire after 10 min inactivity, hard limit 12 hours
@@ -146,22 +156,26 @@ Default values: `${VAR:-default}`
 - Toggle: `OP_BIOMETRIC_UNLOCK_ENABLED=true|false`
 
 ### 2. Service Account Token
+
 - Set `OP_SERVICE_ACCOUNT_TOKEN` environment variable
 - Scoped to specific vaults (principle of least privilege)
 - Best for CI/CD, servers, automated scripts
 - No interactive auth needed
 
 ### 3. Manual Sign-in
+
 - `op account add` then `eval $(op signin)`
 - Session token in `OP_SESSION` env var, expires after 30 min inactivity
 - Less secure than app integration (session key in environment)
 
 ### 4. Connect Server
+
 - Set `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN`
 - Private REST API for infrastructure secrets
 - Works with `op run`, `op inject`, `op read`, `op item get`
 
 ### Multiple Accounts
+
 - `op signin` — interactive account selection
 - `--account <address-or-id>` — per-command account
 - `OP_ACCOUNT` env var — default account
@@ -170,27 +184,28 @@ Default values: `${VAR:-default}`
 
 ## CLI Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `OP_SERVICE_ACCOUNT_TOKEN` | Authenticate with a service account |
-| `OP_ACCOUNT` | Default account (sign-in address or ID) |
-| `OP_BIOMETRIC_UNLOCK_ENABLED` | Toggle app integration (`true`/`false`) |
-| `OP_CACHE` | Toggle caching (`true`/`false`, default `true`) |
-| `OP_CONFIG_DIR` | Custom config directory |
-| `OP_CONNECT_HOST` | Connect server URL |
-| `OP_CONNECT_TOKEN` | Connect server token |
-| `OP_DEBUG` | Debug mode (`true`/`false`) |
-| `OP_FORMAT` | Output format (`human-readable`/`json`) |
-| `OP_INCLUDE_ARCHIVE` | Include archived items (`true`/`false`) |
-| `OP_ISO_TIMESTAMPS` | ISO 8601 timestamps (`true`/`false`) |
-| `OP_RUN_NO_MASKING` | Disable secret masking in `op run` output |
-| `OP_SESSION` | Manual sign-in session token |
+| Variable                      | Description                                     |
+| ----------------------------- | ----------------------------------------------- |
+| `OP_SERVICE_ACCOUNT_TOKEN`    | Authenticate with a service account             |
+| `OP_ACCOUNT`                  | Default account (sign-in address or ID)         |
+| `OP_BIOMETRIC_UNLOCK_ENABLED` | Toggle app integration (`true`/`false`)         |
+| `OP_CACHE`                    | Toggle caching (`true`/`false`, default `true`) |
+| `OP_CONFIG_DIR`               | Custom config directory                         |
+| `OP_CONNECT_HOST`             | Connect server URL                              |
+| `OP_CONNECT_TOKEN`            | Connect server token                            |
+| `OP_DEBUG`                    | Debug mode (`true`/`false`)                     |
+| `OP_FORMAT`                   | Output format (`human-readable`/`json`)         |
+| `OP_INCLUDE_ARCHIVE`          | Include archived items (`true`/`false`)         |
+| `OP_ISO_TIMESTAMPS`           | ISO 8601 timestamps (`true`/`false`)            |
+| `OP_RUN_NO_MASKING`           | Disable secret masking in `op run` output       |
+| `OP_SESSION`                  | Manual sign-in session token                    |
 
 ---
 
 ## CLI Config Directories
 
 Precedence (highest to lowest):
+
 1. `--config` flag
 2. `OP_CONFIG_DIR` env var
 3. `~/.op`
@@ -277,14 +292,17 @@ op signout                    # end session
 ## Vault Permissions
 
 ### Teams / Families (broad)
+
 - `allow_viewing` — view items, copy passwords, view history
 - `allow_editing` — create, edit, archive, delete, import, export, copy, share, print
 - `allow_managing` — manage vault access, delete vault
 
 ### Business (granular)
+
 `view_items`, `view_and_copy_passwords`, `view_item_history`, `create_items`, `edit_items`, `archive_items`, `delete_items`, `import_items`, `export_items`, `copy_and_share_items`, `print_items`, `manage_vault`
 
 Permissions are hierarchical — narrower ones require broader ones:
+
 - `delete_items` requires `edit_items` + `view_and_copy_passwords` + `view_items`
 - Revoking a broad permission also requires revoking all dependent narrow ones
 
@@ -293,20 +311,22 @@ Permissions are hierarchical — narrower ones require broader ones:
 ## Item Fields
 
 ### Built-in fields
+
 Each category has default fields (e.g., Login has `username`, `password`, `notesPlain`). Use `op item template get <category>` to see available fields.
 
 ### Custom field types
-| CLI fieldType | JSON type | Description |
-|---------------|-----------|-------------|
-| `password` | `CONCEALED` | Concealed password |
-| `text` | `STRING` | Text string |
-| `email` | `EMAIL` | Email address |
-| `url` | `URL` | Web address |
-| `date` | `DATE` | Date (YYYY-MM-DD) |
-| `monthYear` | `MONTH_YEAR` | YYYYMM or YYYY/MM |
-| `phone` | `PHONE` | Phone number |
-| `otp` | `OTP` | One-time password (`otpauth://` URI) |
-| `file` | N/A | File attachment (path) |
+
+| CLI fieldType | JSON type    | Description                          |
+| ------------- | ------------ | ------------------------------------ |
+| `password`    | `CONCEALED`  | Concealed password                   |
+| `text`        | `STRING`     | Text string                          |
+| `email`       | `EMAIL`      | Email address                        |
+| `url`         | `URL`        | Web address                          |
+| `date`        | `DATE`       | Date (YYYY-MM-DD)                    |
+| `monthYear`   | `MONTH_YEAR` | YYYYMM or YYYY/MM                    |
+| `phone`       | `PHONE`      | Phone number                         |
+| `otp`         | `OTP`        | One-time password (`otpauth://` URI) |
+| `file`        | N/A          | File attachment (path)               |
 
 ---
 
@@ -348,6 +368,7 @@ await client.items.archive(vaultId, itemId)
 ```
 
 ### Supported functionality
+
 - Resolve secrets via `op://` references
 - Full item CRUD (create, read, update, delete, archive, list, share)
 - All field types including passwords, OTP, SSH keys, file attachments, passkeys
@@ -355,11 +376,13 @@ await client.items.archive(vaultId, itemId)
 - Password generation (PIN, random, memorable)
 
 ### Authentication
+
 - Service accounts only (for now)
 - User auth and Connect not yet supported in SDK
 - Use `OP_SERVICE_ACCOUNT_TOKEN` env var or pass directly to `createClient({ auth })`
 
 ### Envi integration
+
 Envi supports two 1Password backends in `src/providers/1password.provider.ts`:
 
 1. **JavaScript SDK (`@1password/sdk`)** (preferred)
@@ -386,11 +409,13 @@ If you want the 1Password CLI, opt in with `--provider-opt backend=cli`.
 ## Installation
 
 ### macOS
+
 ```bash
 brew install --cask 1password-cli
 ```
 
 ### Linux (APT)
+
 ```bash
 curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
   sudo gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg
@@ -400,6 +425,7 @@ sudo apt update && sudo apt install 1password-cli
 ```
 
 ### Docker
+
 ```dockerfile
 FROM 1password/op:2
 # or add to existing Dockerfile:
@@ -407,12 +433,14 @@ COPY --from=1password/op:2 /usr/local/bin/op /usr/local/bin/op
 ```
 
 ### Server (one-liner)
+
 ```bash
 curl -sSfo op.zip https://cache.agilebits.com/dist/1P/op2/pkg/v2.30.3/op_linux_amd64_v2.30.3.zip && \
   unzip -od /usr/local/bin/ op.zip && rm op.zip
 ```
 
 ### Verify
+
 ```bash
 op --version
 ```

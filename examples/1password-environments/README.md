@@ -12,12 +12,12 @@ Create a vault called `envi-example` with these secure notes:
 
 Each item should contain these fields:
 
-| Field | Description |
-| --- | --- |
-| `API_KEY` | API key for that environment |
-| `DATABASE_URL` | Database connection string |
-| `REDIS_URL` | Redis connection string |
-| `STRIPE_SECRET` | Stripe secret key |
+| Field           | Description                  |
+| --------------- | ---------------------------- |
+| `API_KEY`       | API key for that environment |
+| `DATABASE_URL`  | Database connection string   |
+| `REDIS_URL`     | Redis connection string      |
+| `STRIPE_SECRET` | Stripe secret key            |
 
 ```bash
 op vault create envi-example

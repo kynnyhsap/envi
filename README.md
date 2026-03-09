@@ -91,9 +91,9 @@ If you need secret values in SDK outputs (unsafe), pass `includeSecrets: true` t
 
 Envi uses native 1Password references in templates.
 
-| Scheme  | Description                   | Example                 |
-| ------- | ----------------------------- | ----------------------- |
-| `op://` | Native 1Password secret URI   | `op://vault/item/field` |
+| Scheme  | Description                 | Example                 |
+| ------- | --------------------------- | ----------------------- |
+| `op://` | Native 1Password secret URI | `op://vault/item/field` |
 
 Format: `op://vault/item[/section]/field`
 
@@ -519,14 +519,14 @@ OP_SERVICE_ACCOUNT_TOKEN="..." bun run bench:e2e
 
 ## Environment Variables
 
-| Variable                   | Description                                                 |
-| -------------------------- | ----------------------------------------------------------- |
-| `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service account token (overrides desktop auth)    |
-| `OP_ACCOUNT_NAME`          | 1Password account name/sign-in address for desktop auth     |
-| `OP_CACHE`                 | 1Password CLI cache toggle (`true`/`false`, default `true`) |
-| `ENVI_OP_RESOLVE_MODE`     | 1Password resolve strategy (`auto`, `batch`, `sequential`)  |
-| `ENVI_OP_RESOLVE_CHUNK_SIZE` | Chunk size for 1Password SDK `resolveAll` batching       |
-| `ENVI_OP_RESOLVE_CONCURRENCY` | Max parallel 1Password fallback/CLI resolves            |
+| Variable                      | Description                                                 |
+| ----------------------------- | ----------------------------------------------------------- |
+| `OP_SERVICE_ACCOUNT_TOKEN`    | 1Password service account token (overrides desktop auth)    |
+| `OP_ACCOUNT_NAME`             | 1Password account name/sign-in address for desktop auth     |
+| `OP_CACHE`                    | 1Password CLI cache toggle (`true`/`false`, default `true`) |
+| `ENVI_OP_RESOLVE_MODE`        | 1Password resolve strategy (`auto`, `batch`, `sequential`)  |
+| `ENVI_OP_RESOLVE_CHUNK_SIZE`  | Chunk size for 1Password SDK `resolveAll` batching          |
+| `ENVI_OP_RESOLVE_CONCURRENCY` | Max parallel 1Password fallback/CLI resolves                |
 
 ### Authentication Priority (1Password)
 

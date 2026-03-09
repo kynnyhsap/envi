@@ -15,23 +15,23 @@ Upstream:
 
 Treat these as the canonical entry points for provider implementation work:
 
-| Topic | URL |
-|------|-----|
-| Docs landing page | https://developer.hashicorp.com/vault/docs |
-| CLI usage + env vars (index) | https://developer.hashicorp.com/vault/docs/commands |
-| HTTP API (index) | https://developer.hashicorp.com/vault/api-docs |
-| HTTP API client libraries list | https://developer.hashicorp.com/vault/api-docs/libraries |
-| KV secrets engine (concepts + v1/v2 differences) | https://developer.hashicorp.com/vault/docs/secrets/kv |
-| KV v1 API | https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v1 |
-| KV v2 API | https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v2 |
-| AppRole auth (machine-friendly) | https://developer.hashicorp.com/vault/docs/auth/approle |
-| Kubernetes auth (workload identity) | https://developer.hashicorp.com/vault/docs/auth/kubernetes |
-| JWT auth (OIDC/JWT) | https://developer.hashicorp.com/vault/docs/auth/jwt |
-| Token auth + token header behavior | https://developer.hashicorp.com/vault/docs/auth/token |
-| Token concepts (renewal/TTL types) | https://developer.hashicorp.com/vault/docs/concepts/tokens |
-| Enterprise namespaces (concepts) | https://developer.hashicorp.com/vault/docs/enterprise/namespaces |
-| Auto-auth (Vault Agent/Proxy) | https://developer.hashicorp.com/vault/docs/agent-and-proxy/autoauth |
-| Generate OpenAPI for mounted backends | https://developer.hashicorp.com/vault/api-docs/system/internal-specs-openapi |
+| Topic                                            | URL                                                                          |
+| ------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Docs landing page                                | https://developer.hashicorp.com/vault/docs                                   |
+| CLI usage + env vars (index)                     | https://developer.hashicorp.com/vault/docs/commands                          |
+| HTTP API (index)                                 | https://developer.hashicorp.com/vault/api-docs                               |
+| HTTP API client libraries list                   | https://developer.hashicorp.com/vault/api-docs/libraries                     |
+| KV secrets engine (concepts + v1/v2 differences) | https://developer.hashicorp.com/vault/docs/secrets/kv                        |
+| KV v1 API                                        | https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v1               |
+| KV v2 API                                        | https://developer.hashicorp.com/vault/api-docs/secret/kv/kv-v2               |
+| AppRole auth (machine-friendly)                  | https://developer.hashicorp.com/vault/docs/auth/approle                      |
+| Kubernetes auth (workload identity)              | https://developer.hashicorp.com/vault/docs/auth/kubernetes                   |
+| JWT auth (OIDC/JWT)                              | https://developer.hashicorp.com/vault/docs/auth/jwt                          |
+| Token auth + token header behavior               | https://developer.hashicorp.com/vault/docs/auth/token                        |
+| Token concepts (renewal/TTL types)               | https://developer.hashicorp.com/vault/docs/concepts/tokens                   |
+| Enterprise namespaces (concepts)                 | https://developer.hashicorp.com/vault/docs/enterprise/namespaces             |
+| Auto-auth (Vault Agent/Proxy)                    | https://developer.hashicorp.com/vault/docs/agent-and-proxy/autoauth          |
+| Generate OpenAPI for mounted backends            | https://developer.hashicorp.com/vault/api-docs/system/internal-specs-openapi |
 
 ## Core Concepts (As Envi Needs Them)
 
