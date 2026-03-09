@@ -176,4 +176,16 @@ describe('serializeEnvFile', () => {
 
     expect(result).toContain(LOCAL_ENVS_SEPARATOR)
   })
+
+  it('should serialize multiline values as quoted escaped strings', () => {
+    const envFile: EnvFile = {
+      vars: new Map([['PRIVATE_KEY', { key: 'PRIVATE_KEY', value: 'line1\nline2', isCustom: false }]]),
+      order: ['PRIVATE_KEY'],
+      trailingContent: '',
+    }
+
+    const result = serializeEnvFile(envFile)
+
+    expect(result).toContain('PRIVATE_KEY="line1\\nline2"')
+  })
 })

@@ -190,4 +190,83 @@ describe('sdk engine (smoke)', () => {
     const result = await engine.status()
     expect(result.data.provider.auth.type).toBe('post')
   })
+
+  it('sync resolves quoted and unquoted secret references to escaped multiline values', async () => {
+    const cwd = '/repo'
+    const runtime = createMemoryRuntime({
+      cwd,
+      files: {
+        '/repo/.env.example': 'MULTILINE=op://vault/item/MULTI\nQUOTED="op://vault/item/MULTI"\n',
+      },
+      templateMatches: ['.env.example'],
+    })
+
+    const provider = {
+      ...createFakeProvider(),
+      async resolveSecrets(references: string[]) {
+        return {
+          resolved: new Map(references.map((reference) => [reference, 'line1\nline2'])),
+          errors: new Map(),
+        }
+      },
+      async resolveSecret() {
+        return 'line1\nline2'
+      },
+    }
+
+    const engine = createEnviEngine({
+      runtime,
+      provider,
+      options: {
+        rootDir: cwd,
+        provider: '1password',
+        environment: 'local',
+      },
+    })
+
+    const result = await engine.sync()
+    expect(result.ok).toBe(true)
+
+    const output = await runtime.readText('/repo/.env')
+    expect(output).toContain('MULTILINE="line1\\nline2"')
+    expect(output).toContain('QUOTED="line1\\nline2"')
+  })
+
+  it('resolveRunEnvironment resolves quoted env-file references', async () => {
+    const cwd = '/repo'
+    const runtime = createMemoryRuntime({
+      cwd,
+      files: {
+        '/repo/.env.secrets': 'APP_STORE_CONNECT_API_KEY_CONTENT="op://vault/item/MULTI"\n',
+      },
+      templateMatches: [],
+    })
+
+    const provider = {
+      ...createFakeProvider(),
+      async resolveSecrets(references: string[]) {
+        return {
+          resolved: new Map(references.map((reference) => [reference, 'line1\nline2'])),
+          errors: new Map(),
+        }
+      },
+      async resolveSecret() {
+        return 'line1\nline2'
+      },
+    }
+
+    const engine = createEnviEngine({
+      runtime,
+      provider,
+      options: {
+        rootDir: cwd,
+        provider: '1password',
+        environment: 'local',
+      },
+    })
+
+    const result = await engine.resolveRunEnvironment({ envFile: ['/repo/.env.secrets'], includeSecrets: true })
+    expect(result.ok).toBe(true)
+    expect(result.data.env['APP_STORE_CONNECT_API_KEY_CONTENT']).toBe('line1\nline2')
+  })
 })

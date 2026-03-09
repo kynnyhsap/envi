@@ -75,7 +75,7 @@ export function parseSecretReference(reference: string): SecretReference {
     throw new Error(validation.error ?? 'Invalid secret reference')
   }
 
-  const trimmed = reference.trim()
+  const trimmed = normalizeSecretReferenceInput(reference)
   const path = trimmed.slice('op://'.length)
   const parts = path.split('/')
 
@@ -93,8 +93,21 @@ export interface SecretReferenceValidationResult {
   error?: string
 }
 
-export function validateSecretReferenceFormat(reference: string): SecretReferenceValidationResult {
+export function normalizeSecretReferenceInput(reference: string): string {
   const trimmed = reference.trim()
+  if (trimmed.length < 2) return trimmed
+
+  const quote = trimmed[0]
+  const closingQuote = trimmed[trimmed.length - 1]
+  if ((quote === '"' || quote === "'") && closingQuote === quote) {
+    return trimmed.slice(1, -1).trim()
+  }
+
+  return trimmed
+}
+
+export function validateSecretReferenceFormat(reference: string): SecretReferenceValidationResult {
+  const trimmed = normalizeSecretReferenceInput(reference)
 
   if (!trimmed.startsWith('op://')) {
     return { valid: false, error: 'Must start with op://' }

@@ -72,7 +72,7 @@ export function serializeEnvFile(envFile: EnvFile, env?: string): string {
     if (envVar.comment !== undefined) {
       lines.push(envVar.comment)
     }
-    lines.push(`${envVar.key}=${envVar.value}`)
+    lines.push(`${envVar.key}=${formatEnvValue(envVar.value)}`)
   }
 
   lines.push('')
@@ -103,8 +103,14 @@ export function serializeEnvFile(envFile: EnvFile, env?: string): string {
         lines.push(comment)
       }
     }
-    lines.push(`${envVar.key}=${envVar.value}`)
+    lines.push(`${envVar.key}=${formatEnvValue(envVar.value)}`)
   }
 
   return lines.join('\n') + '\n'
+}
+
+function formatEnvValue(value: string): string {
+  const normalized = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  if (!normalized.includes('\n')) return value
+  return JSON.stringify(normalized)
 }
