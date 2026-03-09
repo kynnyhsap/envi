@@ -271,6 +271,7 @@ function showHelp(commandName?: string): void {
   console.info(`  ${pc.yellow('restore')}             Restore environment files from backup`)
   console.info(`  ${pc.yellow('run')}                 Run a command with secrets as env vars`)
   console.info(`  ${pc.yellow('validate')}            Validate all secret references in templates`)
+  console.info(`  ${pc.yellow('mcp')}                 Start MCP server (stdio transport)`)
   console.info('')
   console.info(pc.bold('GLOBAL OPTIONS'))
   printOptionTable(GLOBAL_HELP_OPTIONS)
@@ -466,6 +467,13 @@ const rawArgs = rewriteTemplateFlag(process.argv.slice(2))
 if (rawArgs.filter((arg) => !arg.startsWith('-')).length === 0 && rawArgs.some((arg) => isVersionFlag(arg))) {
   console.info(VERSION)
   process.exit(0)
+}
+
+if (rawArgs[0] === 'mcp') {
+  const { mcpCommand } = await import('./commands/mcp')
+  await mcpCommand()
+  // Server stays alive via stdio transport — do not exit
+  await new Promise(() => {})
 }
 
 if (rawArgs[0] === 'help') {
