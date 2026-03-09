@@ -221,7 +221,7 @@ bun run examples:cleanup
 Templates are checked into git and contain secret references. Use `${ENV}` for environment-specific vaults:
 
 ```bash
-# engine/api/.env.example
+# apps/api/.env.example
 NODE_ENV=development
 SECRET=op://core-${ENV}/engine-api/SECRET
 DATABASE_URL=op://core-${ENV}/engine-api/DATABASE_URL
@@ -331,7 +331,7 @@ The CLI supports multiple environments through the `-e, --env` flag. Use `${ENV}
 Use `${ENV}` anywhere in your secret references:
 
 ```bash
-# engine/api/.env.example
+# apps/api/.env.example
 
 # Static values (no substitution)
 NODE_ENV=development
@@ -352,15 +352,15 @@ Vault: core-local
 ├── engine-api
 │   ├── SECRET
 │   └── DATABASE_URL
-└── console
+└── apps/web
 
 Vault: core-dev
 ├── engine-api
-└── console
+└── apps/web
 
 Vault: core-prod
 ├── engine-api
-└── console
+└── apps/web
 ```
 
 ### Usage
@@ -403,10 +403,10 @@ To restrict which templates are processed:
 
 ```bash
 # Only process a specific subdirectory
-envi sync --only engine/api
+envi sync --only apps/api
 
 # Multiple paths (comma-separated)
-envi diff --only engine/api,console
+envi diff --only apps/api,apps/web
 ```
 
 ## CI/CD Integration
@@ -450,15 +450,15 @@ Backups are stored under `.env-backup/` and mirror your configured output filena
 .env-backup/
 ├── latest/
 │   ├── .envi-backup.json
-│   ├── engine/api/.env
-│   └── console/.env
+│   ├── apps/api/.env
+│   └── apps/web/.env
 ├── 2026-03-07T15-39-54-840Z/
 │   ├── .envi-backup.json
-│   ├── engine/api/.env
-│   └── console/.env
+│   ├── apps/api/.env
+│   └── apps/web/.env
 ├── 2026-03-06T10-00-00-000Z/
 │   ├── .envi-backup.json
-│   └── engine/api/.env
+│   └── apps/api/.env
 ```
 
 - `latest/` is always the most recent backup for quick restore and inspection.
