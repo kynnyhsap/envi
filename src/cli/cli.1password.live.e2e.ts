@@ -93,6 +93,69 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
+  test('provider options are wired in live CLI (backend + resolve mode)', async () => {
+    await withWorkspace(async (workspaceDir) => {
+      const statusCliBackend = await runCliJson(workspaceDir, ['--json', '--provider-opt', 'backend=cli', 'status'])
+      expect(statusCliBackend.command).toBe('status')
+      expect(statusCliBackend.ok).toBe(true)
+      expect(statusCliBackend.data.provider.auth.success).toBe(true)
+      expect(statusCliBackend.data.provider.auth.type).toBe('cli')
+
+      const reference = `op://${getVaultName()}/api-envs/DATABASE_URL`
+      const secondReference = `op://${getVaultName()}/api-envs/JWT_SECRET`
+
+      const batch = await runCliJson(workspaceDir, [
+        '--json',
+        '--provider-opt',
+        'resolveMode=batch',
+        'resolve',
+        reference,
+        secondReference,
+      ])
+      expect(batch.ok).toBe(true)
+      expect(batch.data.results.map((entry: { secret: string }) => entry.secret)).toEqual([
+        getSeedFieldValue('api-envs', 'DATABASE_URL'),
+        getSeedFieldValue('api-envs', 'JWT_SECRET'),
+      ])
+
+      const sequential = await runCliJson(workspaceDir, [
+        '--json',
+        '--provider-opt',
+        'resolveMode=sequential',
+        'resolve',
+        reference,
+        secondReference,
+      ])
+      expect(sequential.ok).toBe(true)
+      expect(sequential.data.results.map((entry: { secret: string }) => entry.secret)).toEqual([
+        getSeedFieldValue('api-envs', 'DATABASE_URL'),
+        getSeedFieldValue('api-envs', 'JWT_SECRET'),
+      ])
+    })
+  })
+
+  test('auth failure returns structured errors for critical commands', async () => {
+    await withWorkspace(async (workspaceDir) => {
+      const badToken = 'op://invalid-token'
+
+      for (const args of [
+        ['--json', 'diff'],
+        ['--json', 'sync', '--no-backup'],
+        ['--json', 'validate', '--remote'],
+        ['--json', 'run', '--', 'printenv', 'JWT_SECRET'],
+      ]) {
+        const result = await runCliRaw(workspaceDir, args, {
+          OP_SERVICE_ACCOUNT_TOKEN: badToken,
+        })
+
+        expect(result.exitCode).toBe(1)
+        const json = JSON.parse(result.stdout)
+        expect(json.ok).toBe(false)
+        expect(json.issues.some((issue: { code: string }) => issue.code === 'AUTH_FAILED')).toBe(true)
+      }
+    })
+  })
+
   test('resolve returns single and multiple secret values in plain and json modes', async () => {
     await withWorkspace(async (workspaceDir) => {
       const reference = `op://${getVaultName()}/api-envs/DATABASE_URL`
@@ -499,14 +562,24 @@ async function runCliJson(workspaceDir: string, args: string[]): Promise<any> {
   return JSON.parse(result.stdout)
 }
 
-async function runCli(workspaceDir: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+async function runCliRaw(
+  workspaceDir: string,
+  args: string[],
+  envOverrides: Record<string, string | undefined> = {},
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries({
+    ...process.env,
+    NO_COLOR: '1',
+    OP_SERVICE_ACCOUNT_TOKEN: e2eConfig!.token,
+    ...envOverrides,
+  })) {
+    if (typeof value === 'string') env[key] = value
+  }
+
   const proc = Bun.spawn(['bun', CLI_PATH, ...args], {
     cwd: workspaceDir,
-    env: {
-      ...process.env,
-      NO_COLOR: '1',
-      OP_SERVICE_ACCOUNT_TOKEN: e2eConfig!.token,
-    } as Record<string, string>,
+    env,
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -514,6 +587,12 @@ async function runCli(workspaceDir: string, args: string[]): Promise<{ stdout: s
   const exitCode = await proc.exited
   const stdout = await new Response(proc.stdout).text()
   const stderr = await new Response(proc.stderr).text()
+
+  return { stdout, stderr, exitCode }
+}
+
+async function runCli(workspaceDir: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const { stdout, stderr, exitCode } = await runCliRaw(workspaceDir, args)
 
   if (exitCode !== 0) {
     throw new Error(
