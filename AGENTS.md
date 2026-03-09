@@ -22,6 +22,11 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 - CLI local E2E lives in `src/cli/cli.e2e.test.ts`
 - Live 1Password E2E lives in `src/cli/cli.1password.live.e2e.ts`
 - Live E2E loads repo-root `.env.test` first, then `.env.local`
+- Prefer E2E for CLI/SDK behavior: put command-level behavior in `cli.e2e` or `cli.1password.live.e2e`, not mocked provider/unit tests.
+- Keep mocks limited to pure/singular logic (parsers, formatters, small helpers). Do not add mock-heavy tests for end-user command flows.
+- Keep skipped tests at zero; if a case requires provider auth, move it to live E2E instead of `describe.skip`.
+- Treat maintained `examples/` as test targets; keep their core flows covered in live E2E.
+- Temporary guardrail until CI backend matrix is broader: for provider wiring changes, add or update live E2E for `--provider-opt` behavior (backend/resolve mode), not only provider mocks.
 - When making code changes, run the smallest relevant test slice first, then run the broader suite before calling the work done
 - When doing a refactor or touching CLI/SDK/runtime/provider wiring, always run at least `bun run typecheck`, `bun test`, and `bun run lint`
 - When changing critical 1Password flows (`status`, `diff`, `sync`, `validate`, `resolve`, `run`, `backup`, `restore`) or shared CLI parsing/config behavior, also run `bun run test:e2e:1password` unless the user explicitly asks not to or required credentials are unavailable
