@@ -1,7 +1,7 @@
 import pc from 'picocolors'
 
 import { log } from '../../app/logger'
-import { createCommandContext, maybeWriteJsonResult, printIssuesAndExit } from './common'
+import { createCommandContext, formatReferenceVars, maybeWriteJsonResult, printIssuesAndExit } from './common'
 
 interface RunOptions {
   envFile?: string[]
@@ -25,7 +25,7 @@ export async function runCommand(command: string[], options: RunOptions = {}): P
 
   if (!config.quiet) {
     log.banner('Run')
-    log.info(`  Environment: ${pc.cyan(config.environment)}`)
+    log.info(`  Vars: ${pc.cyan(formatReferenceVars(config.vars))}`)
     log.info(`  Command: ${pc.cyan(command.join(' '))}`)
     log.info('')
   }

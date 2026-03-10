@@ -6,6 +6,7 @@ import { computeChanges } from '../../shared/env/diff'
 import { mergeEnvFiles } from '../../shared/env/merge'
 import { parseEnvFile, serializeEnvFile } from '../../shared/env/parse'
 import type { EnvFile } from '../../shared/env/types'
+import { resolveReferenceVars } from '../../shared/env/variables'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
 import type { ExecutionContext, Issue, SyncData, SyncOperationOptions, SyncPathData, SyncResult } from '../types'
@@ -89,7 +90,7 @@ async function processEnvPath(
 
   const injectedResult = await injectResolvedSecrets({
     template,
-    environment: ctx.options.environment,
+    vars: ctx.options.vars,
     provider: ctx.provider,
   })
 
@@ -110,8 +111,8 @@ async function processEnvPath(
   const hasEnv = await ctx.runtime.exists(pathInfo.envPath)
   const local = hasEnv ? parseEnvFile(await ctx.runtime.readText(pathInfo.envPath)) : null
 
-  const currentEnv = ctx.options.environment
-  const envSwitched = !!(local?.sourceEnv && local.sourceEnv !== currentEnv)
+  const currentVars = ctx.options.vars
+  const envSwitched = !!(local?.sourceVars && !sameSourceVars(local.sourceVars, currentVars))
 
   const rawChanges = computeChanges(template, injectedResult.injected, local, envSwitched)
   const changes = options.includeSecrets ? rawChanges : redactChanges(rawChanges)
@@ -131,7 +132,7 @@ async function processEnvPath(
 
   try {
     const merged = mergeEnvFiles(template, injectedResult.injected, local, changes)
-    const output = serializeEnvFile(merged, currentEnv)
+    const output = serializeEnvFile(merged, currentVars)
     await ctx.runtime.mkdirp(path.dirname(pathInfo.envPath))
     await ctx.runtime.writeText(pathInfo.envPath, output)
     return {
@@ -159,6 +160,15 @@ async function processEnvPath(
       issues,
     }
   }
+}
+
+function sameSourceVars(a: Record<string, string>, b: Record<string, string>): boolean {
+  const resolvedA = resolveReferenceVars(a)
+  const resolvedB = resolveReferenceVars(b)
+  const aKeys = Object.keys(resolvedA).sort()
+  const bKeys = Object.keys(resolvedB).sort()
+  if (aKeys.length !== bKeys.length) return false
+  return aKeys.every((key, index) => key === bKeys[index] && resolvedA[key] === resolvedB[key])
 }
 
 export async function syncOperation(ctx: ExecutionContext, options: SyncOperationOptions = {}): Promise<SyncResult> {

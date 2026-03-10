@@ -4,7 +4,7 @@ These are the only examples worth keeping around right now:
 
 - `1password-basic/` - one app, one vault, a few `op://` references
 - `1password-monorepo/` - multiple packages with auto-discovered `.env.example` files
-- `1password-environments/` - `${ENV}` substitution to switch item names inside one vault
+- `1password-environments/` - `${PROFILE}` substitution to switch item names inside one vault
 - `custom-files/` - custom template/output filenames via flags or `envi.json`
 - `1password-e2e-bench/` - live benchmark harness against a real 1Password vault
 

@@ -60,6 +60,24 @@ SINGLE_QUOTED='another value'`
     expect(result.vars.get('SINGLE_QUOTED')?.value).toBe("'another value'")
   })
 
+  it('should parse vars metadata marker', () => {
+    const content = `# envi:vars={"PROFILE":"local","REGION":"eu"}
+API_KEY=value`
+
+    const result = parseEnvFile(content)
+
+    expect(result.sourceVars).toEqual({ PROFILE: 'local', REGION: 'eu' })
+  })
+
+  it('should ignore legacy env metadata markers', () => {
+    const content = `# envi:env=local
+API_KEY=value`
+
+    const result = parseEnvFile(content)
+
+    expect(result.sourceVars).toBeUndefined()
+  })
+
   it('should preserve trailing comments', () => {
     const content = `NODE_ENV=development
 # This is a trailing comment`
@@ -187,5 +205,31 @@ describe('serializeEnvFile', () => {
     const result = serializeEnvFile(envFile)
 
     expect(result).toContain('PRIVATE_KEY="line1\\nline2"')
+  })
+
+  it('should serialize vars metadata marker', () => {
+    const envFile: EnvFile = {
+      vars: new Map([['NODE_ENV', { key: 'NODE_ENV', value: 'development', isCustom: false }]]),
+      order: ['NODE_ENV'],
+      trailingContent: '',
+    }
+
+    const result = serializeEnvFile(envFile, { REGION: 'eu', PROFILE: 'local' })
+
+    expect(result).toContain('# envi:vars={"PROFILE":"local","REGION":"eu"}')
+  })
+
+  it('should not serialize metadata for default vars', () => {
+    const envFile: EnvFile = {
+      vars: new Map([['NODE_ENV', { key: 'NODE_ENV', value: 'development', isCustom: false }]]),
+      order: ['NODE_ENV'],
+      trailingContent: '',
+    }
+
+    const result = serializeEnvFile(envFile, {})
+    const explicitDefault = serializeEnvFile(envFile, { PROFILE: 'default' })
+
+    expect(result).not.toContain('# envi:vars=')
+    expect(explicitDefault).not.toContain('# envi:vars=')
   })
 })

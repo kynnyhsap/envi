@@ -2,7 +2,7 @@ import pc from 'picocolors'
 
 import { log } from '../../app/logger'
 import { hasUnresolvedVariables } from '../../shared/env/variables'
-import { createCommandContext, maybeWriteJsonResult } from './common'
+import { createCommandContext, formatReferenceVars, maybeWriteJsonResult } from './common'
 
 function formatReference(reference: string): string {
   const trimmed = reference.trim()
@@ -33,7 +33,7 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
   log.banner('Validate Secret References')
 
   log.info('')
-  log.info(`  Environment: ${pc.cyan(config.environment)}`)
+  log.info(`  Vars: ${pc.cyan(formatReferenceVars(config.vars))}`)
   log.info(`  Provider: ${pc.cyan(result.meta.provider)}`)
   if (isRemote) {
     log.info('  Validating references against provider...')

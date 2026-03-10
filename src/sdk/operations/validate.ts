@@ -58,7 +58,7 @@ export async function validateOperation(
     for (const [key, envVar] of template.vars) {
       if (!isSecretReference(envVar.value)) continue
       const reference = envVar.value.trim()
-      const resolvedReference = substituteVariables(reference, ctx.options.environment)
+      const resolvedReference = substituteVariables(reference, ctx.options.vars)
 
       if (hasUnresolvedVariables(resolvedReference)) {
         references.push({

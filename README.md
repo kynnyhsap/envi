@@ -16,8 +16,7 @@ Manage `.env` files with 1Password. Sync secrets into local `.env` files while p
   - [Output Format](#output-format)
   - [Preserving Local Changes](#preserving-local-changes)
 - [Adding New Templates](#adding-new-templates)
-- [Environments](#environments)
-  - [Supported Environments](#supported-environments)
+- [Dynamic Vars](#dynamic-vars)
   - [Template Syntax](#template-syntax)
   - [Vault Structure](#vault-structure)
   - [Usage](#usage)
@@ -51,10 +50,10 @@ envi sync -d
 envi validate
 
 # Resolve one secret reference directly
-envi resolve op://core-${ENV}/engine-api/SECRET
+envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET
 
 # Resolve multiple references (newline-separated output)
-envi resolve op://core-${ENV}/engine-api/SECRET op://core-${ENV}/engine-api/JWT_SECRET
+envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET op://core-${PROFILE}/engine-api/JWT_SECRET
 
 # Run a command with secrets as env vars
 envi run -- node index.js
@@ -77,7 +76,7 @@ import { createEnviEngine, createRuntimeAdapter, stringifyEnvelope } from 'envi-
 const engine = createEnviEngine({
   runtime: createRuntimeAdapter(),
   options: {
-    environment: 'local',
+    vars: { PROFILE: 'local' },
   },
 })
 
@@ -151,8 +150,8 @@ envi sync --provider-opt resolveConcurrency=12
 # Simple field
 SECRET=op://core-local/engine-api/SECRET
 
-# With environment variable
-SECRET=op://core-${ENV}/engine-api/SECRET
+# With dynamic vars
+SECRET=op://core-${PROFILE}/engine-api/SECRET
 
 # Section field
 DB_PASSWORD=op://core-local/engine-api/database/password
@@ -180,25 +179,25 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 
 ### Common Options
 
-| Option                 | Description                                                   |
-| ---------------------- | ------------------------------------------------------------- |
-| `-d, --dry-run`        | Preview changes without writing files                         |
-| `-q, --quiet`          | Suppress non-essential output                                 |
-| `--json`               | Output machine-readable JSON (same envelope as SDK)           |
-| `-e, --env <name>`     | Environment name for `${ENV}` substitution (default: `local`) |
-| `--provider-opt <k=v>` | 1Password backend option (repeatable)                         |
-| `--config <path>`      | Load config from JSON file                                    |
-| `--only <paths>`       | Filter which paths to process                                 |
-| `--template-file <f>`  | Override the template filename                                |
-| `--backup-dir <dir>`   | Override the backup directory                                 |
-| `--snapshot <id>`      | Restore a specific backup snapshot id                         |
+| Option                 | Description                                                         |
+| ---------------------- | ------------------------------------------------------------------- |
+| `-d, --dry-run`        | Preview changes without writing files                               |
+| `-q, --quiet`          | Suppress non-essential output                                       |
+| `--json`               | Output machine-readable JSON (same envelope as SDK)                 |
+| `--var <NAME=value>`   | Dynamic reference variable (repeatable, default: `PROFILE=default`) |
+| `--provider-opt <k=v>` | 1Password backend option (repeatable)                               |
+| `--config <path>`      | Load config from JSON file                                          |
+| `--only <paths>`       | Filter which paths to process                                       |
+| `--template-file <f>`  | Override the template filename                                      |
+| `--backup-dir <dir>`   | Override the backup directory                                       |
+| `--snapshot <id>`      | Restore a specific backup snapshot id                               |
 
 ## Examples
 
 - `examples/README.md` - quick index of the maintained examples
 - `examples/1password-basic/` - simplest single-app setup
 - `examples/1password-monorepo/` - auto-discovered multi-package setup
-- `examples/1password-environments/` - `${ENV}` item-name switching inside one vault
+- `examples/1password-environments/` - `${PROFILE}` item-name switching inside one vault
 - `examples/custom-files/` - custom template and output filenames
 - `examples/1password-e2e-bench/` - live benchmark harness
 
@@ -218,13 +217,13 @@ bun run examples:cleanup
 
 ### Templates (`.env.example`)
 
-Templates are checked into git and contain secret references. Use `${ENV}` for environment-specific vaults:
+Templates are checked into git and contain secret references. Use dynamic vars like `${PROFILE}` when you need reference switching:
 
 ```bash
 # apps/api/.env.example
 NODE_ENV=development
-SECRET=op://core-${ENV}/engine-api/SECRET
-DATABASE_URL=op://core-${ENV}/engine-api/DATABASE_URL
+SECRET=op://core-${PROFILE}/engine-api/SECRET
+DATABASE_URL=op://core-${PROFILE}/engine-api/DATABASE_URL
 ```
 
 ### Sync Flow
@@ -248,10 +247,10 @@ When `--json` is enabled, Envi prints a stable JSON envelope intended for script
 
 ```bash
 # Single value
-envi resolve op://core-${ENV}/engine-api/SECRET
+envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET
 
 # Multiple values
-envi resolve op://core-${ENV}/engine-api/SECRET op://core-${ENV}/engine-api/JWT_SECRET
+envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET op://core-${PROFILE}/engine-api/JWT_SECRET
 ```
 
 - Plain output prints one resolved value per line, in the same order as the input references.
@@ -310,7 +309,7 @@ Example:
    ```bash
    # my-package/.env.example
    NODE_ENV=development
-   API_KEY=op://core-${ENV}/my-package/API_KEY
+   API_KEY=op://core-${PROFILE}/my-package/API_KEY
    ```
 
 2. Envi auto-discovers templates by scanning for `**/.env.example` (monorepo-friendly).
@@ -318,17 +317,15 @@ Example:
 
 3. Create the corresponding item(s) in 1Password
 
-## Environments
+## Dynamic Vars
 
-The CLI supports multiple environments through the `-e, --env` flag. Use `${ENV}` in your secret references to create environment-aware templates.
+The CLI supports repeatable dynamic reference vars through `--var NAME=value`. They are used to substitute placeholders like `${PROFILE}` inside secret references. When you use non-default vars, Envi saves them into the generated `.env` as metadata.
 
-### Supported Environments
-
-`local` (default), `dev`, `staging`, `prod`, `sandbox`, `self-host`
+By default, Envi uses `PROFILE=default`.
 
 ### Template Syntax
 
-Use `${ENV}` anywhere in your secret references:
+Use `${NAME}` placeholders anywhere in your secret references:
 
 ```bash
 # apps/api/.env.example
@@ -337,15 +334,15 @@ Use `${ENV}` anywhere in your secret references:
 NODE_ENV=development
 PORT=3000
 
-# Environment-specific secrets
-SECRET=op://core-${ENV}/engine-api/SECRET
-API_KEY=op://core-${ENV}/engine-api/API_KEY
-DATABASE_URL=op://core-${ENV}/engine-api/DATABASE_URL
+# Profile-specific secrets
+SECRET=op://core-${PROFILE}/engine-api/SECRET
+API_KEY=op://core-${PROFILE}/engine-api/API_KEY
+DATABASE_URL=op://core-${PROFILE}/engine-api/DATABASE_URL
 ```
 
 ### Vault Structure
 
-Create separate vaults per environment with a consistent prefix:
+Create separate vaults per profile with a consistent prefix:
 
 ```
 Vault: core-local
@@ -369,30 +366,33 @@ Vault: core-prod
 # Local development (default)
 envi sync
 
-# Specific environment
-envi sync -e dev
-envi sync -e prod
+# Specific profile
+envi sync --var PROFILE=dev
+envi sync --var PROFILE=prod
+
+# Multiple vars
+envi sync --var PROFILE=prod --var REGION=eu
 
 # CI/CD (1Password)
-OP_SERVICE_ACCOUNT_TOKEN="..." envi sync -e prod -q
+OP_SERVICE_ACCOUNT_TOKEN="..." envi sync --var PROFILE=prod -q
 ```
 
 ### Flexible Patterns
 
-The `${ENV}` substitution is flexible - use it wherever makes sense for your vault structure:
+Dynamic var substitution is flexible - use it wherever makes sense for your vault structure:
 
 ```bash
-# Env-prefixed vault (recommended)
-op://core-${ENV}/engine-api/SECRET -> op://core-prod/engine-api/SECRET
+# Profile-prefixed vault (recommended)
+op://core-${PROFILE}/engine-api/SECRET -> op://core-prod/engine-api/SECRET
 
-# Env-only vault
-op://${ENV}/engine-api/SECRET -> op://prod/engine-api/SECRET
+# Profile-only vault
+op://${PROFILE}/engine-api/SECRET -> op://prod/engine-api/SECRET
 
-# Env-prefixed item
-op://core/${ENV}-engine-api/SECRET -> op://core/prod-engine-api/SECRET
+# Profile-prefixed item
+op://core/${PROFILE}-engine-api/SECRET -> op://core/prod-engine-api/SECRET
 
-# Env in section
-op://core/engine-api/${ENV}/SECRET -> op://core/engine-api/prod/SECRET
+# Multiple dynamic vars
+op://core-${PROFILE}/engine-api/${REGION}/SECRET -> op://core-prod/engine-api/eu/SECRET
 ```
 
 ## Configured Paths
@@ -439,7 +439,7 @@ jobs:
       - name: Sync .env files
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-        run: envi sync -e prod -q
+        run: envi sync --var PROFILE=prod -q
 ```
 
 ## Backup System

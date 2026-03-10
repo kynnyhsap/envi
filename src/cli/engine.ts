@@ -14,7 +14,7 @@ export function createCliEngine() {
       paths: config.paths,
       quiet: config.quiet,
       json: config.json,
-      environment: config.environment,
+      vars: config.vars,
       provider: config.provider,
       providerOptions: config.providerOptions,
     },

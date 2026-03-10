@@ -22,7 +22,7 @@ describe('sdk engine (smoke)', () => {
       options: {
         rootDir: cwd,
         provider: '1password',
-        environment: 'local',
+        vars: { PROFILE: 'local' },
       },
     })
 
@@ -53,7 +53,7 @@ describe('sdk engine (smoke)', () => {
       options: {
         rootDir: cwd,
         provider: '1password',
-        environment: 'local',
+        vars: { PROFILE: 'local' },
       },
     })
 
@@ -78,7 +78,7 @@ describe('sdk engine (smoke)', () => {
       options: {
         rootDir: cwd,
         provider: '1password',
-        environment: 'local',
+        vars: { PROFILE: 'local' },
       },
     })
 
@@ -89,16 +89,16 @@ describe('sdk engine (smoke)', () => {
     expect(full.data.env['API_KEY']).toContain('resolved(')
   })
 
-  it('resolveSecret resolves a single reference with env substitution', async () => {
+  it('resolveSecret resolves a single reference with var substitution', async () => {
     const engine = createEnviEngine({
       provider: createFakeProvider(),
       options: {
         provider: '1password',
-        environment: 'local',
+        vars: { PROFILE: 'local' },
       },
     })
 
-    const result = await engine.resolveSecret({ reference: 'op://core-${ENV}/api/API_KEY' })
+    const result = await engine.resolveSecret({ reference: 'op://core-${PROFILE}/api/API_KEY' })
     expect(result.command).toBe('resolve')
     expect(result.ok).toBe(true)
     expect('results' in result.data).toBe(false)
@@ -113,13 +113,13 @@ describe('sdk engine (smoke)', () => {
       provider: createFakeProvider(),
       options: {
         provider: '1password',
-        environment: 'local',
+        vars: { PROFILE: 'local' },
       },
     })
 
     const result = await engine.resolveSecret({
-      reference: 'op://core-${ENV}/api/API_KEY',
-      references: ['op://core-${ENV}/api/API_KEY', 'op://core-${ENV}/api/JWT_SECRET'],
+      reference: 'op://core-${PROFILE}/api/API_KEY',
+      references: ['op://core-${PROFILE}/api/API_KEY', 'op://core-${PROFILE}/api/JWT_SECRET'],
     })
 
     expect(result.command).toBe('resolve')
@@ -183,7 +183,7 @@ describe('sdk engine (smoke)', () => {
       options: {
         rootDir: cwd,
         provider: '1password',
-        environment: 'local',
+        vars: { PROFILE: 'local' },
       },
     })
 
@@ -220,7 +220,7 @@ describe('sdk engine (smoke)', () => {
       options: {
         rootDir: cwd,
         provider: '1password',
-        environment: 'local',
+        vars: { PROFILE: 'local' },
       },
     })
 
@@ -261,7 +261,7 @@ describe('sdk engine (smoke)', () => {
       options: {
         rootDir: cwd,
         provider: '1password',
-        environment: 'local',
+        vars: { PROFILE: 'local' },
       },
     })
 

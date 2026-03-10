@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises'
 
 import packageJson from '../../package.json'
 import type { ProviderType } from '../providers'
-import { DEFAULT_ENVIRONMENT } from '../shared/env/variables'
 
 export const VERSION = packageJson.version
 
@@ -19,7 +18,7 @@ export interface RuntimeConfig {
   paths: string[]
   quiet: boolean
   json: boolean
-  environment: string
+  vars: Record<string, string>
   provider: ProviderType
   providerOptions: Record<string, string>
 }
@@ -31,7 +30,7 @@ let runtimeConfig: RuntimeConfig = {
   paths: [],
   quiet: false,
   json: false,
-  environment: DEFAULT_ENVIRONMENT,
+  vars: {},
   provider: DEFAULT_PROVIDER,
   providerOptions: {},
 }
@@ -56,7 +55,7 @@ export function parseOnlyFlag(value: string | undefined): string[] | undefined {
 export interface ConfigFile {
   provider?: ProviderType
   providerOptions?: Record<string, string>
-  environment?: string
+  vars?: Record<string, string>
   paths?: string[]
   templateFile?: string
   outputFile?: string

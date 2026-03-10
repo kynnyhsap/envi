@@ -3,7 +3,7 @@ import pc from 'picocolors'
 import { log } from '../../app/logger'
 import type { EnvPathInfo } from '../../sdk/types'
 import type { Change } from '../../shared/env/types'
-import { createCommandContext, maybeWriteJsonResult } from './common'
+import { createCommandContext, formatReferenceVars, maybeWriteJsonResult } from './common'
 
 function maskValue(value: string, maxLen = 40): string {
   if (value.length <= 8) return value
@@ -62,7 +62,7 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
   if (maybeWriteJsonResult(result, config.json)) return
 
   log.banner('Environment Diff')
-  log.info(`  Environment: ${pc.cyan(config.environment)}`)
+  log.info(`  Vars: ${pc.cyan(formatReferenceVars(config.vars))}`)
 
   for (const pathResult of result.data.paths) {
     const pathInfo = pathResult.pathInfo

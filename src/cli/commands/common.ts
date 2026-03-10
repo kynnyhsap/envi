@@ -2,11 +2,18 @@ import type { RuntimeConfig } from '../../app/config'
 import { getConfig } from '../../app/config'
 import { log } from '../../app/logger'
 import { stringifyEnvelope, type EnviCommand, type EnviEngine, type Issue, type JsonEnvelope } from '../../sdk'
+import { resolveReferenceVars } from '../../shared/env/variables'
 import { createCliEngine } from '../engine'
 
 export function createCommandContext(): { config: RuntimeConfig; engine: EnviEngine } {
   const config = getConfig()
   return { config, engine: createCliEngine() }
+}
+
+export function formatReferenceVars(vars: Record<string, string>): string {
+  return Object.entries(resolveReferenceVars(vars))
+    .map(([key, value]) => `${key}=${value}`)
+    .join(', ')
 }
 
 export function writeJsonResult(result: { ok: boolean }): never {

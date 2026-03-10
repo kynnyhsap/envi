@@ -16,6 +16,8 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 
 **Config:** load `envi.json` by default if present; override with `--config <path>`.
 
+**Dynamic vars:** use repeatable `--var NAME=value` flags or `vars` in config for `${NAME}` substitution inside secret references. Default effective vars are `PROFILE=default`, but metadata is only written to generated `.env` files when non-default vars are used.
+
 ## Testing
 
 - Local/unit/integration coverage runs with `bun test`
@@ -36,6 +38,7 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 - Default config filename: `envi.json` (auto-loaded when present)
 - Override: `--config <path>` (JSON)
 - Merge order: defaults <- config file <- CLI flags
+- Dynamic reference vars flow through repeatable `--var NAME=value` flags and config `vars: Record<string, string>`
 - Provider options flow through `--provider-opt key=value` (repeatable) and are treated as a string map
 - `--only <paths>` scopes discovery/processing to specific directories (comma-separated)
 

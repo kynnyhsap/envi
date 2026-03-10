@@ -2,7 +2,7 @@ import pc from 'picocolors'
 
 import { log } from '../../app/logger'
 import { formatBackupTimestamp } from '../../shared/env/format'
-import { createCommandContext, maybeWriteJsonResult } from './common'
+import { createCommandContext, formatReferenceVars, maybeWriteJsonResult } from './common'
 
 export async function statusCommand(): Promise<void> {
   const { config, engine } = createCommandContext()
@@ -11,7 +11,7 @@ export async function statusCommand(): Promise<void> {
   if (maybeWriteJsonResult(result, config.json)) return
 
   log.banner('Environment Status')
-  log.info(`  Environment: ${pc.cyan(config.environment)}`)
+  log.info(`  Vars: ${pc.cyan(formatReferenceVars(config.vars))}`)
   log.info(`  Provider: ${pc.cyan(result.data.provider.name)}`)
 
   log.header(result.data.provider.name)

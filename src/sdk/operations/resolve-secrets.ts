@@ -75,7 +75,7 @@ export async function resolveReferenceBatch(args: {
 
 export function collectSecretReferences(
   template: EnvFile,
-  env: string,
+  vars: Record<string, string>,
 ): {
   refs: CollectedSecretReference[]
   issues: Issue[]
@@ -87,7 +87,7 @@ export function collectSecretReferences(
     if (!isSecretReference(envVar.value)) continue
 
     const original = envVar.value.trim()
-    const substituted = substituteVariables(original, env)
+    const substituted = substituteVariables(original, vars)
 
     if (hasUnresolvedVariables(substituted)) {
       issues.push({
@@ -107,10 +107,10 @@ export function collectSecretReferences(
 
 export async function injectResolvedSecrets(args: {
   template: EnvFile
-  environment: string
+  vars: Record<string, string>
   provider: Provider
 }): Promise<{ injected: EnvFile | null; issues: Issue[] }> {
-  const { refs, issues } = collectSecretReferences(args.template, args.environment)
+  const { refs, issues } = collectSecretReferences(args.template, args.vars)
   if (issues.length > 0) {
     return { injected: null, issues }
   }
@@ -148,7 +148,7 @@ export async function injectResolvedSecrets(args: {
 
 export async function resolveEnvFileToKeyValue(args: {
   content: string
-  environment: string
+  vars: Record<string, string>
   provider: Provider
 }): Promise<{ vars: Map<string, string> | null; issues: Issue[]; secretKeys: Set<string> }> {
   const parsed = parseEnvFile(args.content)
@@ -160,7 +160,7 @@ export async function resolveEnvFileToKeyValue(args: {
 
   for (const [key, envVar] of parsed.vars) {
     if (isSecretReference(envVar.value)) {
-      const substituted = substituteVariables(envVar.value.trim(), args.environment)
+      const substituted = substituteVariables(envVar.value.trim(), args.vars)
       secretKeys.add(key)
       if (hasUnresolvedVariables(substituted)) {
         issues.push({

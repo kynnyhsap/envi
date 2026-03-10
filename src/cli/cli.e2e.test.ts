@@ -637,22 +637,22 @@ describe('CLI e2e tests', () => {
     })
   })
 
-  describe('--env flag', () => {
-    it('should show --env option in help', async () => {
+  describe('--var flag', () => {
+    it('should show --var option in help', async () => {
       const { stdout, exitCode } = await runCli('-h')
 
       expect(exitCode).toBe(0)
-      expect(stdout).toContain('--env')
+      expect(stdout).toContain('--var')
     })
 
-    it('should accept any environment name', async () => {
-      for (const env of ['local', 'prod', 'my-custom-env', 'anything-goes']) {
-        const { stderr } = await runCli('--env', env, 'backup')
-        expect(stderr).not.toContain('Invalid environment')
-      }
+    it('should accept repeatable vars', async () => {
+      const { stderr, exitCode } = await runCli('--var', 'PROFILE=prod', '--var', 'REGION=eu', 'backup')
+
+      expect(exitCode).toBe(0)
+      expect(stderr).not.toContain('Invalid --var')
     })
 
-    it('should default to "local" environment', async () => {
+    it('should default PROFILE to local', async () => {
       await Bun.write(join(TEST_DIR, 'test-app/.env'), 'VAR=value\n')
 
       const { exitCode } = await runCli('backup')

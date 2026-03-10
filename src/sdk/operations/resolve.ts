@@ -74,13 +74,13 @@ export async function resolveSecretOperation(
       })
     }
 
-    const resolvedReference = substituteVariables(input, ctx.options.environment)
+    const resolvedReference = substituteVariables(input, ctx.options.vars)
     if (hasUnresolvedVariables(resolvedReference)) {
       return failSingle(ctx, {
         input,
         resolvedReference,
         code: 'UNRESOLVED_VARIABLE',
-        message: `Reference contains unresolved variables for environment '${ctx.options.environment}': ${resolvedReference}`,
+        message: `Reference contains unresolved variables for vars ${JSON.stringify(ctx.options.vars)}: ${resolvedReference}`,
       })
     }
 
@@ -138,12 +138,12 @@ export async function resolveSecretOperation(
       continue
     }
 
-    const resolvedReference = substituteVariables(input, ctx.options.environment)
+    const resolvedReference = substituteVariables(input, ctx.options.vars)
     if (hasUnresolvedVariables(resolvedReference)) {
       entries.push({ input, data: makeSingleEntry(input, resolvedReference) })
       issues.push({
         code: 'UNRESOLVED_VARIABLE',
-        message: `Reference contains unresolved variables for environment '${ctx.options.environment}': ${resolvedReference}`,
+        message: `Reference contains unresolved variables for vars ${JSON.stringify(ctx.options.vars)}: ${resolvedReference}`,
         reference: resolvedReference,
       })
       continue

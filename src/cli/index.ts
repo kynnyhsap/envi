@@ -14,7 +14,7 @@ import {
   type ConfigFile,
 } from '../app/config'
 import { resolveRuntimeOptions, stringifyEnvelope } from '../sdk'
-import { DEFAULT_ENVIRONMENT } from '../shared/env/variables'
+import { DEFAULT_REFERENCE_VARS, normalizeReferenceVars } from '../shared/env/variables'
 import {
   statusCommand,
   diffCommand,
@@ -54,8 +54,8 @@ const GLOBAL_HELP_OPTIONS: HelpOption[] = [
   { flags: '-q, --quiet', description: 'Suppress non-essential output' },
   { flags: '--json', description: 'Output machine-readable JSON' },
   {
-    flags: '-e, --env <name>',
-    description: `Environment name for ${'${ENV}'} substitution (default: ${DEFAULT_ENVIRONMENT})`,
+    flags: '--var <NAME=value>',
+    description: `Dynamic reference variable (repeatable, default: PROFILE=${DEFAULT_REFERENCE_VARS.PROFILE})`,
   },
   { flags: '--provider-opt <k=v>', description: 'Provider-specific option (repeatable)' },
   { flags: '--config <path>', description: 'Load config from JSON file' },
@@ -97,7 +97,7 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
     description: 'Resolve one or more secret references to their values',
     usage: 'envi resolve <reference...> [options]',
     examples: [
-      'envi resolve op://core-${ENV}/engine-api/SECRET',
+      'envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET',
       'envi resolve op://vault/app/API_KEY op://vault/app/JWT_SECRET',
     ],
   },
@@ -140,7 +140,7 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
       'envi run -- npm start',
       'envi run --env-file .env.local -- node index.js',
       'envi run --no-template --env-file .env.secrets -- ./deploy.sh',
-      'envi run -e prod -- node server.js',
+      'envi run --var PROFILE=prod -- node server.js',
     ],
   },
   validate: {
@@ -289,7 +289,7 @@ interface GlobalOptions {
   quiet?: boolean
   json?: boolean
   color?: boolean
-  env?: string
+  var?: string | string[]
   providerOpt?: string | string[]
   config?: string
   only?: string
@@ -328,6 +328,30 @@ function parseProviderOpts(opts: string | string[] | undefined): Record<string, 
   return result
 }
 
+function parseVars(opts: string | string[] | undefined): Record<string, string> {
+  const values = Array.isArray(opts) ? opts : opts ? [opts] : []
+  const entries = values.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+  if (entries.length === 0) return {}
+
+  const result: Record<string, string> = {}
+  for (const entry of entries) {
+    const eq = entry.indexOf('=')
+    if (eq === -1) {
+      throw new Error(`Invalid --var format: "${entry}" (expected NAME=value)`)
+    }
+
+    const key = entry.slice(0, eq).trim()
+    const value = entry.slice(eq + 1).trim()
+    if (!key) {
+      throw new Error(`Invalid --var format: "${entry}" (expected NAME=value)`)
+    }
+
+    result[key] = value
+  }
+
+  return normalizeReferenceVars(result)
+}
+
 async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
   let fileConfig: ConfigFile = {}
   const configPath = options.config ?? 'envi.json'
@@ -345,7 +369,7 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
   const cliProviderOpts = parseProviderOpts(options.providerOpt)
 
   const configFile: Record<string, unknown> = {}
-  if (fileConfig.environment !== undefined) configFile['environment'] = fileConfig.environment
+  if (fileConfig.vars !== undefined) configFile['vars'] = fileConfig.vars
   if (fileConfig.provider !== undefined) configFile['provider'] = fileConfig.provider
   if (fileConfig.providerOptions !== undefined) configFile['providerOptions'] = fileConfig.providerOptions
   if (fileConfig.paths !== undefined) configFile['paths'] = fileConfig.paths
@@ -356,7 +380,7 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
   if (fileConfig.json !== undefined) configFile['json'] = fileConfig.json
 
   const overrides: Record<string, unknown> = {}
-  if (options.env !== undefined) overrides['environment'] = options.env
+  if (options.var !== undefined) overrides['vars'] = parseVars(options.var)
   if (options.providerOpt !== undefined && options.providerOpt.length > 0) {
     overrides['providerOptions'] = cliProviderOpts
   }
@@ -382,7 +406,7 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
     backupDir: resolved.backupDir,
     quiet,
     json: resolved.json,
-    environment: resolved.environment,
+    vars: resolved.vars,
     provider: resolved.provider,
     providerOptions: resolved.providerOptions,
   })
@@ -442,14 +466,14 @@ function findCommandName(args: string[]): string | undefined {
     if (arg.startsWith('-')) {
       const takesValue =
         arg === '--config' ||
-        arg === '--env' ||
+        arg === '--var' ||
         arg === '--provider-opt' ||
         arg === '--only' ||
         arg === '--output' ||
         arg === '--template-file' ||
         arg === '--backup-dir' ||
         arg === '--snapshot'
-      const takesShortValue = arg === '-e'
+      const takesShortValue = false
       if (takesValue || takesShortValue) {
         index++
       }
@@ -503,7 +527,7 @@ cli.help()
 cli.option('-q, --quiet', 'Suppress non-essential output')
 cli.option('--json', 'Output machine-readable JSON')
 cli.option('--no-color', 'Disable ANSI colors')
-cli.option('-e, --env <name>', 'Environment name for ${ENV} substitution')
+cli.option('--var <NAME=value>', 'Dynamic reference variable (repeatable)')
 cli.option('--provider-opt <key=value>', 'Provider-specific option (repeatable)')
 cli.option('--config <path>', 'Load config from JSON file')
 cli.option('--only <paths>', 'Only process specified paths (comma-separated)')
@@ -542,7 +566,7 @@ addExamples(
 })
 
 addExamples(cli.command('resolve [...references]', 'Resolve one or more secret references to their values'), [
-  'envi resolve op://core-${ENV}/engine-api/SECRET',
+  'envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET',
   'envi resolve op://vault/app/API_KEY op://vault/app/JWT_SECRET',
 ]).action(async (references: string[] | string, options: GlobalOptions) => {
   const parsedReferences = Array.isArray(references) ? references : typeof references === 'string' ? [references] : []
@@ -592,7 +616,7 @@ addExamples(
     'envi run -- npm start',
     'envi run --env-file .env.local -- node index.js',
     'envi run --no-template --env-file .env.secrets -- ./deploy.sh',
-    'envi run -e prod -- node server.js',
+    'envi run --var PROFILE=prod -- node server.js',
   ],
 ).action(async (command: string[] | string, options: RunActionOptions) => {
   const parsedOptions: RunActionOptions =

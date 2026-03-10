@@ -3,7 +3,9 @@
   "providerOptions": {
     "backend": "cli"
   },
-  "environment": "local",
+  "vars": {
+    "PROFILE": "local"
+  },
   "templateFile": ".env.example",
   "outputFile": ".env",
   "backupDir": ".env-backup"

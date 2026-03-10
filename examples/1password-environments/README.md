@@ -1,6 +1,6 @@
 # 1Password -- Environments
 
-Use `${ENV}` to switch item names inside one shared vault.
+Use `${PROFILE}` to switch item names inside one shared vault.
 
 ## Vault Setup
 
@@ -41,13 +41,13 @@ done
 envi sync
 
 # Staging
-envi sync -e staging
+envi sync --var PROFILE=staging
 
 # Production
-envi sync -e prod
+envi sync --var PROFILE=prod
 
 # Resolve one production secret directly
-envi resolve -e prod op://envi-example/api-service-${ENV}/API_KEY
+envi resolve --var PROFILE=prod op://envi-example/api-service-${PROFILE}/API_KEY
 ```
 
-`op://envi-example/api-service-${ENV}/API_KEY` becomes `op://envi-example/api-service-staging/API_KEY` when you run with `-e staging`.
+`op://envi-example/api-service-${PROFILE}/API_KEY` becomes `op://envi-example/api-service-staging/API_KEY` when you run with `--var PROFILE=staging`.

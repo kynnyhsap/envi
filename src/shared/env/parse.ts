@@ -1,4 +1,5 @@
-import { type EnvFile, type EnvVar, LOCAL_ENVS_SEPARATOR, ENV_MARKER_PREFIX, LEGACY_ENV_MARKER_PREFIX } from './types'
+import { type EnvFile, type EnvVar, LOCAL_ENVS_SEPARATOR, VARS_MARKER_PREFIX } from './types'
+import { normalizeReferenceVars, shouldPersistReferenceVars } from './variables'
 
 export function parseEnvFile(content: string): EnvFile {
   const vars = new Map<string, EnvVar>()
@@ -8,18 +9,13 @@ export function parseEnvFile(content: string): EnvFile {
 
   let pendingComments: string[] = []
   let inCustomSection = false
-  let sourceEnv: string | undefined
+  let sourceVars: Record<string, string> | undefined
 
   for (const line of lines) {
     const trimmed = line.trim()
 
-    if (trimmed.startsWith(ENV_MARKER_PREFIX)) {
-      sourceEnv = trimmed.slice(ENV_MARKER_PREFIX.length).trim()
-      continue
-    }
-
-    if (trimmed.startsWith(LEGACY_ENV_MARKER_PREFIX)) {
-      sourceEnv = trimmed.slice(LEGACY_ENV_MARKER_PREFIX.length).trim()
+    if (trimmed.startsWith(VARS_MARKER_PREFIX)) {
+      sourceVars = parseVarsMarker(trimmed.slice(VARS_MARKER_PREFIX.length).trim())
       continue
     }
 
@@ -51,14 +47,14 @@ export function parseEnvFile(content: string): EnvFile {
   }
 
   const trailingContent = pendingComments.join('\n')
-  return { vars, order, trailingContent, sourceEnv }
+  return { vars, order, trailingContent, sourceVars }
 }
 
-export function serializeEnvFile(envFile: EnvFile, env?: string): string {
+export function serializeEnvFile(envFile: EnvFile, sourceVars?: Record<string, string>): string {
   const lines: string[] = []
 
-  if (env) {
-    lines.push(`${ENV_MARKER_PREFIX}${env}`)
+  if (sourceVars && shouldPersistReferenceVars(sourceVars)) {
+    lines.push(`${VARS_MARKER_PREFIX}${JSON.stringify(normalizeReferenceVars(sourceVars))}`)
     lines.push('')
   }
 
@@ -113,4 +109,19 @@ function formatEnvValue(value: string): string {
   const normalized = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   if (!normalized.includes('\n')) return value
   return JSON.stringify(normalized)
+}
+
+function parseVarsMarker(value: string): Record<string, string> | undefined {
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+
+    const vars: Record<string, string> = {}
+    for (const [key, rawValue] of Object.entries(parsed)) {
+      if (typeof rawValue === 'string') vars[key] = rawValue
+    }
+    return normalizeReferenceVars(vars)
+  } catch {
+    return undefined
+  }
 }

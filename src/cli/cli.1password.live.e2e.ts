@@ -384,26 +384,34 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('1password-environments example switches by environment', async () => {
+  test('1password-environments example switches by profile var', async () => {
     await withExampleWorkspace('1password-environments', async (workspaceDir) => {
       const localSync = await runCliJson(workspaceDir, ['--json', 'sync'])
       expect(localSync.ok).toBe(true)
       expect(await Bun.file(path.join(workspaceDir, '.env')).text()).toContain('API_KEY=sk_local_example_123')
 
-      const stagingSync = await runCliJson(workspaceDir, ['--json', '-e', 'staging', 'sync'])
+      const stagingSync = await runCliJson(workspaceDir, ['--json', '--var', 'PROFILE=staging', 'sync'])
       expect(stagingSync.ok).toBe(true)
       expect(await Bun.file(path.join(workspaceDir, '.env')).text()).toContain('API_KEY=sk_staging_example_123')
 
       const resolved = await runCli(workspaceDir, [
         '--quiet',
-        '-e',
-        'prod',
+        '--var',
+        'PROFILE=prod',
         'resolve',
-        `op://${getExampleVaultName()}/api-service-\${ENV}/API_KEY`,
+        `op://${getExampleVaultName()}/api-service-\${PROFILE}/API_KEY`,
       ])
       expect(resolved.stdout.trim()).toBe('sk_prod_example_123')
 
-      const run = await runCli(workspaceDir, ['--quiet', '-e', 'prod', 'run', '--', 'printenv', 'STRIPE_SECRET'])
+      const run = await runCli(workspaceDir, [
+        '--quiet',
+        '--var',
+        'PROFILE=prod',
+        'run',
+        '--',
+        'printenv',
+        'STRIPE_SECRET',
+      ])
       expect(run.stdout.trim()).toBe('stripe_prod_example_123')
     })
   })
@@ -501,7 +509,7 @@ async function prepareWorkspace(workspaceDir: string, vaultName: string): Promis
         providerOptions: {
           backend: 'sdk',
         },
-        environment: 'local',
+        vars: { PROFILE: 'local' },
         templateFile: '.env.example',
         outputFile: '.env',
         backupDir: '.env-backup',

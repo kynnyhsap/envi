@@ -32,7 +32,7 @@ async function diffOne(
   const template: EnvFile = parseEnvFile(await ctx.runtime.readText(pathInfo.templatePath))
   const { injected, issues } = await injectResolvedSecrets({
     template,
-    environment: ctx.options.environment,
+    vars: ctx.options.vars,
     provider: ctx.provider,
   })
 

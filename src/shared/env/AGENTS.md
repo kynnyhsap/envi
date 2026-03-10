@@ -1,3 +1,3 @@
 # Shared Env
 
-- `.env` files include an environment marker comment. Current prefix is `# envi:env=`; parsing also supports legacy `# env-cli:env=` for backwards compatibility.
+- `.env` files may include a vars metadata comment using `# envi:vars=` when non-default reference vars were used to generate the file.

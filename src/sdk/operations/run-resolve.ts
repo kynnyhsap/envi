@@ -78,7 +78,7 @@ export async function resolveRunEnvironmentOperation(
 
       const injected = await injectResolvedSecrets({
         template,
-        environment: ctx.options.environment,
+        vars: ctx.options.vars,
         provider: ctx.provider,
       })
 
@@ -134,7 +134,7 @@ export async function resolveRunEnvironmentOperation(
       const content = await ctx.runtime.readText(filePath)
       const resolved = await resolveEnvFileToKeyValue({
         content,
-        environment: ctx.options.environment,
+        vars: ctx.options.vars,
         provider: ctx.provider,
       })
 

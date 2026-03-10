@@ -1,6 +1,6 @@
 import { DEFAULT_BACKUP_DIR, DEFAULT_OUTPUT_FILE, DEFAULT_PROVIDER, DEFAULT_TEMPLATE_FILE } from '../app/config'
 import type { ProviderType } from '../providers'
-import { DEFAULT_ENVIRONMENT } from '../shared/env/variables'
+import { normalizeReferenceVars } from '../shared/env/variables'
 import type { RuntimeOptions, RuntimeOptionsInput } from './types'
 
 export function resolveRuntimeOptions(input: RuntimeOptionsInput = {}): RuntimeOptions {
@@ -11,7 +11,7 @@ export function resolveRuntimeOptions(input: RuntimeOptionsInput = {}): RuntimeO
     paths: [],
     quiet: false,
     json: false,
-    environment: DEFAULT_ENVIRONMENT,
+    vars: {},
     provider: DEFAULT_PROVIDER,
     providerOptions: {},
   }
@@ -27,6 +27,12 @@ export function resolveRuntimeOptions(input: RuntimeOptionsInput = {}): RuntimeO
       ...((input.configFile ?? {}).providerOptions ?? {}),
       ...((input.overrides ?? {}).providerOptions ?? {}),
     },
+    vars: normalizeReferenceVars({
+      ...(defaults.vars ?? {}),
+      ...((input.defaults ?? {}).vars ?? {}),
+      ...((input.configFile ?? {}).vars ?? {}),
+      ...((input.overrides ?? {}).vars ?? {}),
+    }),
     paths: input.overrides?.paths ?? input.configFile?.paths ?? input.defaults?.paths ?? defaults.paths ?? [],
   }
 

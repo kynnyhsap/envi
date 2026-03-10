@@ -31,7 +31,7 @@ export interface JsonEnvelope<TData, TCommand extends EnviCommand> {
   data: TData
   issues: Issue[]
   meta: {
-    environment: string
+    vars: Record<string, string>
     provider: string
     timestamp: string
   }
@@ -44,7 +44,7 @@ export interface RuntimeOptions {
   paths: string[]
   quiet: boolean
   json: boolean
-  environment: string
+  vars: Record<string, string>
   provider: ProviderType
   providerOptions: Record<string, string>
   rootDir?: string

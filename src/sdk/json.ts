@@ -1,3 +1,4 @@
+import { resolveReferenceVars } from '../shared/env/variables'
 import type { EnviCommand, JsonEnvelope, RuntimeOptions } from './types'
 
 function normalizeForJson(value: unknown): unknown {
@@ -28,7 +29,7 @@ export function makeEnvelope<TData, TCommand extends EnviCommand>(args: {
   ok: boolean
   data: TData
   issues: JsonEnvelope<TData, TCommand>['issues']
-  options: Pick<RuntimeOptions, 'environment'>
+  options: Pick<RuntimeOptions, 'vars'>
   providerId: string
 }): JsonEnvelope<TData, TCommand> {
   return {
@@ -38,7 +39,7 @@ export function makeEnvelope<TData, TCommand extends EnviCommand>(args: {
     data: normalizeForJson(args.data) as TData,
     issues: args.issues,
     meta: {
-      environment: args.options.environment,
+      vars: resolveReferenceVars(args.options.vars),
       provider: args.providerId,
       timestamp: new Date().toISOString(),
     },

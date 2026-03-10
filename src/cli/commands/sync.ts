@@ -5,7 +5,7 @@ import { log } from '../../app/logger'
 import { isSecretReference } from '../../sdk'
 import { redactSecret, truncateValue } from '../../shared/env/format'
 import type { Change } from '../../shared/env/types'
-import { createCommandContext, maybeWriteJsonResult } from './common'
+import { createCommandContext, formatReferenceVars, maybeWriteJsonResult } from './common'
 
 function formatValue(value: string, isSecret: boolean): string {
   if (isSecret) {
@@ -123,7 +123,7 @@ export async function syncCommand(options: { dryRun: boolean; noBackup: boolean 
   if (maybeWriteJsonResult(result, config.json)) return
 
   log.banner('Environment Sync')
-  log.info(`  Environment: ${pc.cyan(config.environment)}`)
+  log.info(`  Vars: ${pc.cyan(formatReferenceVars(config.vars))}`)
 
   if (options.dryRun) {
     log.info(pc.yellow('  Running in dry-run mode'))
@@ -143,7 +143,7 @@ export async function syncCommand(options: { dryRun: boolean; noBackup: boolean 
     }
 
     if (pathResult.envSwitched) {
-      log.warn('Environment change detected - secrets updated')
+      log.warn('Reference vars changed - secrets updated')
     }
 
     log.info('')

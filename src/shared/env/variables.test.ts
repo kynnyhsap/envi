@@ -1,69 +1,90 @@
 import { describe, expect, it } from 'bun:test'
 
-import { DEFAULT_ENVIRONMENT, hasUnresolvedVariables, substituteVariables } from './variables'
+import {
+  DEFAULT_REFERENCE_VARS,
+  hasUnresolvedVariables,
+  normalizeReferenceVars,
+  shouldPersistReferenceVars,
+  substituteVariables,
+} from './variables'
 
-describe('DEFAULT_ENVIRONMENT', () => {
-  it('defaults to "local"', () => {
-    expect(DEFAULT_ENVIRONMENT).toBe('local')
+describe('DEFAULT_REFERENCE_VARS', () => {
+  it('defaults to PROFILE=default', () => {
+    expect(DEFAULT_REFERENCE_VARS).toEqual({ PROFILE: 'default' })
+  })
+})
+
+describe('shouldPersistReferenceVars', () => {
+  it('does not persist missing or default-only vars', () => {
+    expect(shouldPersistReferenceVars(undefined)).toBe(false)
+    expect(shouldPersistReferenceVars({})).toBe(false)
+    expect(shouldPersistReferenceVars({ PROFILE: 'default' })).toBe(false)
+  })
+
+  it('persists non-default vars', () => {
+    expect(shouldPersistReferenceVars({ PROFILE: 'prod' })).toBe(true)
+    expect(shouldPersistReferenceVars({ REGION: 'eu' })).toBe(true)
+  })
+})
+
+describe('normalizeReferenceVars', () => {
+  it('trims and sorts vars', () => {
+    expect(normalizeReferenceVars({ ' PROFILE ': ' local ', REGION: 'eu' })).toEqual({ PROFILE: 'local', REGION: 'eu' })
   })
 })
 
 describe('substituteVariables', () => {
-  it('substitutes ${ENV} in op:// references', () => {
-    expect(substituteVariables('op://core-${ENV}/engine-api/SECRET', 'local')).toBe('op://core-local/engine-api/SECRET')
-    expect(substituteVariables('op://core-${ENV}/engine-api/SECRET', 'prod')).toBe('op://core-prod/engine-api/SECRET')
+  it('substitutes ${PROFILE} in op:// references', () => {
+    expect(substituteVariables('op://core-${PROFILE}/engine-api/SECRET', { PROFILE: 'local' })).toBe(
+      'op://core-local/engine-api/SECRET',
+    )
+    expect(substituteVariables('op://core-${PROFILE}/engine-api/SECRET', { PROFILE: 'prod' })).toBe(
+      'op://core-prod/engine-api/SECRET',
+    )
   })
 
-  it('substitutes multiple ${ENV} occurrences', () => {
-    expect(substituteVariables('op://${ENV}/${ENV}/field', 'dev')).toBe('op://dev/dev/field')
+  it('substitutes multiple placeholders', () => {
+    expect(substituteVariables('op://${PROFILE}/${REGION}/field', { PROFILE: 'dev', REGION: 'eu' })).toBe(
+      'op://dev/eu/field',
+    )
+  })
+
+  it('supports quoted secret references', () => {
+    expect(substituteVariables('"op://core-${PROFILE}/item/field"', { PROFILE: 'staging' })).toBe(
+      '"op://core-staging/item/field"',
+    )
   })
 
   it('does not substitute in non-secret values', () => {
-    expect(substituteVariables('${ENV}_value', 'prod')).toBe('${ENV}_value')
-    expect(substituteVariables('some-${ENV}-string', 'dev')).toBe('some-${ENV}-string')
+    expect(substituteVariables('${PROFILE}_value', { PROFILE: 'prod' })).toBe('${PROFILE}_value')
+    expect(substituteVariables('some-${PROFILE}-string', { PROFILE: 'dev' })).toBe('some-${PROFILE}-string')
   })
 
-  it('handles values without ${ENV}', () => {
-    expect(substituteVariables('op://vault/item/field', 'prod')).toBe('op://vault/item/field')
+  it('handles values without placeholders', () => {
+    expect(substituteVariables('op://vault/item/field', { PROFILE: 'prod' })).toBe('op://vault/item/field')
   })
 
   it('handles whitespace before op://', () => {
-    expect(substituteVariables('  op://core-${ENV}/item/field', 'staging')).toBe('  op://core-staging/item/field')
-  })
-
-  it('works with any custom environment name', () => {
-    expect(substituteVariables('op://core-${ENV}/item/field', 'my-custom-env')).toBe(
-      'op://core-my-custom-env/item/field',
+    expect(substituteVariables('  op://core-${PROFILE}/item/field', { PROFILE: 'staging' })).toBe(
+      '  op://core-staging/item/field',
     )
-    expect(substituteVariables('op://${ENV}/item/field', 'production')).toBe('op://production/item/field')
   })
 
-  describe('flexible vault structures', () => {
-    it('supports env-prefixed vault names: op://core-${ENV}/item/field', () => {
-      expect(substituteVariables('op://core-${ENV}/engine-api/SECRET', 'prod')).toBe('op://core-prod/engine-api/SECRET')
-    })
-
-    it('supports env-only vault names: op://${ENV}/item/field', () => {
-      expect(substituteVariables('op://${ENV}/engine-api/SECRET', 'local')).toBe('op://local/engine-api/SECRET')
-    })
-
-    it('supports env-prefixed item names: op://vault/${ENV}-item/field', () => {
-      expect(substituteVariables('op://core/${ENV}-engine-api/SECRET', 'dev')).toBe('op://core/dev-engine-api/SECRET')
-    })
-
-    it('supports env in section: op://vault/item/${ENV}/field', () => {
-      expect(substituteVariables('op://core/engine-api/${ENV}/SECRET', 'self-host')).toBe(
-        'op://core/engine-api/self-host/SECRET',
-      )
-    })
+  it('works with any custom variable values', () => {
+    expect(substituteVariables('op://core-${PROFILE}/item/field', { PROFILE: 'my-custom-profile' })).toBe(
+      'op://core-my-custom-profile/item/field',
+    )
+    expect(substituteVariables('op://${PROFILE}/item/field', { PROFILE: 'production' })).toBe(
+      'op://production/item/field',
+    )
   })
 })
 
 describe('hasUnresolvedVariables', () => {
   it('detects unresolved ${VAR} patterns', () => {
     expect(hasUnresolvedVariables('op://vault/${UNKNOWN}/item')).toBe(true)
-    expect(hasUnresolvedVariables('${ENV}')).toBe(true)
-    expect(hasUnresolvedVariables('op://core-${ENV}/item/${FIELD}')).toBe(true)
+    expect(hasUnresolvedVariables('${PROFILE}')).toBe(true)
+    expect(hasUnresolvedVariables('op://core-${PROFILE}/item/${FIELD}')).toBe(true)
   })
 
   it('returns false when no variables present', () => {
@@ -73,7 +94,7 @@ describe('hasUnresolvedVariables', () => {
   })
 
   it('does not match lowercase or mixed case variables', () => {
-    expect(hasUnresolvedVariables('${env}')).toBe(false)
-    expect(hasUnresolvedVariables('${Env}')).toBe(false)
+    expect(hasUnresolvedVariables('${profile}')).toBe(false)
+    expect(hasUnresolvedVariables('${Profile}')).toBe(false)
   })
 })

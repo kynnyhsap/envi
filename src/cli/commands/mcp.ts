@@ -14,7 +14,7 @@ import type {
 
 interface ScopedArgs {
   only?: string | undefined
-  environment?: string | undefined
+  vars?: Record<string, string> | undefined
 }
 
 function splitOnlyPaths(only?: string): string[] | undefined {
@@ -30,10 +30,10 @@ function makeEngine(args: ScopedArgs): ReturnType<typeof createEnviEngine> {
   const opts: CreateEngineOptions = {}
 
   const paths = splitOnlyPaths(args.only)
-  if (paths || args.environment) {
+  if (paths || args.vars) {
     opts.options = {
       ...(paths ? { paths } : {}),
-      ...(args.environment ? { environment: args.environment } : {}),
+      ...(args.vars ? { vars: args.vars } : {}),
     }
   }
 
@@ -61,7 +61,10 @@ export async function mcpCommand(): Promise<void> {
       description: 'Show .env sync status, provider auth, and backup info',
       inputSchema: z.object({
         only: z.string().optional().describe('Comma-separated paths to scope (e.g. "apps/api,apps/web")'),
-        environment: z.string().optional().describe('Environment name (default: "local")'),
+        vars: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe('Dynamic reference vars (default: { PROFILE: "local" })'),
       }),
     },
     async (args) => {
@@ -78,7 +81,7 @@ export async function mcpCommand(): Promise<void> {
       description: 'Show differences between local .env files and resolved secrets from provider',
       inputSchema: z.object({
         only: z.string().optional().describe('Comma-separated paths to scope'),
-        environment: z.string().optional().describe('Environment name (default: "local")'),
+        vars: z.record(z.string(), z.string()).optional().describe('Dynamic reference vars'),
       }),
     },
     async (args) => {
@@ -95,7 +98,7 @@ export async function mcpCommand(): Promise<void> {
       description: 'Sync .env files from templates by resolving secrets from provider. Creates a backup by default.',
       inputSchema: z.object({
         only: z.string().optional().describe('Comma-separated paths to scope'),
-        environment: z.string().optional().describe('Environment name (default: "local")'),
+        vars: z.record(z.string(), z.string()).optional().describe('Dynamic reference vars'),
         dryRun: z.boolean().optional().describe('Preview changes without writing files'),
         noBackup: z.boolean().optional().describe('Skip creating a backup before syncing'),
       }),
@@ -118,7 +121,7 @@ export async function mcpCommand(): Promise<void> {
         'Validate all secret references in .env.example templates. Use remote=true to verify they exist in the provider.',
       inputSchema: z.object({
         only: z.string().optional().describe('Comma-separated paths to scope'),
-        environment: z.string().optional().describe('Environment name (default: "local")'),
+        vars: z.record(z.string(), z.string()).optional().describe('Dynamic reference vars'),
         remote: z.boolean().optional().describe('Also check references exist in the provider'),
       }),
     },
@@ -138,7 +141,7 @@ export async function mcpCommand(): Promise<void> {
       description: 'Resolve one or more op:// secret references and return their values',
       inputSchema: z.object({
         references: z.array(z.string()).describe('Secret references to resolve (e.g. ["op://vault/item/field"])'),
-        environment: z.string().optional().describe('Environment name (default: "local")'),
+        vars: z.record(z.string(), z.string()).optional().describe('Dynamic reference vars'),
       }),
     },
     async (args) => {

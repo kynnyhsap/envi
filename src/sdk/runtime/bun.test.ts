@@ -32,7 +32,7 @@ describe('bun runtime adapter', () => {
       options: {
         rootDir: tmpDir,
         provider: '1password',
-        environment: 'local',
+        vars: { PROFILE: 'local' },
       },
     })
 
