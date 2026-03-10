@@ -3,14 +3,11 @@
   "version": "0.5.0",
   "description": "Envi syncs your .env files from 1Password — so you never copy secrets by hand again.",
   "bin": {
-    "envi": "./src/cli.ts"
+    "envi": "./dist/cli.js"
   },
   "files": [
-    "src",
-    "dist/sdk",
-    "README.md",
-    "AGENTS.md",
-    "examples"
+    "dist",
+    "README.md"
   ],
   "type": "module",
   "exports": {
@@ -31,8 +28,9 @@
     "typecheck": "tsgo --noEmit",
     "fmt": "oxfmt --write .",
     "lint": "oxlint .",
-    "build:sdk": "bun build src/sdk/index.ts --outdir dist/sdk --target node --format esm && tsc -p tsconfig.build.json",
-    "prepack": "bun run build:sdk",
+    "build:cli": "bun build src/cli.ts --outfile dist/cli.js --target bun --format esm --sourcemap=none",
+    "build:sdk": "bun build src/sdk/index.ts --outdir dist/sdk --target node --format esm --sourcemap=none && tsc -p tsconfig.build.json",
+    "prepack": "rm -rf dist && bun run build:sdk && bun run build:cli",
     "compile": "bun build --compile --minify src/cli.ts --outfile dist/envi"
   },
   "dependencies": {

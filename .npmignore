@@ -1,0 +1,6 @@
+*.map
+*.test.*
+src/
+examples/
+dist-publish-test/
+AGENTS.md
