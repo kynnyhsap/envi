@@ -4,50 +4,88 @@ import pc from 'picocolors'
 
 type BuildTarget = 'cli' | 'sdk'
 
-const targets: Array<{ name: BuildTarget; config: Bun.BuildConfig }> = [
+export interface BuildTargetConfig {
+  name: BuildTarget
+  config: Bun.BuildConfig
+}
+
+interface BuildNaming {
+  entry: string
+  chunk: string
+  asset: string
+}
+
+export const CLI_BUILD_NAMING: BuildNaming = {
+  entry: 'cli.js',
+  chunk: '[name]-[hash].js',
+  asset: '[name]-[hash].[ext]',
+}
+
+export function createCliBuildConfig(overrides: Partial<Bun.BuildConfig> = {}): Bun.BuildConfig {
+  const config: Bun.BuildConfig = {
+    entrypoints: ['src/cli.ts'],
+    outdir: 'dist',
+    target: 'bun',
+    format: 'esm',
+    sourcemap: 'none',
+    packages: 'external',
+    splitting: true,
+    minify: true,
+    naming: CLI_BUILD_NAMING,
+    ...overrides,
+  }
+
+  if (isBuildNamingOverride(overrides.naming)) {
+    config.naming = {
+      ...CLI_BUILD_NAMING,
+      ...overrides.naming,
+    }
+  }
+
+  return config
+}
+
+export function createSdkBuildConfig(overrides: Partial<Bun.BuildConfig> = {}): Bun.BuildConfig {
+  return {
+    entrypoints: ['src/sdk/index.ts'],
+    outdir: 'dist/sdk',
+    target: 'node',
+    format: 'esm',
+    sourcemap: 'none',
+    packages: 'external',
+    ...overrides,
+  }
+}
+
+export const DEFAULT_BUILD_TARGETS: BuildTargetConfig[] = [
   {
     name: 'cli',
-    config: {
-      entrypoints: ['src/cli.ts'],
-      outdir: 'dist',
-      target: 'bun',
-      format: 'esm',
-      sourcemap: 'none',
-      packages: 'external',
-      splitting: true,
-      minify: true,
-      naming: {
-        entry: 'cli.js',
-        chunk: '[name]-[hash].js',
-        asset: '[name]-[hash].[ext]',
-      },
-    },
+    config: createCliBuildConfig(),
   },
   {
     name: 'sdk',
-    config: {
-      entrypoints: ['src/sdk/index.ts'],
-      outdir: 'dist/sdk',
-      target: 'node',
-      format: 'esm',
-      sourcemap: 'none',
-      packages: 'external',
-    },
+    config: createSdkBuildConfig(),
   },
 ]
 
-const overallStart = Bun.nanoseconds()
-console.log('')
-console.log(`${buildTag()} ${pc.cyan(`Starting ${targets.length} targets`)}`)
+export async function runBuildTargets(targets: BuildTargetConfig[] = DEFAULT_BUILD_TARGETS): Promise<void> {
+  const overallStart = Bun.nanoseconds()
+  console.log('')
+  console.log(`${buildTag()} ${pc.cyan(`Starting ${targets.length} targets`)}`)
 
-for (const target of targets) {
-  await runBuild(target.name, target.config)
+  for (const target of targets) {
+    await runBuild(target.name, target.config)
+  }
+
+  const overallMs = nanosecondsToMs(Bun.nanoseconds() - overallStart)
+  console.log('')
+  console.log(`${buildTag()} ${pc.green(`Completed in ${formatDuration(overallMs)}`)}`)
+  console.log('')
 }
 
-const overallMs = nanosecondsToMs(Bun.nanoseconds() - overallStart)
-console.log('')
-console.log(`${buildTag()} ${pc.green(`Completed in ${formatDuration(overallMs)}`)}`)
-console.log('')
+if (import.meta.main) {
+  await runBuildTargets()
+}
 
 async function runBuild(name: BuildTarget, config: Bun.BuildConfig): Promise<void> {
   const startedAt = Bun.nanoseconds()
@@ -112,4 +150,8 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function isBuildNamingOverride(value: Bun.BuildConfig['naming'] | undefined): value is Partial<BuildNaming> {
+  return typeof value === 'object' && value !== null
 }

@@ -1,6 +1,6 @@
 import { getConfig } from '../app/config'
 import { createProvider } from '../providers'
-import { createBunRuntimeAdapter, createEnviEngine } from '../sdk'
+import { createEnviEngine, createRuntimeAdapter } from '../sdk'
 
 export function createCliEngine() {
   const config = getConfig()
@@ -19,6 +19,6 @@ export function createCliEngine() {
       providerOptions: config.providerOptions,
     },
     provider,
-    runtime: createBunRuntimeAdapter(),
+    runtime: createRuntimeAdapter(),
   })
 }
