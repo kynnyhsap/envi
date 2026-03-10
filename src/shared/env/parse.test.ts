@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 
 import { parseEnvFile, serializeEnvFile } from './parse'
-import { type EnvFile, LOCAL_ENVS_SEPARATOR } from './types'
+import { GENERATED_FILE_HEADER, type EnvFile, LOCAL_ENVS_SEPARATOR } from './types'
 
 describe('parseEnvFile', () => {
   it('should parse simple key=value pairs', () => {
@@ -91,7 +91,7 @@ API_KEY=value`
     const content = `NODE_ENV=development
 SECRET=abc123
 
-# ----------- PUT YOUR CUSTOM ENVS BELOW THIS LINE -----------
+${LOCAL_ENVS_SEPARATOR}
 MY_CUSTOM_VAR=custom_value
 DEBUG=true`
 
@@ -101,6 +101,18 @@ DEBUG=true`
     expect(result.vars.get('SECRET')?.isCustom).toBe(false)
     expect(result.vars.get('MY_CUSTOM_VAR')?.isCustom).toBe(true)
     expect(result.vars.get('DEBUG')?.isCustom).toBe(true)
+  })
+
+  it('should still detect legacy local env separator text', () => {
+    const content = `NODE_ENV=development
+
+# ----------- PUT YOUR CUSTOM ENVS BELOW THIS LINE -----------
+MY_CUSTOM_VAR=custom_value`
+
+    const result = parseEnvFile(content)
+
+    expect(result.vars.get('NODE_ENV')?.isCustom).toBe(false)
+    expect(result.vars.get('MY_CUSTOM_VAR')?.isCustom).toBe(true)
   })
 
   it('should handle special characters in values', () => {
@@ -155,6 +167,7 @@ describe('serializeEnvFile', () => {
 
     const result = serializeEnvFile(envFile)
 
+    expect(result).toContain(GENERATED_FILE_HEADER)
     // Should contain vars with comments
     expect(result).toContain('NODE_ENV=development')
     expect(result).toContain('# Secret key')
@@ -192,7 +205,12 @@ describe('serializeEnvFile', () => {
 
     const result = serializeEnvFile(envFile)
 
+    expect(result).toContain(GENERATED_FILE_HEADER)
     expect(result).toContain(LOCAL_ENVS_SEPARATOR)
+  })
+
+  it('should keep generated header and custom separator the same width', () => {
+    expect(GENERATED_FILE_HEADER.length).toBe(LOCAL_ENVS_SEPARATOR.length)
   })
 
   it('should serialize multiline values as quoted escaped strings', () => {
