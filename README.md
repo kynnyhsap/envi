@@ -111,6 +111,14 @@ Envi only supports 1Password. It can resolve secrets through the JavaScript SDK 
    - Set `OP_SERVICE_ACCOUNT_TOKEN` environment variable
    - See: [Service Accounts](https://developer.1password.com/docs/service-accounts/)
 
+**Service account rate limits:**
+
+- 1Password enforces hourly and daily service-account limits (reads and writes).
+- Live E2E runs can hit these limits, especially after repeated runs in a short window.
+- Check usage with `op service-account ratelimit <service-account-id-or-name>`.
+- Envi includes a preflight check before live tests: `bun run test:e2e:1password:preflight`.
+- Official docs: [Service Account Rate Limits](https://developer.1password.com/docs/service-accounts/rate-limits/)
+
 **Backend selection** (optional):
 
 ```bash
@@ -492,6 +500,8 @@ bun install
 
 # Run tests
 bun test
+bun run verify:publish
+bun run verify:live
 bun run test:e2e:1password
 
 # Typecheck and lint

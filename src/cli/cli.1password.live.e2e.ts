@@ -1,12 +1,13 @@
 import type { Client } from '@1password/sdk'
 import { beforeAll, afterAll, describe, expect, test } from 'bun:test'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { cp, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { replaceManagedItems } from '../../examples/common'
 import {
+  E2E_VAULT_ITEMS,
   createOnePasswordE2EClient,
-  createTemporaryVault,
   getSeedFieldValue,
   grantUserViewAccess,
   loadOnePasswordE2EConfig,
@@ -15,6 +16,25 @@ import {
 
 const CLI_PATH = path.join(import.meta.dir, '..', 'cli.ts')
 const WORKSPACE_PREFIX = path.join(import.meta.dir, '.test-workspace-1password-live-')
+const PRIMARY_LIVE_VAULT_TITLE = 'envi-e2e-live-shared'
+const EXAMPLE_LIVE_VAULT_TITLE = 'envi-e2e-live-example-shared'
+const SLOW_COMMAND_THRESHOLD_MS = 2500
+const RATE_LIMIT_RETRIES = 10
+const RATE_LIMIT_BACKOFF_MS = 1000
+const RATE_LIMIT_MAX_BACKOFF_MS = 15000
+
+interface CommandBenchmark {
+  testName: string
+  command: string
+  args: string[]
+  elapsedMs: number
+  exitCode: number
+}
+
+interface TestBenchmark {
+  testName: string
+  elapsedMs: number
+}
 
 const e2eConfig = await loadOnePasswordE2EConfig()
 
@@ -25,39 +45,48 @@ if (!e2eConfig) {
 let client: Client
 let vault: { id: string; title: string } | null = null
 let exampleVault: { id: string; title: string } | null = null
+const suiteStartedAt = Date.now()
+const commandBenchmarks: CommandBenchmark[] = []
+const testBenchmarks: TestBenchmark[] = []
+const testContext = new AsyncLocalStorage<string>()
 
 describe('live 1Password CLI e2e', () => {
   beforeAll(async () => {
     client = await createOnePasswordE2EClient(e2eConfig.token)
-    vault = await createTemporaryVault(client)
-    exampleVault = await createTemporaryVault(client)
+    const createdVault = await ensureManagedVault({
+      title: PRIMARY_LIVE_VAULT_TITLE,
+      description: 'Shared Envi live E2E test vault',
+    })
+    const createdExampleVault = await ensureManagedVault({
+      title: EXAMPLE_LIVE_VAULT_TITLE,
+      description: 'Shared Envi live E2E example test vault',
+    })
+    vault = createdVault
+    exampleVault = createdExampleVault
 
-    await grantUserViewAccess({
-      token: e2eConfig.token,
-      vaultId: vault.id,
-      userEmail: e2eConfig.userEmail,
-    })
-    await grantUserViewAccess({
-      token: e2eConfig.token,
-      vaultId: exampleVault.id,
-      userEmail: e2eConfig.userEmail,
-    })
-    await populateVaultWithEnvItems(client, vault.id)
-    await replaceManagedItems(client, exampleVault.id)
+    await withRateLimitRetry('grant user access to primary vault', () =>
+      grantUserViewAccess({
+        token: e2eConfig.token,
+        vaultId: createdVault.id,
+        userEmail: e2eConfig.userEmail,
+      }),
+    )
+    await withRateLimitRetry('grant user access to example vault', () =>
+      grantUserViewAccess({
+        token: e2eConfig.token,
+        vaultId: createdExampleVault.id,
+        userEmail: e2eConfig.userEmail,
+      }),
+    )
+    await replacePrimaryManagedItems(createdVault.id)
+    await withRateLimitRetry('populate example vault items', () => replaceManagedItems(client, createdExampleVault.id))
   })
 
   afterAll(async () => {
-    if (vault) {
-      await client.vaults.delete(vault.id)
-      vault = null
-    }
-    if (exampleVault) {
-      await client.vaults.delete(exampleVault.id)
-      exampleVault = null
-    }
+    printBenchmarkSummary()
   })
 
-  test('status reports provider auth and missing env files before sync', async () => {
+  liveTest('status reports provider auth and missing env files before sync', async () => {
     await withWorkspace(async (workspaceDir) => {
       const plain = await runCli(workspaceDir, ['status'])
       expect(plain.stdout).toContain('Environment Status')
@@ -77,7 +106,7 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('validate covers local format checks and remote provider checks', async () => {
+  liveTest('validate covers local format checks and remote provider checks', async () => {
     await withWorkspace(async (workspaceDir) => {
       const localValidate = await runCliJson(workspaceDir, ['--json', 'validate'])
       expect(localValidate.command).toBe('validate')
@@ -93,7 +122,7 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('provider options are wired in live CLI (backend + resolve mode)', async () => {
+  liveTest('provider options are wired in live CLI (backend + resolve mode)', async () => {
     await withWorkspace(async (workspaceDir) => {
       const statusCliBackend = await runCliJson(workspaceDir, ['--json', '--provider-opt', 'backend=cli', 'status'])
       expect(statusCliBackend.command).toBe('status')
@@ -134,7 +163,7 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('auth failure returns structured errors for critical commands', async () => {
+  liveTest('auth failure returns structured errors for critical commands', async () => {
     await withWorkspace(async (workspaceDir) => {
       const badToken = 'op://invalid-token'
 
@@ -156,7 +185,7 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('resolve returns single and multiple secret values in plain and json modes', async () => {
+  liveTest('resolve returns single and multiple secret values in plain and json modes', async () => {
     await withWorkspace(async (workspaceDir) => {
       const reference = `op://${getVaultName()}/api-envs/DATABASE_URL`
       const secondReference = `op://${getVaultName()}/api-envs/JWT_SECRET`
@@ -186,7 +215,7 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('sync and diff cover dry-run, write, local drift, and --only', async () => {
+  liveTest('sync and diff cover dry-run, write, local drift, and --only', async () => {
     await withWorkspace(async (workspaceDir) => {
       // dry-run shows banner and mode message, does not write files or create backups
       const dryRunPlain = await runCli(workspaceDir, ['sync', '-d'])
@@ -240,7 +269,7 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('run injects template secrets and env-file secrets', async () => {
+  liveTest('run injects template secrets and env-file secrets', async () => {
     await withWorkspace(async (workspaceDir) => {
       await runCliJson(workspaceDir, ['--json', 'sync', '--no-backup'])
 
@@ -273,7 +302,7 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('backup and restore recover synced env files end to end', async () => {
+  liveTest('backup and restore recover synced env files end to end', async () => {
     await withWorkspace(async (workspaceDir) => {
       await runCliJson(workspaceDir, ['--json', 'sync', '--no-backup'])
 
@@ -300,7 +329,7 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('sync creates a backup by default when env files already exist', async () => {
+  liveTest('sync creates a backup by default when env files already exist', async () => {
     await withWorkspace(async (workspaceDir) => {
       await runCliJson(workspaceDir, ['--json', 'sync', '--no-backup'])
 
@@ -317,7 +346,7 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('1password-basic example works end to end', async () => {
+  liveTest('1password-basic example works end to end', async () => {
     await withExampleWorkspace('1password-basic', async (workspaceDir) => {
       const status = await runCliJson(workspaceDir, ['--json', 'status'])
       expect(status.command).toBe('status')
@@ -360,7 +389,7 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('1password-monorepo example works end to end', async () => {
+  liveTest('1password-monorepo example works end to end', async () => {
     await withExampleWorkspace('1password-monorepo', async (workspaceDir) => {
       const sync = await runCliJson(workspaceDir, ['--json', 'sync'])
       expect(sync.ok).toBe(true)
@@ -384,17 +413,17 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('1password-environments example switches by profile var', async () => {
+  liveTest('1password-environments example switches by profile var', async () => {
     await withExampleWorkspace('1password-environments', async (workspaceDir) => {
-      const defaultSync = await runCliJson(workspaceDir, ['--json', 'sync'])
+      const defaultSync = await runCliJson(workspaceDir, ['--json', 'sync', '--no-backup'])
       expect(defaultSync.ok).toBe(true)
       expect(await Bun.file(path.join(workspaceDir, '.env')).text()).toContain('API_KEY=sk_default_example_123')
 
-      const localSync = await runCliJson(workspaceDir, ['--json', '--var', 'PROFILE=local', 'sync'])
+      const localSync = await runCliJson(workspaceDir, ['--json', '--var', 'PROFILE=local', 'sync', '--no-backup'])
       expect(localSync.ok).toBe(true)
       expect(await Bun.file(path.join(workspaceDir, '.env')).text()).toContain('API_KEY=sk_local_example_123')
 
-      const stagingSync = await runCliJson(workspaceDir, ['--json', '--var', 'PROFILE=staging', 'sync'])
+      const stagingSync = await runCliJson(workspaceDir, ['--json', '--var', 'PROFILE=staging', 'sync', '--no-backup'])
       expect(stagingSync.ok).toBe(true)
       expect(await Bun.file(path.join(workspaceDir, '.env')).text()).toContain('API_KEY=sk_staging_example_123')
 
@@ -420,7 +449,7 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  test('custom-files example works with config-backed output files', async () => {
+  liveTest('custom-files example works with config-backed output files', async () => {
     await withExampleWorkspace('custom-files', async (workspaceDir) => {
       const sync = await runCliJson(workspaceDir, ['--json', '--config', 'envi.json', 'sync'])
       expect(sync.ok).toBe(true)
@@ -457,6 +486,39 @@ function getExampleVaultName(): string {
     throw new Error('Example vault not initialized')
   }
   return exampleVault.title
+}
+
+async function ensureManagedVault(args: {
+  title: string
+  description: string
+}): Promise<{ id: string; title: string }> {
+  const listed = await withRateLimitRetry(`list vaults for ${args.title}`, () => client.vaults.list(undefined))
+  const existing = listed.find((entry) => entry.title === args.title)
+  if (existing) {
+    return { id: existing.id, title: existing.title }
+  }
+
+  const created = await withRateLimitRetry(`create vault ${args.title}`, () =>
+    client.vaults.create({
+      title: args.title,
+      description: args.description,
+      allowAdminsAccess: true,
+    }),
+  )
+
+  return { id: created.id, title: created.title }
+}
+
+async function replacePrimaryManagedItems(vaultId: string): Promise<void> {
+  const managedTitles = new Set(E2E_VAULT_ITEMS.map((item) => item.title))
+  const existing = await withRateLimitRetry('list primary vault items', () => client.items.list(vaultId))
+
+  for (const item of existing) {
+    if (!managedTitles.has(item.title)) continue
+    await withRateLimitRetry(`delete primary managed item ${item.title}`, () => client.items.delete(vaultId, item.id))
+  }
+
+  await withRateLimitRetry('populate primary vault items', () => populateVaultWithEnvItems(client, vaultId))
 }
 
 async function withWorkspace(run: (workspaceDir: string) => Promise<void>): Promise<void> {
@@ -579,6 +641,7 @@ async function runCliRaw(
   args: string[],
   envOverrides: Record<string, string | undefined> = {},
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const normalizedArgs = withDefaultBackend(args)
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries({
     ...process.env,
@@ -589,7 +652,9 @@ async function runCliRaw(
     if (typeof value === 'string') env[key] = value
   }
 
-  const proc = Bun.spawn(['bun', CLI_PATH, ...args], {
+  const startedAt = Date.now()
+
+  const proc = Bun.spawn(['bun', CLI_PATH, ...normalizedArgs], {
     cwd: workspaceDir,
     env,
     stdout: 'pipe',
@@ -599,6 +664,21 @@ async function runCliRaw(
   const exitCode = await proc.exited
   const stdout = await new Response(proc.stdout).text()
   const stderr = await new Response(proc.stderr).text()
+
+  const elapsedMs = Date.now() - startedAt
+  const testName = testContext.getStore() ?? 'suite.setup'
+  const command = findCommandName(normalizedArgs)
+  commandBenchmarks.push({
+    testName,
+    command,
+    args: normalizedArgs,
+    elapsedMs,
+    exitCode,
+  })
+
+  if (elapsedMs >= SLOW_COMMAND_THRESHOLD_MS) {
+    console.info(`[bench][command] ${elapsedMs}ms | test="${testName}" | cmd="${normalizedArgs.join(' ')}"`)
+  }
 
   return { stdout, stderr, exitCode }
 }
@@ -613,4 +693,148 @@ async function runCli(workspaceDir: string, args: string[]): Promise<{ stdout: s
   }
 
   return { stdout, stderr }
+}
+
+function liveTest(name: string, run: () => Promise<void>): void {
+  test(name, async () => {
+    const startedAt = Date.now()
+
+    try {
+      await testContext.run(name, async () => {
+        await run()
+      })
+    } finally {
+      const elapsedMs = Date.now() - startedAt
+      testBenchmarks.push({ testName: name, elapsedMs })
+      console.info(`[bench][test] ${elapsedMs}ms | ${name}`)
+    }
+  })
+}
+
+function withDefaultBackend(args: string[]): string[] {
+  if (hasProviderBackendOverride(args)) {
+    return args
+  }
+
+  return ['--provider-opt', 'backend=sdk', ...args]
+}
+
+function hasProviderBackendOverride(args: string[]): boolean {
+  for (let index = 0; index < args.length; index++) {
+    if (args[index] !== '--provider-opt') continue
+    const value = args[index + 1]
+    if (value?.startsWith('backend=')) return true
+  }
+  return false
+}
+
+function findCommandName(args: string[]): string {
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]
+    if (!arg) continue
+    if (arg === '--') break
+
+    if (arg.startsWith('-')) {
+      if (takesOptionValue(arg)) index++
+      continue
+    }
+
+    return arg
+  }
+
+  return '(none)'
+}
+
+function takesOptionValue(arg: string): boolean {
+  return (
+    arg === '--var' ||
+    arg === '--provider-opt' ||
+    arg === '--config' ||
+    arg === '--only' ||
+    arg === '--output' ||
+    arg === '--template-file' ||
+    arg === '--backup-dir' ||
+    arg === '--snapshot' ||
+    arg === '--env-file'
+  )
+}
+
+function printBenchmarkSummary(): void {
+  const suiteElapsedMs = Date.now() - suiteStartedAt
+  console.info(`\n[bench][summary] live e2e suite completed in ${suiteElapsedMs}ms`)
+
+  if (testBenchmarks.length === 0 || commandBenchmarks.length === 0) {
+    console.info('[bench][summary] no benchmark data collected')
+    return
+  }
+
+  const slowTests = [...testBenchmarks].sort((a, b) => b.elapsedMs - a.elapsedMs).slice(0, 8)
+  console.info('[bench][summary] slowest tests:')
+  for (const item of slowTests) {
+    console.info(`  ${item.elapsedMs}ms | ${item.testName}`)
+  }
+
+  const grouped = new Map<string, { count: number; total: number; max: number }>()
+  for (const item of commandBenchmarks) {
+    const current = grouped.get(item.command) ?? { count: 0, total: 0, max: 0 }
+    current.count += 1
+    current.total += item.elapsedMs
+    current.max = Math.max(current.max, item.elapsedMs)
+    grouped.set(item.command, current)
+  }
+
+  const byTotal = [...grouped.entries()]
+    .map(([command, stats]) => ({
+      command,
+      count: stats.count,
+      total: stats.total,
+      avg: Math.round(stats.total / stats.count),
+      max: stats.max,
+    }))
+    .sort((a, b) => b.total - a.total)
+
+  console.info('[bench][summary] command totals:')
+  for (const row of byTotal) {
+    console.info(`  ${row.command}: total=${row.total}ms avg=${row.avg}ms max=${row.max}ms count=${row.count}`)
+  }
+
+  const slowCommands = [...commandBenchmarks].sort((a, b) => b.elapsedMs - a.elapsedMs).slice(0, 12)
+  console.info('[bench][summary] slowest command invocations:')
+  for (const item of slowCommands) {
+    console.info(`  ${item.elapsedMs}ms | ${item.testName} | ${item.args.join(' ')}`)
+  }
+}
+
+async function withRateLimitRetry<T>(label: string, operation: () => Promise<T>): Promise<T> {
+  let attempt = 0
+
+  while (true) {
+    try {
+      return await operation()
+    } catch (error) {
+      if (!isRetryableOnePasswordSetupError(error) || attempt >= RATE_LIMIT_RETRIES) {
+        throw error
+      }
+
+      attempt += 1
+      const delayMs = Math.min(RATE_LIMIT_MAX_BACKOFF_MS, RATE_LIMIT_BACKOFF_MS * 2 ** (attempt - 1))
+      console.info(
+        `[bench][retry] ${label} hit transient 1Password error, retry ${attempt}/${RATE_LIMIT_RETRIES} in ${delayMs}ms`,
+      )
+      await Bun.sleep(delayMs)
+    }
+  }
+}
+
+function isRetryableOnePasswordSetupError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('rate limit exceeded') ||
+    lower.includes('504 gateway timeout') ||
+    lower.includes('gateway timeout') ||
+    lower.includes('timed out') ||
+    lower.includes('econnreset') ||
+    lower.includes('service unavailable')
+  )
 }
