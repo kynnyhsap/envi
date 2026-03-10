@@ -76,11 +76,17 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
     }
   }
 
+  const providerIssue = result.issues.find(
+    (issue) => issue.code === 'AUTH_FAILED' || issue.code === 'PROVIDER_UNAVAILABLE',
+  )
+
   // Summary
   log.banner('Summary')
   log.info('')
 
-  if (result.data.summary.templates === 0) {
+  if (providerIssue) {
+    log.fail(providerIssue.message)
+  } else if (result.data.summary.templates === 0) {
     log.warn('No templates found')
   } else if (result.data.summary.invalid === 0) {
     log.info(`  ${pc.green('All references are valid!')}`)
@@ -101,6 +107,10 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
   }
 
   log.info('')
+
+  if (providerIssue) {
+    process.exit(1)
+  }
 
   process.exitCode = result.ok ? 0 : 1
 }

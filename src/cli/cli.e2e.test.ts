@@ -662,6 +662,23 @@ describe('CLI e2e tests', () => {
   })
 
   describe('edge cases', () => {
+    it('should report provider auth/availability errors for validate --remote', async () => {
+      await Bun.write(join(TEST_DIR, 'test-app/.env.example'), 'API_KEY=op://example-vault/example-item/API_KEY\n')
+
+      const { stdout, stderr, exitCode } = await runCli(
+        'validate',
+        '--remote',
+        '--provider-opt',
+        'backend=cli',
+        '--provider-opt',
+        'cliBinary=op-does-not-exist',
+      )
+
+      expect(exitCode).toBe(1)
+      expect(stdout + stderr).toContain('Authentication failed')
+      expect(stdout + stderr).not.toContain('No templates found')
+    })
+
     it('should fail for examples setup with a missing token, not broken imports', async () => {
       const proc = Bun.spawn(['bun', 'run', 'examples/setup.ts'], {
         cwd: join(TEST_DIR, '..', '..', '..'),
