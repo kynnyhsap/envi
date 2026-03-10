@@ -10,7 +10,6 @@
         "cac": "7.0.0",
         "console-table-printer": "^2.15.0",
         "picocolors": "^1.1.1",
-        "timeago.js": "^4.0.2",
         "zod": "^4.3.6",
       },
       "devDependencies": {
@@ -258,8 +257,6 @@
     "simple-wcswidth": ["simple-wcswidth@1.1.2", "", {}, "sha512-j7piyCjAeTDSjzTSQ7DokZtMNwNlEAyxqSZeCS+CXH7fJ4jx3FuJ/mTW3mE+6JLs4VJBbcll0Kjn+KXI5t21Iw=="],
 
     "statuses": ["statuses@2.0.2", "", {}, "sha512-DvEy55V3DB7uknRo+4iOGT5fP1slR8wQohVdknigZPMpMstaKJQWhwiYBACJE3Ul2pTnATihhBYnRhZQHGBiRw=="],
-
-    "timeago.js": ["timeago.js@4.0.2", "", {}, "sha512-a7wPxPdVlQL7lqvitHGGRsofhdwtkoSXPGATFuSOA2i1ZNQEPLrGnj68vOp2sOJTCFAQVXPeNMX/GctBaO9L2w=="],
 
     "tinypool": ["tinypool@2.0.0", "", {}, "sha512-/RX9RzeH2xU5ADE7n2Ykvmi9ED3FBGPAjw9u3zucrNNaEBIO0HPSYgL0NT7+3p147ojeSdaVu08F6hjpv31HJg=="],
 

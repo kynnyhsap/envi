@@ -60,20 +60,29 @@ describe('redactSecret', () => {
 })
 
 describe('formatBackupTimestamp', () => {
-  it('should format timestamp with date, time and timeago', () => {
+  it('should format timestamp with date, time and relative text', () => {
     const result = formatBackupTimestamp('2024-03-15_11-30-00')
     // Should contain the formatted date and time
     expect(result).toContain('2024-03-15 11:30:00')
-    // Should contain timeago in parentheses (with ANSI codes for dim)
+    // Should contain relative text in parentheses (with ANSI codes for dim)
     expect(result).toContain('(')
     expect(result).toContain(')')
   })
 
-  it('should format iso-like backup timestamps with timeago', () => {
+  it('should format iso-like backup timestamps with relative text', () => {
     const result = formatBackupTimestamp('2026-03-07T15-39-54-840Z')
     expect(result).toContain('2026-03-07 15:39:54 UTC')
     expect(result).toContain('(')
     expect(result).toContain(')')
+  })
+
+  it('should produce deterministic relative text when now is provided', () => {
+    const now = new Date('2026-03-10T15:39:54.840Z')
+    const past = formatBackupTimestamp('2026-03-07T15-39-54-840Z', now)
+    const future = formatBackupTimestamp('2026-03-12T15-39-54-840Z', now)
+
+    expect(past).toContain('(3 days ago)')
+    expect(future).toContain('(in 2 days)')
   })
 
   it('should return original string if no time part', () => {
