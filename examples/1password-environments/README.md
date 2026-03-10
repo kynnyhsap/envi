@@ -6,6 +6,7 @@ Use `${PROFILE}` to switch item names inside one shared vault.
 
 Create a vault called `envi-example` with these secure notes:
 
+- `api-service-default`
 - `api-service-local`
 - `api-service-staging`
 - `api-service-prod`
@@ -22,7 +23,7 @@ Each item should contain these fields:
 ```bash
 op vault create envi-example
 
-for env in local staging prod; do
+for env in default local staging prod; do
   op item create \
     --vault envi-example \
     --category "Secure Note" \
@@ -37,8 +38,11 @@ done
 ## Usage
 
 ```bash
-# Local development (default)
+# Default profile
 envi sync
+
+# Local development
+envi sync --var PROFILE=local
 
 # Staging
 envi sync --var PROFILE=staging

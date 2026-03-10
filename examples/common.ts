@@ -51,7 +51,7 @@ export const EXAMPLE_ITEMS: ExampleItemSeed[] = [
       REDIS_URL: { type: 'concealed', value: 'redis://localhost:6379' },
     },
   },
-  ...['local', 'staging', 'prod'].map<ExampleItemSeed>((env) => ({
+  ...['default', 'local', 'staging', 'prod'].map<ExampleItemSeed>((env) => ({
     title: `api-service-${env}`,
     note: `${env}/.env`,
     fields: {
