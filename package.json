@@ -24,6 +24,8 @@
     "envi": "bun run src/cli.ts",
     "examples:cleanup": "bun run examples/cleanup.ts",
     "examples:setup": "bun run examples/setup.ts",
+    "verify:publish": "bun run typecheck && bun run lint && bun run test:all",
+    "test:all": "bun test && bun run test:e2e:1password",
     "test": "bun test",
     "test:e2e:1password": "bun test --timeout 600000 ./src/cli/cli.1password.live.e2e.ts",
     "typecheck": "tsgo --noEmit",
@@ -31,6 +33,7 @@
     "lint": "oxlint .",
     "build:cli": "bun run build",
     "build:sdk": "bun run build",
+    "prepublishOnly": "bun run verify:publish",
     "prepack": "rm -rf dist && bun run build",
     "compile": "bun build --compile --minify src/cli.ts --outfile dist/envi"
   },
