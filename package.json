@@ -3,7 +3,7 @@
   "version": "0.5.1",
   "description": "Envi syncs your .env files from 1Password — so you never copy secrets by hand again.",
   "bin": {
-    "envi": "./dist/cli.js"
+    "envi": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -37,7 +37,6 @@
   "dependencies": {
     "@1password/sdk": "0.4.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "@typescript/native-preview": "^7.0.0-dev.20260129.1",
     "cac": "7.0.0",
     "console-table-printer": "^2.15.0",
     "picocolors": "^1.1.1",
@@ -46,6 +45,7 @@
   },
   "devDependencies": {
     "@types/bun": "^1.3.10",
+    "@typescript/native-preview": "^7.0.0-dev.20260310.1",
     "oxfmt": "^0.27.0",
     "oxlint": "^1.42.0",
     "typescript": "^5.0.0"
