@@ -1,5 +1,6 @@
 import { stat } from 'node:fs/promises'
 import { relative } from 'node:path'
+import pc from 'picocolors'
 
 type BuildTarget = 'cli' | 'sdk'
 
@@ -36,18 +37,22 @@ const targets: Array<{ name: BuildTarget; config: Bun.BuildConfig }> = [
 ]
 
 const overallStart = Bun.nanoseconds()
-console.log(`[build] Starting ${targets.length} targets`)
+console.log('')
+console.log(`${buildTag()} ${pc.cyan(`Starting ${targets.length} targets`)}`)
 
 for (const target of targets) {
   await runBuild(target.name, target.config)
 }
 
 const overallMs = nanosecondsToMs(Bun.nanoseconds() - overallStart)
-console.log(`[build] Completed in ${formatDuration(overallMs)}`)
+console.log('')
+console.log(`${buildTag()} ${pc.green(`Completed in ${formatDuration(overallMs)}`)}`)
+console.log('')
 
 async function runBuild(name: BuildTarget, config: Bun.BuildConfig): Promise<void> {
   const startedAt = Bun.nanoseconds()
-  console.log(`[build:${name}] Building...`)
+  console.log('')
+  console.log(`${targetTag(name)} ${pc.yellow('Building...')}`)
 
   const result = await Bun.build(config)
 
@@ -59,7 +64,8 @@ async function runBuild(name: BuildTarget, config: Bun.BuildConfig): Promise<voi
       const location =
         file && line != null && column != null ? `${relative(process.cwd(), file)}:${line}:${column}` : ''
 
-      console.error(`[build:${name}]${location ? ` ${location}` : ''} ${log.message}`)
+      const where = location ? ` ${pc.dim(location)}` : ''
+      console.error(`${targetTag(name)}${where} ${pc.red(log.message)}`)
     }
 
     throw new Error(`Build failed: ${name}`)
@@ -74,7 +80,18 @@ async function runBuild(name: BuildTarget, config: Bun.BuildConfig): Promise<voi
   )
 
   const elapsedMs = nanosecondsToMs(Bun.nanoseconds() - startedAt)
-  console.log(`[build:${name}] Completed in ${formatDuration(elapsedMs)}: ${outputDetails.join(', ')}`)
+  const formattedOutputs = outputDetails.map((detail) => `  ${pc.dim('-')} ${detail}`).join('\n')
+
+  console.log(`${targetTag(name)} ${pc.green(`Completed in ${formatDuration(elapsedMs)}`)}`)
+  console.log(formattedOutputs)
+}
+
+function buildTag(): string {
+  return pc.bold(pc.blue('[build]'))
+}
+
+function targetTag(name: BuildTarget): string {
+  return pc.bold(pc.blue(`[build:${name}]`))
 }
 
 function nanosecondsToMs(nanoseconds: number): number {

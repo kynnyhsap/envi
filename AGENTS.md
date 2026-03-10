@@ -12,7 +12,7 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 **Seed example vaults:** `bun run examples:setup` (requires local `.env.local` token)
 **Cleanup example vaults:** `bun run examples:cleanup` (requires local `.env.local` token)
 **Run CLI:** `bun run src/cli.ts <command>`
-**Build SDK (publish):** `bun run build:sdk`
+**Build (publish):** `bun run build`
 
 **Config:** load `envi.json` by default if present; override with `--config <path>`.
 
@@ -51,6 +51,15 @@ Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/
 - Canonical machine output is the SDK JSON envelope (`src/sdk/json.ts`); CLI `--json` prints it directly (no reshaping).
 - SDK results are safe by default (redacted); operations that surface values support `includeSecrets` as an explicit escape hatch.
 - CLI flows are non-interactive by default. Prefer `--dry-run` for previewing changes; do not add confirmation prompts back unless explicitly requested.
+
+## Bundling Policy
+
+- Use `build.ts` (Bun build API) as the single source of truth for publish builds.
+- CLI build shape: `splitting + minify + packages: external`.
+- SDK build shape: `packages: external` (do not inline large third-party deps into published SDK JS).
+- Keep `mcp` command lazy-loaded from `src/cli/index.ts` so MCP-heavy deps stay out of the primary CLI startup path.
+- If changing bundle shape, capture a Bun metafile (`--metafile`) and compare chunk contributors before/after.
+- Treat `dist-analyze/` outputs as local analysis artifacts unless explicitly requested for commit.
 
 ## 1Password Scope
 
