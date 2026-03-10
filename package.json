@@ -1,6 +1,6 @@
 {
   "name": "envi-cli",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Envi syncs your .env files from 1Password — so you never copy secrets by hand again.",
   "bin": {
     "envi": "dist/cli.js"
