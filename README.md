@@ -117,6 +117,7 @@ Envi only supports 1Password. It can resolve secrets through the JavaScript SDK 
 - Live E2E runs can hit these limits, especially after repeated runs in a short window.
 - Check usage with `op service-account ratelimit <service-account-id-or-name>`.
 - Envi includes a preflight check before live tests: `bun run test:e2e:1password:preflight`.
+- Envi automatically runs `bun run test:e2e:1password:cleanup` after live E2E to remove leaked temporary test vaults.
 - Official docs: [Service Account Rate Limits](https://developer.1password.com/docs/service-accounts/rate-limits/)
 
 **Backend selection** (optional):
