@@ -1,7 +1,13 @@
 import pc from 'picocolors'
 
 import { log } from '../../app/logger'
-import { createCommandContext, formatReferenceVars, maybeWriteJsonResult, printIssuesAndExit } from './common'
+import {
+  createCommandContext,
+  formatReferenceVars,
+  maybeWriteJsonResult,
+  printIssuesAndExit,
+  withCommandProgress,
+} from './common'
 
 interface RunOptions {
   envFile?: string[]
@@ -15,14 +21,6 @@ export async function runCommand(command: string[], options: RunOptions = {}): P
   }
 
   const { config, engine } = createCommandContext()
-  const resolved = await engine.resolveRunEnvironment({
-    ...(options.envFile ? { envFile: options.envFile } : {}),
-    ...(options.noTemplate ? { noTemplate: true } : {}),
-    includeSecrets: !config.json,
-  })
-
-  if (maybeWriteJsonResult(resolved, config.json)) return
-
   if (!config.quiet) {
     log.banner('Run')
     const varsLabel = formatReferenceVars(config.vars)
@@ -32,6 +30,20 @@ export async function runCommand(command: string[], options: RunOptions = {}): P
     log.info(`  Command: ${pc.cyan(command.join(' '))}`)
     log.info('')
   }
+
+  const resolved = await withCommandProgress({
+    enabled: !config.json && !config.quiet,
+    startMessage: 'Starting run environment resolution...',
+    run: (progress) =>
+      engine.resolveRunEnvironment({
+        ...(options.envFile ? { envFile: options.envFile } : {}),
+        ...(options.noTemplate ? { noTemplate: true } : {}),
+        includeSecrets: !config.json,
+        progress,
+      }),
+  })
+
+  if (maybeWriteJsonResult(resolved, config.json)) return
 
   if (!resolved.ok) {
     printIssuesAndExit(resolved.issues)

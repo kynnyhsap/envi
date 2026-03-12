@@ -1,4 +1,4 @@
-import { createCommandContext, maybeWriteJsonResult, printIssuesAndExit } from './common'
+import { createCommandContext, maybeWriteJsonResult, printIssuesAndExit, withCommandProgress } from './common'
 
 interface ResolveCommandOptions {
   references: string[]
@@ -7,7 +7,16 @@ interface ResolveCommandOptions {
 export async function resolveCommand(options: ResolveCommandOptions): Promise<void> {
   const { config, engine } = createCommandContext()
   const [firstReference = ''] = options.references
-  const result = await engine.resolveSecret({ reference: firstReference, references: options.references })
+  const result = await withCommandProgress({
+    enabled: !config.json && !config.quiet,
+    startMessage: 'Starting secret resolution...',
+    run: (progress) =>
+      engine.resolveSecret({
+        reference: firstReference,
+        references: options.references,
+        progress,
+      }),
+  })
 
   if (maybeWriteJsonResult(result, config.json)) return
 

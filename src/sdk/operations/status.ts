@@ -2,8 +2,9 @@ import { mapWithConcurrency } from '../../shared/concurrency'
 import { parseEnvFile } from '../../shared/env/parse'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
-import type { ExecutionContext, StatusData, StatusResult, StatusPathData } from '../types'
+import type { ExecutionContext, StatusData, StatusOperationOptions, StatusResult, StatusPathData } from '../types'
 import { listBackupSnapshots } from './backup-helpers'
+import { emitProgress } from './progress'
 import { getProviderReadiness } from './provider-check'
 const DEFAULT_STATUS_PATH_CONCURRENCY = 8
 
@@ -62,14 +63,46 @@ async function getPathStatus(ctx: ExecutionContext, pathInfo: StatusPathData['pa
   }
 }
 
-export async function statusOperation(ctx: ExecutionContext): Promise<StatusResult> {
+export async function statusOperation(
+  ctx: ExecutionContext,
+  options: StatusOperationOptions = {},
+): Promise<StatusResult> {
+  await emitProgress(options.progress, {
+    command: 'status',
+    stage: 'auth',
+    message: 'Checking provider availability and authentication',
+  })
+
   const readiness = await getProviderReadiness(ctx)
   const { availability, auth: authResult, authInfo, hints, issues } = readiness
 
+  await emitProgress(options.progress, {
+    command: 'status',
+    stage: 'discover',
+    message: 'Discovering configured template paths',
+  })
+
   const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
-  const statuses = await mapWithConcurrency(envPaths, getStatusPathConcurrency(), async (pathInfo) =>
-    getPathStatus(ctx, pathInfo),
-  )
+  let completedPaths = 0
+  const statuses = await mapWithConcurrency(envPaths, getStatusPathConcurrency(), async (pathInfo) => {
+    const status = await getPathStatus(ctx, pathInfo)
+    completedPaths += 1
+    await emitProgress(options.progress, {
+      command: 'status',
+      stage: 'paths',
+      message: 'Scanned path status',
+      completed: completedPaths,
+      total: envPaths.length,
+      path: pathInfo.envPath,
+    })
+    return status
+  })
+
+  await emitProgress(options.progress, {
+    command: 'status',
+    stage: 'backups',
+    message: 'Loading backup snapshot metadata',
+  })
 
   const backups = await getBackupInfo(ctx)
 

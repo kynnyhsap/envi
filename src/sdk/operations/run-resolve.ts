@@ -10,6 +10,7 @@ import type {
   RunResolveData,
   RunResolveResult,
 } from '../types'
+import { emitProgress } from './progress'
 import { checkProviderReady } from './provider-check'
 import { injectResolvedSecrets, resolveEnvFileToKeyValue } from './resolve-secrets'
 
@@ -30,6 +31,12 @@ export async function resolveRunEnvironmentOperation(
   const includeSecrets = options.includeSecrets ?? false
   const issues: Issue[] = []
 
+  await emitProgress(options.progress, {
+    command: 'run.resolve',
+    stage: 'auth',
+    message: 'Checking provider availability and authentication',
+  })
+
   const prereq = await checkProviderReady(ctx)
   if (!prereq.ok) {
     return makeEnvelope({
@@ -48,10 +55,26 @@ export async function resolveRunEnvironmentOperation(
   let envFileVarsCount = 0
 
   if (!noTemplate) {
+    await emitProgress(options.progress, {
+      command: 'run.resolve',
+      stage: 'discover',
+      message: 'Discovering configured template paths',
+    })
+
     const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
+    let completedTemplatePaths = 0
     const templateResults = await mapWithConcurrency(envPaths, getRunResolveConcurrency(), async (pathInfo) => {
       const hasTemplate = await ctx.runtime.exists(pathInfo.templatePath)
       if (!hasTemplate) {
+        completedTemplatePaths += 1
+        await emitProgress(options.progress, {
+          command: 'run.resolve',
+          stage: 'templates',
+          message: 'Processed template path',
+          completed: completedTemplatePaths,
+          total: envPaths.length,
+          path: pathInfo.templatePath,
+        })
         return {
           vars: null as Map<string, string> | null,
           secretKeys: new Set<string>(),
@@ -64,6 +87,16 @@ export async function resolveRunEnvironmentOperation(
         template = parseEnvFile(await ctx.runtime.readText(pathInfo.templatePath))
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
+        completedTemplatePaths += 1
+        await emitProgress(options.progress, {
+          command: 'run.resolve',
+          stage: 'templates',
+          message: 'Processed template path with issues',
+          completed: completedTemplatePaths,
+          total: envPaths.length,
+          path: pathInfo.templatePath,
+        })
+
         return {
           vars: null as Map<string, string> | null,
           secretKeys: new Set<string>(),
@@ -83,6 +116,16 @@ export async function resolveRunEnvironmentOperation(
       })
 
       if (!injected.injected) {
+        completedTemplatePaths += 1
+        await emitProgress(options.progress, {
+          command: 'run.resolve',
+          stage: 'templates',
+          message: 'Processed template path with issues',
+          completed: completedTemplatePaths,
+          total: envPaths.length,
+          path: pathInfo.templatePath,
+        })
+
         return {
           vars: null as Map<string, string> | null,
           secretKeys: pathSecretKeys,
@@ -94,6 +137,16 @@ export async function resolveRunEnvironmentOperation(
       for (const [key, envVar] of injected.injected.vars) {
         vars.set(key, envVar.value)
       }
+
+      completedTemplatePaths += 1
+      await emitProgress(options.progress, {
+        command: 'run.resolve',
+        stage: 'templates',
+        message: 'Processed template path',
+        completed: completedTemplatePaths,
+        total: envPaths.length,
+        path: pathInfo.templatePath,
+      })
 
       return {
         vars,
@@ -118,9 +171,26 @@ export async function resolveRunEnvironmentOperation(
   }
 
   if (envFile && envFile.length > 0) {
+    await emitProgress(options.progress, {
+      command: 'run.resolve',
+      stage: 'env-files',
+      message: 'Resolving custom env-file inputs',
+    })
+
+    let completedEnvFiles = 0
     const envFileResults = await mapWithConcurrency(envFile, getRunResolveConcurrency(), async (filePath) => {
       const exists = await ctx.runtime.exists(filePath)
       if (!exists) {
+        completedEnvFiles += 1
+        await emitProgress(options.progress, {
+          command: 'run.resolve',
+          stage: 'env-files',
+          message: 'Processed env file with issues',
+          completed: completedEnvFiles,
+          total: envFile.length,
+          path: filePath,
+        })
+
         return {
           vars: null as Map<string, string> | null,
           secretKeys: new Set<string>(),
@@ -139,6 +209,16 @@ export async function resolveRunEnvironmentOperation(
       })
 
       if (!resolved.vars) {
+        completedEnvFiles += 1
+        await emitProgress(options.progress, {
+          command: 'run.resolve',
+          stage: 'env-files',
+          message: 'Processed env file with issues',
+          completed: completedEnvFiles,
+          total: envFile.length,
+          path: filePath,
+        })
+
         return {
           vars: null as Map<string, string> | null,
           secretKeys: resolved.secretKeys,
@@ -146,6 +226,16 @@ export async function resolveRunEnvironmentOperation(
           varCount: 0,
         }
       }
+
+      completedEnvFiles += 1
+      await emitProgress(options.progress, {
+        command: 'run.resolve',
+        stage: 'env-files',
+        message: 'Processed env file',
+        completed: completedEnvFiles,
+        total: envFile.length,
+        path: filePath,
+      })
 
       return {
         vars: resolved.vars,

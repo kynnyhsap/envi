@@ -5,6 +5,7 @@ import { getRootDir } from '../paths'
 import { resolveAllEnvPaths } from '../paths'
 import type { ExecutionContext, Issue, RestoreOperationOptions, RestoreResult } from '../types'
 import { findSnapshotBySelector, listBackupSnapshots, toBackupSnapshotData } from './backup-helpers'
+import { emitProgress } from './progress'
 
 async function restoreFile(
   ctx: ExecutionContext,
@@ -45,6 +46,12 @@ export async function restoreOperation(
   const dryRun = options.dryRun ?? false
   const list = options.list ?? false
   const snapshotSelector = options.snapshot
+
+  await emitProgress(options.progress, {
+    command: list ? 'restore.list' : 'restore',
+    stage: 'list',
+    message: 'Loading backup snapshots',
+  })
 
   const snapshots = await listBackupSnapshots(ctx)
   if (snapshots.length === 0) {
@@ -95,6 +102,12 @@ export async function restoreOperation(
     })
   }
 
+  await emitProgress(options.progress, {
+    command: 'restore',
+    stage: 'prepare',
+    message: 'Preparing files to restore',
+  })
+
   let selectedFiles = selectedSnapshot.files
   if (ctx.options.paths.length > 0) {
     const rootDir = getRootDir(ctx.options, ctx.runtime)
@@ -136,8 +149,18 @@ export async function restoreOperation(
   const issues: Issue[] = []
   const errors: Array<{ path: string; error: string }> = []
 
-  for (const file of selectedFiles) {
+  for (const [index, file] of selectedFiles.entries()) {
     const result = await restoreFile(ctx, file, { dryRun: false })
+
+    await emitProgress(options.progress, {
+      command: 'restore',
+      stage: 'restore',
+      message: result.restored ? 'Restored file' : 'Failed to restore file',
+      completed: index + 1,
+      total: selectedFiles.length,
+      path: file.originalPath,
+    })
+
     if (result.restored) {
       restored++
       continue

@@ -7,6 +7,7 @@ import {
   listBackupSnapshots,
   toBackupSnapshotData,
 } from './backup-helpers'
+import { emitProgress } from './progress'
 
 export async function backupOperation(
   ctx: ExecutionContext,
@@ -16,6 +17,12 @@ export async function backupOperation(
   const list = options.list ?? false
 
   if (list) {
+    await emitProgress(options.progress, {
+      command: 'backup.list',
+      stage: 'list',
+      message: 'Loading backup snapshots',
+    })
+
     const snapshots = await listBackupSnapshots(ctx)
     return makeEnvelope({
       command: 'backup.list',
@@ -29,6 +36,12 @@ export async function backupOperation(
       providerId: ctx.provider.id,
     })
   }
+
+  await emitProgress(options.progress, {
+    command: 'backup',
+    stage: 'discover',
+    message: 'Scanning environment files to backup',
+  })
 
   const envFiles = await findEnvFilesForBackup(ctx)
   if (envFiles.length === 0) {
@@ -70,6 +83,14 @@ export async function backupOperation(
       providerId: ctx.provider.id,
     })
   }
+
+  await emitProgress(options.progress, {
+    command: 'backup',
+    stage: 'write',
+    message: 'Creating backup snapshot',
+    completed: 0,
+    total: envFiles.length,
+  })
 
   const backupResult = await createLatestSnapshot(ctx, {
     id: snapshotId,

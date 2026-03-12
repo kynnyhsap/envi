@@ -12,6 +12,7 @@ import type {
   ValidateReferenceData,
   ValidateResult,
 } from '../types'
+import { emitProgress } from './progress'
 import { checkProviderReady } from './provider-check'
 import { resolveReferenceBatch } from './resolve-secrets'
 
@@ -23,6 +24,12 @@ export async function validateOperation(
   const issues: Issue[] = []
 
   if (remote) {
+    await emitProgress(options.progress, {
+      command: 'validate',
+      stage: 'auth',
+      message: 'Checking provider availability and authentication',
+    })
+
     const prereq = await checkProviderReady(ctx)
     if (!prereq.ok) {
       return makeEnvelope({
@@ -36,16 +43,32 @@ export async function validateOperation(
     }
   }
 
+  await emitProgress(options.progress, {
+    command: 'validate',
+    stage: 'discover',
+    message: 'Discovering configured template paths',
+  })
+
   const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
   const paths: ValidatePathData[] = []
   let templates = 0
   let valid = 0
   let invalid = 0
 
+  let completedTemplates = 0
   for (const pathInfo of envPaths) {
     const hasTemplate = await ctx.runtime.exists(pathInfo.templatePath)
     if (!hasTemplate) {
       paths.push({ pathInfo, hasTemplate: false, references: [] })
+      completedTemplates += 1
+      await emitProgress(options.progress, {
+        command: 'validate',
+        stage: 'paths',
+        message: 'Template processed',
+        completed: completedTemplates,
+        total: envPaths.length,
+        path: pathInfo.templatePath,
+      })
       continue
     }
 
@@ -151,6 +174,16 @@ export async function validateOperation(
     }
 
     paths.push({ pathInfo, hasTemplate: true, references })
+
+    completedTemplates += 1
+    await emitProgress(options.progress, {
+      command: 'validate',
+      stage: 'paths',
+      message: 'Template processed',
+      completed: completedTemplates,
+      total: envPaths.length,
+      path: pathInfo.templatePath,
+    })
   }
 
   const data: ValidateData = {

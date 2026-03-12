@@ -11,6 +11,7 @@ import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
 import type { ExecutionContext, Issue, SyncData, SyncOperationOptions, SyncPathData, SyncResult } from '../types'
 import { createLatestSnapshot } from './backup-helpers'
+import { emitProgress } from './progress'
 import { checkProviderReady } from './provider-check'
 import { redactChanges } from './redact'
 import { injectResolvedSecrets } from './resolve-secrets'
@@ -176,6 +177,12 @@ export async function syncOperation(ctx: ExecutionContext, options: SyncOperatio
   const noBackup = options.noBackup ?? false
   const includeSecrets = options.includeSecrets ?? false
 
+  await emitProgress(options.progress, {
+    command: 'sync',
+    stage: 'auth',
+    message: 'Checking provider availability and authentication',
+  })
+
   const prereq = await checkProviderReady(ctx)
   if (!prereq.ok) {
     return makeEnvelope({
@@ -192,9 +199,20 @@ export async function syncOperation(ctx: ExecutionContext, options: SyncOperatio
     })
   }
 
+  await emitProgress(options.progress, {
+    command: 'sync',
+    stage: 'discover',
+    message: 'Discovering configured template paths',
+  })
+
   const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
 
   if (!dryRun && !noBackup) {
+    await emitProgress(options.progress, {
+      command: 'sync',
+      stage: 'backup',
+      message: 'Creating automatic backup snapshot',
+    })
     await createAutoBackup(
       ctx,
       envPaths.map((p) => p.envPath),
@@ -211,13 +229,34 @@ export async function syncOperation(ctx: ExecutionContext, options: SyncOperatio
   let totalCustom = 0
 
   const canParallelize = true
+  let completedPaths = 0
   const pathWork = canParallelize
-    ? await mapWithConcurrency(envPaths, getSyncPathConcurrency(), async (pathInfo) =>
-        processEnvPath(ctx, pathInfo, { dryRun, includeSecrets }),
-      )
-    : await mapWithConcurrency(envPaths, 1, async (pathInfo) =>
-        processEnvPath(ctx, pathInfo, { dryRun, includeSecrets }),
-      )
+    ? await mapWithConcurrency(envPaths, getSyncPathConcurrency(), async (pathInfo) => {
+        const result = await processEnvPath(ctx, pathInfo, { dryRun, includeSecrets })
+        completedPaths += 1
+        await emitProgress(options.progress, {
+          command: 'sync',
+          stage: 'paths',
+          message: result.data.success ? 'Synced path' : 'Processed path with issues',
+          completed: completedPaths,
+          total: envPaths.length,
+          path: pathInfo.envPath,
+        })
+        return result
+      })
+    : await mapWithConcurrency(envPaths, 1, async (pathInfo) => {
+        const result = await processEnvPath(ctx, pathInfo, { dryRun, includeSecrets })
+        completedPaths += 1
+        await emitProgress(options.progress, {
+          command: 'sync',
+          stage: 'paths',
+          message: result.data.success ? 'Synced path' : 'Processed path with issues',
+          completed: completedPaths,
+          total: envPaths.length,
+          path: pathInfo.envPath,
+        })
+        return result
+      })
 
   for (const result of pathWork) {
     pathResults.push(result.data)

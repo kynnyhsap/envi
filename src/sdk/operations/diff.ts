@@ -5,6 +5,7 @@ import type { Change, EnvFile } from '../../shared/env/types'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths, resolveEnvPath } from '../paths'
 import type { DiffData, DiffOperationOptions, DiffPathData, DiffResult, ExecutionContext, Issue } from '../types'
+import { emitProgress } from './progress'
 import { checkProviderReady } from './provider-check'
 import { redactChanges } from './redact'
 import { injectResolvedSecrets } from './resolve-secrets'
@@ -55,6 +56,13 @@ async function diffOne(
 
 export async function diffOperation(ctx: ExecutionContext, options: DiffOperationOptions = {}): Promise<DiffResult> {
   const includeSecrets = options.includeSecrets ?? false
+
+  await emitProgress(options.progress, {
+    command: 'diff',
+    stage: 'auth',
+    message: 'Checking provider availability and authentication',
+  })
+
   const prereq = await checkProviderReady(ctx)
   if (!prereq.ok) {
     return makeEnvelope({
@@ -70,6 +78,12 @@ export async function diffOperation(ctx: ExecutionContext, options: DiffOperatio
     })
   }
 
+  await emitProgress(options.progress, {
+    command: 'diff',
+    stage: 'discover',
+    message: 'Discovering configured template paths',
+  })
+
   const envPaths = options.path
     ? [resolveEnvPath(options.path, ctx.options, ctx.runtime)]
     : await resolveAllEnvPaths(ctx.options, ctx.runtime)
@@ -82,9 +96,20 @@ export async function diffOperation(ctx: ExecutionContext, options: DiffOperatio
   let hasAnyChanges = false
   const issues: Issue[] = []
 
-  const results = await mapWithConcurrency(envPaths, getDiffPathConcurrency(), async (pathInfo) =>
-    diffOne(ctx, pathInfo, { includeSecrets }),
-  )
+  let completedPaths = 0
+  const results = await mapWithConcurrency(envPaths, getDiffPathConcurrency(), async (pathInfo) => {
+    const result = await diffOne(ctx, pathInfo, { includeSecrets })
+    completedPaths += 1
+    await emitProgress(options.progress, {
+      command: 'diff',
+      stage: 'paths',
+      message: result.error ? 'Processed path with issues' : 'Processed path',
+      completed: completedPaths,
+      total: envPaths.length,
+      path: pathInfo.envPath,
+    })
+    return result
+  })
 
   for (const result of results) {
     paths.push(result)

@@ -16,6 +16,17 @@ export type EnviCommand =
   | 'restore'
   | 'restore.list'
 
+export interface ProgressEvent {
+  command: EnviCommand
+  stage: string
+  message: string
+  completed?: number
+  total?: number
+  path?: string
+}
+
+export type ProgressReporter = (event: ProgressEvent) => void | Promise<void>
+
 export interface Issue {
   code: string
   message: string
@@ -126,6 +137,10 @@ export interface StatusData {
 
 export type StatusResult = JsonEnvelope<StatusData, 'status'>
 
+export interface StatusOperationOptions {
+  progress?: ProgressReporter
+}
+
 export interface DiffPathData {
   pathInfo: EnvPathInfo
   hasTemplate: boolean
@@ -150,6 +165,7 @@ export interface DiffOperationOptions {
   path?: string
   /** Include secret values in output (unsafe). Default: false */
   includeSecrets?: boolean
+  progress?: ProgressReporter
 }
 
 export type DiffResult = JsonEnvelope<DiffData, 'diff'>
@@ -159,6 +175,7 @@ export interface SyncOperationOptions {
   noBackup?: boolean
   /** Include secret values in output (unsafe). Default: false */
   includeSecrets?: boolean
+  progress?: ProgressReporter
 }
 
 export interface SyncPathData {
@@ -190,6 +207,7 @@ export type SyncResult = JsonEnvelope<SyncData, 'sync'>
 
 export interface ValidateOperationOptions {
   remote?: boolean
+  progress?: ProgressReporter
 }
 
 export interface ValidateReferenceData {
@@ -221,6 +239,7 @@ export type ValidateResult = JsonEnvelope<ValidateData, 'validate'>
 export interface ResolveSecretOperationOptions {
   reference: string
   references?: string[]
+  progress?: ProgressReporter
 }
 
 export interface ResolveSecretEntryData {
@@ -246,6 +265,7 @@ export interface ResolveRunEnvironmentOperationOptions {
   noTemplate?: boolean
   /** Include secret values in output (unsafe). Default: false */
   includeSecrets?: boolean
+  progress?: ProgressReporter
 }
 
 export interface RunResolveData {
@@ -287,6 +307,7 @@ export interface BackupData {
 export interface BackupOperationOptions {
   dryRun?: boolean
   list?: boolean
+  progress?: ProgressReporter
 }
 
 export type BackupResult = JsonEnvelope<BackupData, 'backup'> | JsonEnvelope<BackupData, 'backup.list'>
@@ -309,13 +330,14 @@ export interface RestoreOperationOptions {
   dryRun?: boolean
   list?: boolean
   snapshot?: string
+  progress?: ProgressReporter
 }
 
 export type RestoreResult = JsonEnvelope<RestoreData, 'restore'> | JsonEnvelope<RestoreData, 'restore.list'>
 
 export interface EnviEngine {
   readonly options: RuntimeOptions
-  status(): Promise<StatusResult>
+  status(options?: StatusOperationOptions): Promise<StatusResult>
   diff(options?: DiffOperationOptions): Promise<DiffResult>
   sync(options?: SyncOperationOptions): Promise<SyncResult>
   validate(options?: ValidateOperationOptions): Promise<ValidateResult>

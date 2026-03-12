@@ -45,8 +45,8 @@ export function createEnviEngine(opts: CreateEngineOptions = {}): EnviEngine {
   return {
     options: ctx.options,
 
-    async status() {
-      return statusOperation(ctx)
+    async status(operationOptions) {
+      return statusOperation(ctx, operationOptions)
     },
 
     async diff(operationOptions) {

@@ -5,7 +5,7 @@ import { log } from '../../app/logger'
 import { isSecretReference } from '../../sdk'
 import { redactSecret, truncateValue } from '../../shared/env/format'
 import type { Change } from '../../shared/env/types'
-import { createCommandContext, formatReferenceVars, maybeWriteJsonResult } from './common'
+import { createCommandContext, formatReferenceVars, maybeWriteJsonResult, withCommandProgress } from './common'
 
 function formatValue(value: string, isSecret: boolean): string {
   if (isSecret) {
@@ -114,10 +114,16 @@ function displayChanges(changes: Change[]): {
 
 export async function syncCommand(options: { dryRun: boolean; noBackup: boolean }): Promise<void> {
   const { config, engine } = createCommandContext()
-  const result = await engine.sync({
-    dryRun: options.dryRun,
-    noBackup: options.noBackup,
-    includeSecrets: !config.json,
+  const result = await withCommandProgress({
+    enabled: !config.json && !config.quiet,
+    startMessage: 'Starting sync...',
+    run: (progress) =>
+      engine.sync({
+        dryRun: options.dryRun,
+        noBackup: options.noBackup,
+        includeSecrets: !config.json,
+        progress,
+      }),
   })
 
   if (maybeWriteJsonResult(result, config.json)) return

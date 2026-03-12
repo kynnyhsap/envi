@@ -3,7 +3,7 @@ import pc from 'picocolors'
 import { log } from '../../app/logger'
 import type { EnvPathInfo } from '../../sdk/types'
 import type { Change } from '../../shared/env/types'
-import { createCommandContext, formatReferenceVars, maybeWriteJsonResult } from './common'
+import { createCommandContext, formatReferenceVars, maybeWriteJsonResult, withCommandProgress } from './common'
 
 function maskValue(value: string, maxLen = 40): string {
   if (value.length <= 8) return value
@@ -48,16 +48,22 @@ function displayGitStyleDiff(changes: Change[], pathInfo: EnvPathInfo): void {
 
 export async function diffCommand(options: { path?: string }): Promise<void> {
   const { config, engine } = createCommandContext()
-  const result = await engine.diff(
-    config.json
-      ? options.path
-        ? { path: options.path }
-        : undefined
-      : {
-          ...(options.path ? { path: options.path } : {}),
-          includeSecrets: true,
-        },
-  )
+  const result = await withCommandProgress({
+    enabled: !config.json && !config.quiet,
+    startMessage: 'Starting diff...',
+    run: (progress) =>
+      engine.diff(
+        config.json
+          ? options.path
+            ? { path: options.path }
+            : { progress }
+          : {
+              ...(options.path ? { path: options.path } : {}),
+              includeSecrets: true,
+              progress,
+            },
+      ),
+  })
 
   if (maybeWriteJsonResult(result, config.json)) return
 

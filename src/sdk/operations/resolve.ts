@@ -8,6 +8,7 @@ import type {
   ResolveSecretOperationOptions,
   ResolveSecretResult,
 } from '../types'
+import { emitProgress } from './progress'
 import { checkProviderReady } from './provider-check'
 
 function firstLine(message: string): string {
@@ -94,6 +95,12 @@ export async function resolveSecretOperation(
       })
     }
 
+    await emitProgress(options.progress, {
+      command: 'resolve',
+      stage: 'auth',
+      message: 'Checking provider availability and authentication',
+    })
+
     const prereq = await checkProviderReady(ctx)
     if (!prereq.ok) {
       return makeEnvelope({
@@ -107,6 +114,15 @@ export async function resolveSecretOperation(
     }
 
     try {
+      await emitProgress(options.progress, {
+        command: 'resolve',
+        stage: 'resolve',
+        message: 'Resolving reference',
+        completed: 1,
+        total: 1,
+        path: resolvedReference,
+      })
+
       const nativeReference = toNativeReference(resolvedReference)
       const secret = await ctx.provider.resolveSecret(nativeReference)
       return makeEnvelope({
@@ -166,6 +182,12 @@ export async function resolveSecretOperation(
   }
 
   if (validNativeReferences.length > 0) {
+    await emitProgress(options.progress, {
+      command: 'resolve',
+      stage: 'auth',
+      message: 'Checking provider availability and authentication',
+    })
+
     const prereq = await checkProviderReady(ctx)
     if (!prereq.ok) {
       return makeEnvelope({
@@ -180,6 +202,14 @@ export async function resolveSecretOperation(
         providerId: ctx.provider.id,
       })
     }
+
+    await emitProgress(options.progress, {
+      command: 'resolve',
+      stage: 'resolve',
+      message: 'Resolving references',
+      completed: 0,
+      total: validNativeReferences.length,
+    })
 
     const resolved = await ctx.provider.resolveSecrets(validNativeReferences)
 

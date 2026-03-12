@@ -1,7 +1,7 @@
 import pc from 'picocolors'
 
 import { log } from '../../app/logger'
-import { createCommandContext, formatReferenceVars, maybeWriteJsonResult } from './common'
+import { createCommandContext, formatReferenceVars, maybeWriteJsonResult, withCommandProgress } from './common'
 
 function formatReference(reference: string): string {
   const trimmed = reference.trim()
@@ -25,7 +25,11 @@ interface ValidateOptions {
 export async function validateCommand(options: ValidateOptions = {}): Promise<void> {
   const isRemote = options.remote ?? false
   const { config, engine } = createCommandContext()
-  const result = await engine.validate({ remote: isRemote })
+  const result = await withCommandProgress({
+    enabled: !config.json && !config.quiet,
+    startMessage: isRemote ? 'Starting remote validate...' : 'Starting validate...',
+    run: (progress) => engine.validate({ remote: isRemote, progress }),
+  })
 
   if (maybeWriteJsonResult(result, config.json)) return
 
