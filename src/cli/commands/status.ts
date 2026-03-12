@@ -11,7 +11,10 @@ export async function statusCommand(): Promise<void> {
   if (maybeWriteJsonResult(result, config.json)) return
 
   log.banner('Environment Status')
-  log.info(`  Vars: ${pc.cyan(formatReferenceVars(config.vars))}`)
+  const varsLabel = formatReferenceVars(config.vars)
+  if (varsLabel) {
+    log.info(`  Vars: ${pc.cyan(varsLabel)}`)
+  }
   log.info(`  Provider: ${pc.cyan(result.data.provider.name)}`)
 
   log.header(result.data.provider.name)

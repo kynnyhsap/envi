@@ -10,9 +10,9 @@ export function createCommandContext(): { config: RuntimeConfig; engine: EnviEng
   return { config, engine: createCliEngine() }
 }
 
-export function formatReferenceVars(vars: Record<string, string>): string {
+export function formatReferenceVars(vars: Record<string, string>): string | undefined {
   const entries = Object.entries(resolveReferenceVars(vars))
-  if (entries.length === 0) return '(none)'
+  if (entries.length === 0) return undefined
 
   return entries.map(([key, value]) => `${key}=${value}`).join(', ')
 }

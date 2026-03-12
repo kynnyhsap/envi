@@ -688,6 +688,7 @@ describe('CLI e2e tests', () => {
       expect(exitCode).toBe(0)
       const output = stdout + stderr
       expect(output).toContain('Environment Status')
+      expect(output).not.toContain('Vars:')
       expect(output).toContain('Authentication failed')
     })
 

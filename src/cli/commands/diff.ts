@@ -62,7 +62,10 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
   if (maybeWriteJsonResult(result, config.json)) return
 
   log.banner('Environment Diff')
-  log.info(`  Vars: ${pc.cyan(formatReferenceVars(config.vars))}`)
+  const varsLabel = formatReferenceVars(config.vars)
+  if (varsLabel) {
+    log.info(`  Vars: ${pc.cyan(varsLabel)}`)
+  }
 
   for (const pathResult of result.data.paths) {
     const pathInfo = pathResult.pathInfo

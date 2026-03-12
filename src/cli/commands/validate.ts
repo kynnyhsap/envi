@@ -33,7 +33,10 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
   log.banner('Validate Secret References')
 
   log.info('')
-  log.info(`  Vars: ${pc.cyan(formatReferenceVars(config.vars))}`)
+  const varsLabel = formatReferenceVars(config.vars)
+  if (varsLabel) {
+    log.info(`  Vars: ${pc.cyan(varsLabel)}`)
+  }
   log.info(`  Provider: ${pc.cyan(result.meta.provider)}`)
   if (isRemote) {
     log.info('  Validating references against provider...')

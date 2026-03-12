@@ -25,7 +25,10 @@ export async function runCommand(command: string[], options: RunOptions = {}): P
 
   if (!config.quiet) {
     log.banner('Run')
-    log.info(`  Vars: ${pc.cyan(formatReferenceVars(config.vars))}`)
+    const varsLabel = formatReferenceVars(config.vars)
+    if (varsLabel) {
+      log.info(`  Vars: ${pc.cyan(varsLabel)}`)
+    }
     log.info(`  Command: ${pc.cyan(command.join(' '))}`)
     log.info('')
   }

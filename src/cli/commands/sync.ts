@@ -123,7 +123,10 @@ export async function syncCommand(options: { dryRun: boolean; noBackup: boolean 
   if (maybeWriteJsonResult(result, config.json)) return
 
   log.banner('Environment Sync')
-  log.info(`  Vars: ${pc.cyan(formatReferenceVars(config.vars))}`)
+  const varsLabel = formatReferenceVars(config.vars)
+  if (varsLabel) {
+    log.info(`  Vars: ${pc.cyan(varsLabel)}`)
+  }
 
   if (options.dryRun) {
     log.info(pc.yellow('  Running in dry-run mode'))
