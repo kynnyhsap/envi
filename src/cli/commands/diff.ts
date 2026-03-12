@@ -89,15 +89,7 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
       continue
     }
 
-    if (!pathResult.hasEnv) {
-      log.missing(`${pathInfo.envPath} not found`)
-      log.detail(`Run ${pc.cyan('envi sync')} to create it`)
-    }
-
     if (pathResult.error) {
-      if (!pathResult.hasEnv) {
-        log.info('')
-      }
       log.fail(`${pathInfo.envPath}: Failed to resolve secrets`)
       for (const line of pathResult.error.split('\n')) {
         if (!line.trim()) continue
@@ -107,6 +99,12 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
     }
 
     if (!pathResult.hasEnv) {
+      log.missing(`${pathInfo.envPath} not found`)
+      log.detail(`Run ${pc.cyan('envi sync')} to create it`)
+      const pendingNew = pathResult.changes.filter((c) => c.type === 'new').length
+      if (pendingNew > 0) {
+        log.detail(`${pendingNew} template var(s) will be created`)
+      }
       continue
     }
 
@@ -129,6 +127,11 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
   log.banner('Summary')
   log.info('')
 
+  const failedPaths = result.data.paths.filter((pathResult) => !!pathResult.error).length
+  const missingEnvPaths = result.data.paths.filter(
+    (pathResult) => pathResult.hasTemplate && !pathResult.hasEnv && !pathResult.error,
+  ).length
+
   if (!result.data.summary.hasAnyChanges) {
     log.info(`  ${pc.green('All environments are in sync!')}`)
     if (result.data.summary.localModified > 0) {
@@ -141,8 +144,17 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
         `${pc.blue(`${result.data.summary.localModified} local mods`)}, ` +
         `${pc.dim(`${result.data.summary.unchanged} unchanged`)}`,
     )
+
+    if (failedPaths > 0 || missingEnvPaths > 0) {
+      log.info(`  ${pc.red(`${failedPaths} failed`)}, ${pc.yellow(`${missingEnvPaths} missing env file(s)`)}`)
+    }
+
     log.info('')
-    log.info(`  Run ${pc.cyan('envi sync')} to apply changes`)
+    if (failedPaths > 0) {
+      log.info(`  Fix failed paths, then run ${pc.cyan('envi sync')}`)
+    } else {
+      log.info(`  Run ${pc.cyan('envi sync')} to apply changes`)
+    }
   }
   log.info('')
 
