@@ -1,7 +1,6 @@
 import pc from 'picocolors'
 
 import { log } from '../../app/logger'
-import { hasUnresolvedVariables } from '../../shared/env/variables'
 import { createCommandContext, formatReferenceVars, maybeWriteJsonResult } from './common'
 
 function formatReference(reference: string): string {
@@ -63,12 +62,6 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
     for (const ref of pathResult.references) {
       const formattedRef = formatReference(ref.resolvedReference)
       const line = `${ref.key}=${formattedRef}`
-
-      if (hasUnresolvedVariables(ref.resolvedReference)) {
-        log.invalid(line)
-        log.detail(pc.red('Error: Unresolved variables in reference'))
-        continue
-      }
 
       if (ref.valid) {
         log.valid(line)

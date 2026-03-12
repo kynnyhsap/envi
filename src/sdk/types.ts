@@ -132,6 +132,7 @@ export interface DiffPathData {
   hasEnv: boolean
   changes: Change[]
   error?: string
+  issues?: Issue[]
 }
 
 export interface DiffData {

@@ -37,6 +37,37 @@ describe('sdk engine (smoke)', () => {
     expect(secretChange?.newValue).toBe('<redacted>')
   })
 
+  it('diff reports missing dynamic vars with actionable guidance', async () => {
+    const cwd = '/repo'
+    const runtime = createMemoryRuntime({
+      cwd,
+      files: {
+        '/repo/.env.example': 'API_KEY=op://vault-${PROFILE}/item/API_KEY\n',
+      },
+      templateMatches: ['.env.example'],
+    })
+
+    const engine = createEnviEngine({
+      runtime,
+      provider: createFakeProvider(),
+      options: {
+        rootDir: cwd,
+        provider: '1password',
+      },
+    })
+
+    const result = await engine.diff()
+    expect(result.ok).toBe(false)
+    expect(result.issues.some((issue) => issue.code === 'UNRESOLVED_VARIABLE')).toBe(true)
+
+    const firstPath = result.data.paths[0]
+    expect(firstPath?.hasEnv).toBe(false)
+    expect(firstPath?.error).toContain('Missing dynamic vars: PROFILE')
+    expect(firstPath?.error).toContain('Pass required vars:\n  --var PROFILE=<value>')
+    expect(firstPath?.error).toContain('--var PROFILE=<value>')
+    expect(firstPath?.error).toContain('envi.json')
+  })
+
   it('sync dry-run computes changes without writing', async () => {
     const cwd = '/repo'
     const runtime = createMemoryRuntime({

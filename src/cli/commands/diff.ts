@@ -67,7 +67,14 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
     log.info(`  Vars: ${pc.cyan(varsLabel)}`)
   }
 
+  let printedPathBlock = false
+
   for (const pathResult of result.data.paths) {
+    if (printedPathBlock) {
+      log.info('')
+    }
+    printedPathBlock = true
+
     const pathInfo = pathResult.pathInfo
 
     if (!pathResult.hasTemplate) {
@@ -76,15 +83,24 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
       continue
     }
 
+    if (!pathResult.hasEnv) {
+      log.missing(`${pathInfo.envPath} not found`)
+      log.detail(`Run ${pc.cyan('envi sync')} to create it`)
+    }
+
     if (pathResult.error) {
+      if (!pathResult.hasEnv) {
+        log.info('')
+      }
       log.fail(`${pathInfo.envPath}: Failed to resolve secrets`)
-      log.detail(pathResult.error)
+      for (const line of pathResult.error.split('\n')) {
+        if (!line.trim()) continue
+        log.detail(line)
+      }
       continue
     }
 
     if (!pathResult.hasEnv) {
-      log.missing(`${pathInfo.envPath} not found`)
-      log.detail(`Run ${pc.cyan('envi sync')} to create it`)
       continue
     }
 

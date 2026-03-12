@@ -251,6 +251,22 @@ describe('CLI e2e tests', () => {
     })
   })
 
+  describe('validate command', () => {
+    it('should treat unresolved placeholders as valid in local mode', async () => {
+      await Bun.write(
+        join(TEST_DIR, 'test-app/.env.example'),
+        'API_KEY=op://envi-example/api-service-${PROFILE}/API_KEY\n',
+      )
+
+      const { json, exitCode } = await runCliJson('validate', '--json', '--only', 'test-app')
+
+      expect(exitCode).toBe(0)
+      expect(json.ok).toBe(true)
+      expect(json.data.summary.invalid).toBe(0)
+      expect(json.data.summary.valid).toBe(1)
+    })
+  })
+
   describe('--version', () => {
     it('should show version with -v flag', async () => {
       const { stdout, exitCode } = await runCli('-v')

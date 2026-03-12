@@ -61,6 +61,21 @@ export async function validateOperation(
       const resolvedReference = substituteVariables(reference, ctx.options.vars)
 
       if (hasUnresolvedVariables(resolvedReference)) {
+        if (!remote) {
+          const res = validateSecretReferenceFormat(resolvedReference)
+          if (!res.valid) {
+            const message = res.error ?? 'Invalid reference'
+            references.push({ key, reference, resolvedReference, valid: false, error: message })
+            issues.push({ code: 'INVALID_REFERENCE', message, key, reference: resolvedReference })
+            invalid++
+            continue
+          }
+
+          references.push({ key, reference, resolvedReference, valid: true })
+          valid++
+          continue
+        }
+
         references.push({
           key,
           reference,

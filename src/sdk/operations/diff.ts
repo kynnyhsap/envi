@@ -37,8 +37,14 @@ async function diffOne(
   })
 
   if (!injected) {
-    const msg = issues.map((i) => i.message).join('; ')
-    return { pathInfo, hasTemplate: true, hasEnv, changes: [], error: msg || 'Failed to resolve secrets' }
+    return {
+      pathInfo,
+      hasTemplate: true,
+      hasEnv,
+      changes: [],
+      error: formatDiffResolutionError(issues),
+      issues,
+    }
   }
 
   const local = hasEnv ? parseEnvFile(await ctx.runtime.readText(pathInfo.envPath)) : null
@@ -84,7 +90,16 @@ export async function diffOperation(ctx: ExecutionContext, options: DiffOperatio
     paths.push(result)
 
     if (result.error) {
-      issues.push({ code: 'DIFF_FAILED', message: result.error, path: result.pathInfo.envPath })
+      if (result.issues && result.issues.length > 0) {
+        for (const issue of result.issues) {
+          issues.push({
+            ...issue,
+            path: issue.path ?? result.pathInfo.envPath,
+          })
+        }
+      } else {
+        issues.push({ code: 'DIFF_FAILED', message: result.error, path: result.pathInfo.envPath })
+      }
       hasAnyChanges = true
       continue
     }
@@ -123,4 +138,52 @@ export async function diffOperation(ctx: ExecutionContext, options: DiffOperatio
     options: ctx.options,
     providerId: ctx.provider.id,
   })
+}
+
+function formatDiffResolutionError(issues: Issue[]): string {
+  if (issues.length === 0) {
+    return 'Failed to resolve secrets'
+  }
+
+  const unresolved = issues.filter((issue) => issue.code === 'UNRESOLVED_VARIABLE')
+  if (unresolved.length === issues.length) {
+    const missingVars = collectMissingVars(unresolved)
+    const affectedKeys = Array.from(
+      new Set(
+        unresolved.map((issue) => issue.key).filter((key): key is string => typeof key === 'string' && key.length > 0),
+      ),
+    ).sort()
+
+    const lines: string[] = []
+    if (missingVars.length > 0) {
+      lines.push(`Missing dynamic vars: ${missingVars.join(', ')}`)
+      lines.push('Pass required vars:')
+      lines.push(`  ${missingVars.map((name) => `--var ${name}=<value>`).join(' ')}`)
+      lines.push('Or set "vars" in envi.json')
+    } else {
+      lines.push('Template contains unresolved dynamic vars')
+      lines.push('Pass required --var NAME=value flags or set "vars" in envi.json')
+    }
+
+    if (affectedKeys.length > 0) {
+      lines.push(`Affected keys: ${affectedKeys.join(', ')}`)
+    }
+
+    return lines.join('\n')
+  }
+
+  return issues.map((issue) => issue.message).join('; ')
+}
+
+function collectMissingVars(issues: Issue[]): string[] {
+  const names = new Set<string>()
+  for (const issue of issues) {
+    if (!issue.reference) continue
+    for (const match of issue.reference.matchAll(/\$\{([A-Z_][A-Z0-9_]*)\}/g)) {
+      const name = match[1]
+      if (name) names.add(name)
+    }
+  }
+
+  return [...names].sort()
 }
