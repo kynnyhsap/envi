@@ -657,6 +657,7 @@ try {
     throw new Error(`unknown command ${parsed.args[0]}`)
   }
   await cli.runMatchedCommand()
+  process.exit(process.exitCode ?? 0)
 } catch (error) {
   console.error(toErrorMessage(error))
   process.exit(1)

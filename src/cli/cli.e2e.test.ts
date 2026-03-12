@@ -37,6 +37,19 @@ async function runCliWithEnv(
   return { stdout, stderr, exitCode }
 }
 
+async function runCliWithTimeout(
+  timeoutMs: number,
+  env: Record<string, string | undefined>,
+  ...args: string[]
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return await Promise.race([
+    runCliWithEnv(env, ...args),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`CLI command timed out after ${timeoutMs}ms: ${args.join(' ')}`)), timeoutMs)
+    }),
+  ])
+}
+
 async function runCliJson(...args: string[]) {
   const result = await runCli(...args)
   return {
@@ -662,6 +675,21 @@ describe('CLI e2e tests', () => {
   })
 
   describe('edge cases', () => {
+    it('should not hang on status when sdk auth fails', async () => {
+      const { stdout, stderr, exitCode } = await runCliWithTimeout(
+        3000,
+        { OP_SERVICE_ACCOUNT_TOKEN: 'invalid', OP_ACCOUNT_NAME: '' },
+        'status',
+        '--provider-opt',
+        'backend=sdk',
+      )
+
+      expect(exitCode).toBe(0)
+      const output = stdout + stderr
+      expect(output).toContain('Environment Status')
+      expect(output).toContain('Authentication failed')
+    })
+
     it('should report provider auth/availability errors for validate --remote', async () => {
       await Bun.write(join(TEST_DIR, 'test-app/.env.example'), 'API_KEY=op://example-vault/example-item/API_KEY\n')
 
