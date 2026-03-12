@@ -8,7 +8,7 @@ import type {
   ResolveSecretOperationOptions,
   ResolveSecretResult,
 } from '../types'
-import { emitProgress } from './progress'
+import { emitProgress, runStage } from './progress'
 import { checkProviderReady } from './provider-check'
 
 function firstLine(message: string): string {
@@ -95,13 +95,13 @@ export async function resolveSecretOperation(
       })
     }
 
-    await emitProgress(options.progress, {
+    const prereq = await runStage({
+      progress: options.progress,
       command: 'resolve',
       stage: 'auth',
       message: 'Checking provider availability and authentication',
+      run: () => checkProviderReady(ctx),
     })
-
-    const prereq = await checkProviderReady(ctx)
     if (!prereq.ok) {
       return makeEnvelope({
         command: 'resolve',
@@ -182,13 +182,13 @@ export async function resolveSecretOperation(
   }
 
   if (validNativeReferences.length > 0) {
-    await emitProgress(options.progress, {
+    const prereq = await runStage({
+      progress: options.progress,
       command: 'resolve',
       stage: 'auth',
       message: 'Checking provider availability and authentication',
+      run: () => checkProviderReady(ctx),
     })
-
-    const prereq = await checkProviderReady(ctx)
     if (!prereq.ok) {
       return makeEnvelope({
         command: 'resolve',

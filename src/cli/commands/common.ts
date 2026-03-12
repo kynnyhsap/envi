@@ -43,10 +43,17 @@ export function maybeWriteJsonResult<TData, TCommand extends EnviCommand>(
 
 export function printIssuesAndExit(issues: Issue[], mode: 'error' | 'fail' = 'fail'): never {
   for (const issue of issues) {
+    const lines = issue.message.split('\n').filter((line) => line.trim().length > 0)
+    const [firstLine = issue.message, ...rest] = lines
+
     if (mode === 'error') {
-      log.error(issue.message)
+      log.error(firstLine)
     } else {
-      log.fail(issue.message)
+      log.fail(firstLine)
+    }
+
+    for (const line of rest) {
+      log.detail(line)
     }
   }
   process.exit(1)

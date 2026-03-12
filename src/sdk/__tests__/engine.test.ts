@@ -93,6 +93,35 @@ describe('sdk engine (smoke)', () => {
     expect(result.data.paths.length).toBe(1)
   })
 
+  it('sync reports missing dynamic vars with actionable guidance', async () => {
+    const cwd = '/repo'
+    const runtime = createMemoryRuntime({
+      cwd,
+      files: {
+        '/repo/.env.example': 'API_KEY=op://vault-${PROFILE}/item/API_KEY\n',
+      },
+      templateMatches: ['.env.example'],
+    })
+
+    const engine = createEnviEngine({
+      runtime,
+      provider: createFakeProvider(),
+      options: {
+        rootDir: cwd,
+        provider: '1password',
+      },
+    })
+
+    const result = await engine.sync({ dryRun: true })
+    expect(result.ok).toBe(false)
+    expect(result.issues.some((issue) => issue.code === 'UNRESOLVED_VARIABLE')).toBe(true)
+
+    const firstPath = result.data.paths[0]
+    expect(firstPath?.success).toBe(false)
+    expect(firstPath?.message).toContain('Missing dynamic vars: PROFILE')
+    expect(firstPath?.message).toContain('--var PROFILE=<value>')
+  })
+
   it('resolveRunEnvironment can include secrets when requested', async () => {
     const cwd = '/repo'
     const runtime = createMemoryRuntime({
@@ -299,5 +328,32 @@ describe('sdk engine (smoke)', () => {
     const result = await engine.resolveRunEnvironment({ envFile: ['/repo/.env.secrets'], includeSecrets: true })
     expect(result.ok).toBe(true)
     expect(result.data.env['APP_STORE_CONNECT_API_KEY_CONTENT']).toBe('line1\nline2')
+  })
+
+  it('resolveRunEnvironment collapses unresolved var issues into one guidance block', async () => {
+    const cwd = '/repo'
+    const runtime = createMemoryRuntime({
+      cwd,
+      files: {
+        '/repo/.env.example': 'API_KEY=op://vault-${PROFILE}/item/API_KEY\n',
+      },
+      templateMatches: ['.env.example'],
+    })
+
+    const engine = createEnviEngine({
+      runtime,
+      provider: createFakeProvider(),
+      options: {
+        rootDir: cwd,
+        provider: '1password',
+      },
+    })
+
+    const result = await engine.resolveRunEnvironment()
+    expect(result.ok).toBe(false)
+    expect(result.issues[0]?.code).toBe('UNRESOLVED_VARIABLES')
+    expect(result.issues[0]?.message).toContain('Missing dynamic vars: PROFILE')
+    expect(result.issues[0]?.message).toContain('--var PROFILE=<value>')
+    expect(result.issues.some((issue) => issue.code === 'UNRESOLVED_VARIABLE')).toBe(false)
   })
 })

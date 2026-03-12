@@ -1,14 +1,14 @@
-import { mapWithConcurrency } from '../../shared/concurrency'
 import { computeChanges } from '../../shared/env/diff'
 import { parseEnvFile } from '../../shared/env/parse'
 import type { Change, EnvFile } from '../../shared/env/types'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths, resolveEnvPath } from '../paths'
 import type { DiffData, DiffOperationOptions, DiffPathData, DiffResult, ExecutionContext, Issue } from '../types'
-import { emitProgress } from './progress'
+import { mapWithProgress, runStage } from './progress'
 import { checkProviderReady } from './provider-check'
 import { redactChanges } from './redact'
 import { injectResolvedSecrets } from './resolve-secrets'
+import { formatUnresolvedVariableGuidance, summarizeUnresolvedVariableIssues } from './unresolved-vars'
 
 const DEFAULT_DIFF_PATH_CONCURRENCY = 8
 
@@ -57,13 +57,13 @@ async function diffOne(
 export async function diffOperation(ctx: ExecutionContext, options: DiffOperationOptions = {}): Promise<DiffResult> {
   const includeSecrets = options.includeSecrets ?? false
 
-  await emitProgress(options.progress, {
+  const prereq = await runStage({
+    progress: options.progress,
     command: 'diff',
     stage: 'auth',
     message: 'Checking provider availability and authentication',
+    run: () => checkProviderReady(ctx),
   })
-
-  const prereq = await checkProviderReady(ctx)
   if (!prereq.ok) {
     return makeEnvelope({
       command: 'diff',
@@ -78,15 +78,16 @@ export async function diffOperation(ctx: ExecutionContext, options: DiffOperatio
     })
   }
 
-  await emitProgress(options.progress, {
+  const envPaths = await runStage({
+    progress: options.progress,
     command: 'diff',
     stage: 'discover',
     message: 'Discovering configured template paths',
+    run: async () =>
+      options.path
+        ? [resolveEnvPath(options.path, ctx.options, ctx.runtime)]
+        : await resolveAllEnvPaths(ctx.options, ctx.runtime),
   })
-
-  const envPaths = options.path
-    ? [resolveEnvPath(options.path, ctx.options, ctx.runtime)]
-    : await resolveAllEnvPaths(ctx.options, ctx.runtime)
 
   const paths: DiffPathData[] = []
   let totalNew = 0
@@ -96,19 +97,15 @@ export async function diffOperation(ctx: ExecutionContext, options: DiffOperatio
   let hasAnyChanges = false
   const issues: Issue[] = []
 
-  let completedPaths = 0
-  const results = await mapWithConcurrency(envPaths, getDiffPathConcurrency(), async (pathInfo) => {
-    const result = await diffOne(ctx, pathInfo, { includeSecrets })
-    completedPaths += 1
-    await emitProgress(options.progress, {
-      command: 'diff',
-      stage: 'paths',
-      message: result.error ? 'Processed path with issues' : 'Processed path',
-      completed: completedPaths,
-      total: envPaths.length,
-      path: pathInfo.envPath,
-    })
-    return result
+  const results = await mapWithProgress({
+    items: envPaths,
+    concurrency: getDiffPathConcurrency(),
+    progress: options.progress,
+    command: 'diff',
+    stage: 'paths',
+    map: (pathInfo) => diffOne(ctx, pathInfo, { includeSecrets }),
+    message: 'Processed path',
+    path: (pathInfo) => pathInfo.envPath,
   })
 
   for (const result of results) {
@@ -170,45 +167,11 @@ function formatDiffResolutionError(issues: Issue[]): string {
     return 'Failed to resolve secrets'
   }
 
-  const unresolved = issues.filter((issue) => issue.code === 'UNRESOLVED_VARIABLE')
-  if (unresolved.length === issues.length) {
-    const missingVars = collectMissingVars(unresolved)
-    const affectedKeys = Array.from(
-      new Set(
-        unresolved.map((issue) => issue.key).filter((key): key is string => typeof key === 'string' && key.length > 0),
-      ),
-    ).sort()
-
-    const lines: string[] = []
-    if (missingVars.length > 0) {
-      lines.push(`Missing dynamic vars: ${missingVars.join(', ')}`)
-      lines.push('Pass required vars:')
-      lines.push(`  ${missingVars.map((name) => `--var ${name}=<value>`).join(' ')}`)
-      lines.push('Or set "vars" in envi.json')
-    } else {
-      lines.push('Template contains unresolved dynamic vars')
-      lines.push('Pass required --var NAME=value flags or set "vars" in envi.json')
-    }
-
-    if (affectedKeys.length > 0) {
-      lines.push(`Affected keys: ${affectedKeys.join(', ')}`)
-    }
-
-    return lines.join('\n')
+  const unresolved = summarizeUnresolvedVariableIssues(issues)
+  if (unresolved.unresolved.length === issues.length) {
+    const guidance = formatUnresolvedVariableGuidance({ issues, includeAffectedKeys: true })
+    if (guidance) return guidance
   }
 
   return issues.map((issue) => issue.message).join('; ')
-}
-
-function collectMissingVars(issues: Issue[]): string[] {
-  const names = new Set<string>()
-  for (const issue of issues) {
-    if (!issue.reference) continue
-    for (const match of issue.reference.matchAll(/\$\{([A-Z_][A-Z0-9_]*)\}/g)) {
-      const name = match[1]
-      if (name) names.add(name)
-    }
-  }
-
-  return [...names].sort()
 }

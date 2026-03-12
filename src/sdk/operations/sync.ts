@@ -1,7 +1,6 @@
 import path from 'node:path'
 
 import { generateBackupTimestamp } from '../../app/config'
-import { mapWithConcurrency } from '../../shared/concurrency'
 import { computeChanges } from '../../shared/env/diff'
 import { mergeEnvFiles } from '../../shared/env/merge'
 import { parseEnvFile, serializeEnvFile } from '../../shared/env/parse'
@@ -11,10 +10,11 @@ import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
 import type { ExecutionContext, Issue, SyncData, SyncOperationOptions, SyncPathData, SyncResult } from '../types'
 import { createLatestSnapshot } from './backup-helpers'
-import { emitProgress } from './progress'
+import { mapWithProgress, runStage } from './progress'
 import { checkProviderReady } from './provider-check'
 import { redactChanges } from './redact'
 import { injectResolvedSecrets } from './resolve-secrets'
+import { formatUnresolvedVariableGuidance, summarizeUnresolvedVariableIssues } from './unresolved-vars'
 
 const DEFAULT_SYNC_PATH_CONCURRENCY = 8
 
@@ -96,6 +96,12 @@ async function processEnvPath(
   })
 
   if (!injectedResult.injected) {
+    const unresolvedSummary = summarizeUnresolvedVariableIssues(injectedResult.issues)
+    const unresolvedGuidance = formatUnresolvedVariableGuidance({
+      issues: injectedResult.issues,
+      includeAffectedKeys: true,
+    })
+
     return {
       data: {
         pathInfo,
@@ -103,7 +109,10 @@ async function processEnvPath(
         skipped: false,
         changes: [],
         envSwitched: false,
-        message: 'Failed to resolve secrets',
+        message:
+          unresolvedSummary.unresolved.length === injectedResult.issues.length && unresolvedGuidance
+            ? `Failed to resolve secrets\n${unresolvedGuidance}`
+            : 'Failed to resolve secrets',
       },
       issues: injectedResult.issues,
     }
@@ -177,13 +186,13 @@ export async function syncOperation(ctx: ExecutionContext, options: SyncOperatio
   const noBackup = options.noBackup ?? false
   const includeSecrets = options.includeSecrets ?? false
 
-  await emitProgress(options.progress, {
+  const prereq = await runStage({
+    progress: options.progress,
     command: 'sync',
     stage: 'auth',
     message: 'Checking provider availability and authentication',
+    run: () => checkProviderReady(ctx),
   })
-
-  const prereq = await checkProviderReady(ctx)
   if (!prereq.ok) {
     return makeEnvelope({
       command: 'sync',
@@ -199,24 +208,26 @@ export async function syncOperation(ctx: ExecutionContext, options: SyncOperatio
     })
   }
 
-  await emitProgress(options.progress, {
+  const envPaths = await runStage({
+    progress: options.progress,
     command: 'sync',
     stage: 'discover',
     message: 'Discovering configured template paths',
+    run: () => resolveAllEnvPaths(ctx.options, ctx.runtime),
   })
 
-  const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
-
   if (!dryRun && !noBackup) {
-    await emitProgress(options.progress, {
+    await runStage({
+      progress: options.progress,
       command: 'sync',
       stage: 'backup',
       message: 'Creating automatic backup snapshot',
+      run: () =>
+        createAutoBackup(
+          ctx,
+          envPaths.map((p) => p.envPath),
+        ),
     })
-    await createAutoBackup(
-      ctx,
-      envPaths.map((p) => p.envPath),
-    )
   }
 
   const pathResults: SyncPathData[] = []
@@ -228,35 +239,16 @@ export async function syncOperation(ctx: ExecutionContext, options: SyncOperatio
   let totalUpdated = 0
   let totalCustom = 0
 
-  const canParallelize = true
-  let completedPaths = 0
-  const pathWork = canParallelize
-    ? await mapWithConcurrency(envPaths, getSyncPathConcurrency(), async (pathInfo) => {
-        const result = await processEnvPath(ctx, pathInfo, { dryRun, includeSecrets })
-        completedPaths += 1
-        await emitProgress(options.progress, {
-          command: 'sync',
-          stage: 'paths',
-          message: result.data.success ? 'Synced path' : 'Processed path with issues',
-          completed: completedPaths,
-          total: envPaths.length,
-          path: pathInfo.envPath,
-        })
-        return result
-      })
-    : await mapWithConcurrency(envPaths, 1, async (pathInfo) => {
-        const result = await processEnvPath(ctx, pathInfo, { dryRun, includeSecrets })
-        completedPaths += 1
-        await emitProgress(options.progress, {
-          command: 'sync',
-          stage: 'paths',
-          message: result.data.success ? 'Synced path' : 'Processed path with issues',
-          completed: completedPaths,
-          total: envPaths.length,
-          path: pathInfo.envPath,
-        })
-        return result
-      })
+  const pathWork = await mapWithProgress({
+    items: envPaths,
+    concurrency: getSyncPathConcurrency(),
+    progress: options.progress,
+    command: 'sync',
+    stage: 'paths',
+    map: (pathInfo) => processEnvPath(ctx, pathInfo, { dryRun, includeSecrets }),
+    message: 'Processed path',
+    path: (pathInfo) => pathInfo.envPath,
+  })
 
   for (const result of pathWork) {
     pathResults.push(result.data)

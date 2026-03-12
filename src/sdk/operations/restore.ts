@@ -5,7 +5,7 @@ import { getRootDir } from '../paths'
 import { resolveAllEnvPaths } from '../paths'
 import type { ExecutionContext, Issue, RestoreOperationOptions, RestoreResult } from '../types'
 import { findSnapshotBySelector, listBackupSnapshots, toBackupSnapshotData } from './backup-helpers'
-import { emitProgress } from './progress'
+import { mapWithProgress, runStage } from './progress'
 
 async function restoreFile(
   ctx: ExecutionContext,
@@ -47,13 +47,13 @@ export async function restoreOperation(
   const list = options.list ?? false
   const snapshotSelector = options.snapshot
 
-  await emitProgress(options.progress, {
+  const snapshots = await runStage({
+    progress: options.progress,
     command: list ? 'restore.list' : 'restore',
     stage: 'list',
     message: 'Loading backup snapshots',
+    run: () => listBackupSnapshots(ctx),
   })
-
-  const snapshots = await listBackupSnapshots(ctx)
   if (snapshots.length === 0) {
     return makeEnvelope({
       command: 'restore',
@@ -102,19 +102,25 @@ export async function restoreOperation(
     })
   }
 
-  await emitProgress(options.progress, {
+  const selectedFiles = await runStage({
+    progress: options.progress,
     command: 'restore',
     stage: 'prepare',
     message: 'Preparing files to restore',
-  })
+    run: async () => {
+      let files = selectedSnapshot.files
+      if (ctx.options.paths.length > 0) {
+        const rootDir = getRootDir(ctx.options, ctx.runtime)
+        const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
+        const allowed = new Set(
+          envPaths.map((pathInfo) => path.relative(rootDir, pathInfo.envPath).replace(/\\/g, '/')),
+        )
+        files = files.filter((file) => allowed.has(file.originalPath))
+      }
 
-  let selectedFiles = selectedSnapshot.files
-  if (ctx.options.paths.length > 0) {
-    const rootDir = getRootDir(ctx.options, ctx.runtime)
-    const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
-    const allowed = new Set(envPaths.map((pathInfo) => path.relative(rootDir, pathInfo.envPath).replace(/\\/g, '/')))
-    selectedFiles = selectedFiles.filter((file) => allowed.has(file.originalPath))
-  }
+      return files
+    },
+  })
 
   if (dryRun) {
     const wouldOverwrite: string[] = []
@@ -149,17 +155,20 @@ export async function restoreOperation(
   const issues: Issue[] = []
   const errors: Array<{ path: string; error: string }> = []
 
-  for (const [index, file] of selectedFiles.entries()) {
-    const result = await restoreFile(ctx, file, { dryRun: false })
+  const restoreResults = await mapWithProgress({
+    items: selectedFiles,
+    concurrency: 1,
+    progress: options.progress,
+    command: 'restore',
+    stage: 'restore',
+    map: (file) => restoreFile(ctx, file, { dryRun: false }),
+    message: 'Processed restore file',
+    path: (file) => file.originalPath,
+  })
 
-    await emitProgress(options.progress, {
-      command: 'restore',
-      stage: 'restore',
-      message: result.restored ? 'Restored file' : 'Failed to restore file',
-      completed: index + 1,
-      total: selectedFiles.length,
-      path: file.originalPath,
-    })
+  for (const [index, file] of selectedFiles.entries()) {
+    const result = restoreResults[index]
+    if (!result) continue
 
     if (result.restored) {
       restored++

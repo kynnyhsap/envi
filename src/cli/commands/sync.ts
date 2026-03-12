@@ -147,7 +147,12 @@ export async function syncCommand(options: { dryRun: boolean; noBackup: boolean 
     }
 
     if (!pathResult.success) {
-      log.fail(pathResult.message ?? 'Failed')
+      const lines = (pathResult.message ?? 'Failed').split('\n').filter((line) => line.trim().length > 0)
+      const [firstLine = 'Failed', ...rest] = lines
+      log.fail(firstLine)
+      for (const line of rest) {
+        log.detail(line)
+      }
       continue
     }
 

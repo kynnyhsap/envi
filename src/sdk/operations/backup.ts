@@ -7,7 +7,7 @@ import {
   listBackupSnapshots,
   toBackupSnapshotData,
 } from './backup-helpers'
-import { emitProgress } from './progress'
+import { runStage } from './progress'
 
 export async function backupOperation(
   ctx: ExecutionContext,
@@ -17,13 +17,13 @@ export async function backupOperation(
   const list = options.list ?? false
 
   if (list) {
-    await emitProgress(options.progress, {
+    const snapshots = await runStage({
+      progress: options.progress,
       command: 'backup.list',
       stage: 'list',
       message: 'Loading backup snapshots',
+      run: () => listBackupSnapshots(ctx),
     })
-
-    const snapshots = await listBackupSnapshots(ctx)
     return makeEnvelope({
       command: 'backup.list',
       ok: true,
@@ -37,13 +37,13 @@ export async function backupOperation(
     })
   }
 
-  await emitProgress(options.progress, {
+  const envFiles = await runStage({
+    progress: options.progress,
     command: 'backup',
     stage: 'discover',
     message: 'Scanning environment files to backup',
+    run: () => findEnvFilesForBackup(ctx),
   })
-
-  const envFiles = await findEnvFilesForBackup(ctx)
   if (envFiles.length === 0) {
     return makeEnvelope({
       command: 'backup',
@@ -84,18 +84,17 @@ export async function backupOperation(
     })
   }
 
-  await emitProgress(options.progress, {
+  const backupResult = await runStage({
+    progress: options.progress,
     command: 'backup',
     stage: 'write',
     message: 'Creating backup snapshot',
-    completed: 0,
-    total: envFiles.length,
-  })
-
-  const backupResult = await createLatestSnapshot(ctx, {
-    id: snapshotId,
-    createdAt,
-    filePaths: envFiles,
+    run: () =>
+      createLatestSnapshot(ctx, {
+        id: snapshotId,
+        createdAt,
+        filePaths: envFiles,
+      }),
   })
   const issues: Issue[] = backupResult.errors.map((entry) => ({
     code: 'BACKUP_FAILED',

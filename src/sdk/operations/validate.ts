@@ -12,7 +12,7 @@ import type {
   ValidateReferenceData,
   ValidateResult,
 } from '../types'
-import { emitProgress } from './progress'
+import { emitProgress, runStage } from './progress'
 import { checkProviderReady } from './provider-check'
 import { resolveReferenceBatch } from './resolve-secrets'
 
@@ -24,13 +24,13 @@ export async function validateOperation(
   const issues: Issue[] = []
 
   if (remote) {
-    await emitProgress(options.progress, {
+    const prereq = await runStage({
+      progress: options.progress,
       command: 'validate',
       stage: 'auth',
       message: 'Checking provider availability and authentication',
+      run: () => checkProviderReady(ctx),
     })
-
-    const prereq = await checkProviderReady(ctx)
     if (!prereq.ok) {
       return makeEnvelope({
         command: 'validate',
@@ -43,13 +43,13 @@ export async function validateOperation(
     }
   }
 
-  await emitProgress(options.progress, {
+  const envPaths = await runStage({
+    progress: options.progress,
     command: 'validate',
     stage: 'discover',
     message: 'Discovering configured template paths',
+    run: () => resolveAllEnvPaths(ctx.options, ctx.runtime),
   })
-
-  const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
   const paths: ValidatePathData[] = []
   let templates = 0
   let valid = 0

@@ -1,10 +1,9 @@
-import { mapWithConcurrency } from '../../shared/concurrency'
 import { parseEnvFile } from '../../shared/env/parse'
 import { makeEnvelope } from '../json'
 import { resolveAllEnvPaths } from '../paths'
 import type { ExecutionContext, StatusData, StatusOperationOptions, StatusResult, StatusPathData } from '../types'
 import { listBackupSnapshots } from './backup-helpers'
-import { emitProgress } from './progress'
+import { mapWithProgress, runStage } from './progress'
 import { getProviderReadiness } from './provider-check'
 const DEFAULT_STATUS_PATH_CONCURRENCY = 8
 
@@ -67,44 +66,41 @@ export async function statusOperation(
   ctx: ExecutionContext,
   options: StatusOperationOptions = {},
 ): Promise<StatusResult> {
-  await emitProgress(options.progress, {
+  const readiness = await runStage({
+    progress: options.progress,
     command: 'status',
     stage: 'auth',
     message: 'Checking provider availability and authentication',
+    run: () => getProviderReadiness(ctx),
   })
-
-  const readiness = await getProviderReadiness(ctx)
   const { availability, auth: authResult, authInfo, hints, issues } = readiness
 
-  await emitProgress(options.progress, {
+  const envPaths = await runStage({
+    progress: options.progress,
     command: 'status',
     stage: 'discover',
     message: 'Discovering configured template paths',
+    run: () => resolveAllEnvPaths(ctx.options, ctx.runtime),
   })
 
-  const envPaths = await resolveAllEnvPaths(ctx.options, ctx.runtime)
-  let completedPaths = 0
-  const statuses = await mapWithConcurrency(envPaths, getStatusPathConcurrency(), async (pathInfo) => {
-    const status = await getPathStatus(ctx, pathInfo)
-    completedPaths += 1
-    await emitProgress(options.progress, {
-      command: 'status',
-      stage: 'paths',
-      message: 'Scanned path status',
-      completed: completedPaths,
-      total: envPaths.length,
-      path: pathInfo.envPath,
-    })
-    return status
+  const statuses = await mapWithProgress({
+    items: envPaths,
+    concurrency: getStatusPathConcurrency(),
+    progress: options.progress,
+    command: 'status',
+    stage: 'paths',
+    map: (pathInfo) => getPathStatus(ctx, pathInfo),
+    message: () => 'Scanned path status',
+    path: (pathInfo) => pathInfo.envPath,
   })
 
-  await emitProgress(options.progress, {
+  const backups = await runStage({
+    progress: options.progress,
     command: 'status',
     stage: 'backups',
     message: 'Loading backup snapshot metadata',
+    run: () => getBackupInfo(ctx),
   })
-
-  const backups = await getBackupInfo(ctx)
 
   const summary = {
     synced: statuses.filter((s) => s.status === 'synced').length,
