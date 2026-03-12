@@ -237,7 +237,7 @@ describe('serializeEnvFile', () => {
     expect(result).toContain('# envi:vars={"PROFILE":"local","REGION":"eu"}')
   })
 
-  it('should not serialize metadata for default vars', () => {
+  it('should not serialize metadata when vars are missing', () => {
     const envFile: EnvFile = {
       vars: new Map([['NODE_ENV', { key: 'NODE_ENV', value: 'development', isCustom: false }]]),
       order: ['NODE_ENV'],
@@ -245,9 +245,9 @@ describe('serializeEnvFile', () => {
     }
 
     const result = serializeEnvFile(envFile, {})
-    const explicitDefault = serializeEnvFile(envFile, { PROFILE: 'default' })
+    const explicitProfile = serializeEnvFile(envFile, { PROFILE: 'default' })
 
     expect(result).not.toContain('# envi:vars=')
-    expect(explicitDefault).not.toContain('# envi:vars=')
+    expect(explicitProfile).toContain('# envi:vars={"PROFILE":"default"}')
   })
 })

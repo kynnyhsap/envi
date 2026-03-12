@@ -14,7 +14,7 @@ import {
   type ConfigFile,
 } from '../app/config'
 import { resolveRuntimeOptions, stringifyEnvelope } from '../sdk'
-import { DEFAULT_REFERENCE_VARS, normalizeReferenceVars } from '../shared/env/variables'
+import { normalizeReferenceVars } from '../shared/env/variables'
 import {
   statusCommand,
   diffCommand,
@@ -55,7 +55,7 @@ const GLOBAL_HELP_OPTIONS: HelpOption[] = [
   { flags: '--json', description: 'Output machine-readable JSON' },
   {
     flags: '--var <NAME=value>',
-    description: `Dynamic reference variable (repeatable, default: PROFILE=${DEFAULT_REFERENCE_VARS.PROFILE})`,
+    description: 'Dynamic reference variable (repeatable)',
   },
   { flags: '--provider-opt <k=v>', description: 'Provider-specific option (repeatable)' },
   { flags: '--config <path>', description: 'Load config from JSON file' },
@@ -97,7 +97,7 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
     description: 'Resolve one or more secret references to their values',
     usage: 'envi resolve <reference...> [options]',
     examples: [
-      'envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET',
+      'envi resolve --var PROFILE=prod op://core-${PROFILE}/engine-api/SECRET',
       'envi resolve op://vault/app/API_KEY op://vault/app/JWT_SECRET',
     ],
   },
@@ -159,6 +159,7 @@ const ROOT_HELP_EXAMPLES = [
   'envi sync -d                    # dry run',
   'envi sync --only apps/api     # single path',
   'envi resolve op://vault/item/field',
+  'envi resolve --var PROFILE=prod op://core-${PROFILE}/engine-api/SECRET',
   'envi backup',
   'envi restore --list',
 ]
@@ -566,7 +567,7 @@ addExamples(
 })
 
 addExamples(cli.command('resolve [...references]', 'Resolve one or more secret references to their values'), [
-  'envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET',
+  'envi resolve --var PROFILE=prod op://core-${PROFILE}/engine-api/SECRET',
   'envi resolve op://vault/app/API_KEY op://vault/app/JWT_SECRET',
 ]).action(async (references: string[] | string, options: GlobalOptions) => {
   const parsedReferences = Array.isArray(references) ? references : typeof references === 'string' ? [references] : []

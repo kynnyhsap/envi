@@ -50,10 +50,10 @@ envi sync -d
 envi validate
 
 # Resolve one secret reference directly
-envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET
+envi resolve --var PROFILE=prod op://core-${PROFILE}/engine-api/SECRET
 
 # Resolve multiple references (newline-separated output)
-envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET op://core-${PROFILE}/engine-api/JWT_SECRET
+envi resolve --var PROFILE=prod op://core-${PROFILE}/engine-api/SECRET op://core-${PROFILE}/engine-api/JWT_SECRET
 
 # Run a command with secrets as env vars
 envi run -- node index.js
@@ -193,7 +193,7 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 | `-d, --dry-run`        | Preview changes without writing files                               |
 | `-q, --quiet`          | Suppress non-essential output                                       |
 | `--json`               | Output machine-readable JSON (same envelope as SDK)                 |
-| `--var <NAME=value>`   | Dynamic reference variable (repeatable, default: `PROFILE=default`) |
+| `--var <NAME=value>`   | Dynamic reference variable (repeatable)                              |
 | `--provider-opt <k=v>` | 1Password backend option (repeatable)                               |
 | `--config <path>`      | Load config from JSON file                                          |
 | `--only <paths>`       | Filter which paths to process                                       |
@@ -256,10 +256,10 @@ When `--json` is enabled, Envi prints a stable JSON envelope intended for script
 
 ```bash
 # Single value
-envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET
+envi resolve --var PROFILE=prod op://core-${PROFILE}/engine-api/SECRET
 
 # Multiple values
-envi resolve --var PROFILE=default op://core-${PROFILE}/engine-api/SECRET op://core-${PROFILE}/engine-api/JWT_SECRET
+envi resolve --var PROFILE=prod op://core-${PROFILE}/engine-api/SECRET op://core-${PROFILE}/engine-api/JWT_SECRET
 ```
 
 - Plain output prints one resolved value per line, in the same order as the input references.
@@ -330,9 +330,7 @@ Example:
 
 ## Dynamic Vars
 
-The CLI supports repeatable dynamic reference vars through `--var NAME=value`. They are used to substitute placeholders like `${PROFILE}` inside secret references. When you use non-default vars, Envi saves them into the generated `.env` as metadata.
-
-By default, Envi uses `PROFILE=default`.
+The CLI supports repeatable dynamic reference vars through `--var NAME=value`. They are used to substitute placeholders like `${PROFILE}` inside secret references. When you pass vars, Envi saves them into the generated `.env` as metadata.
 
 ### Template Syntax
 
@@ -374,8 +372,8 @@ Vault: core-prod
 ### Usage
 
 ```bash
-# Local development (default)
-envi sync
+# Local development
+envi sync --var PROFILE=local
 
 # Specific profile
 envi sync --var PROFILE=dev

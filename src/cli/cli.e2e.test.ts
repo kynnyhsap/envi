@@ -665,12 +665,13 @@ describe('CLI e2e tests', () => {
       expect(stderr).not.toContain('Invalid --var')
     })
 
-    it('should default PROFILE to local', async () => {
+    it('should not inject default vars when --var is not provided', async () => {
       await Bun.write(join(TEST_DIR, 'test-app/.env'), 'VAR=value\n')
 
-      const { exitCode } = await runCli('backup')
+      const { json, exitCode } = await runCliJson('--json', 'backup')
 
       expect(exitCode).toBe(0)
+      expect(json.meta.vars).toEqual({})
     })
   })
 

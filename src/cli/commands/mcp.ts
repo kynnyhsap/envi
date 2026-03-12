@@ -61,10 +61,7 @@ export async function mcpCommand(): Promise<void> {
       description: 'Show .env sync status, provider auth, and backup info',
       inputSchema: z.object({
         only: z.string().optional().describe('Comma-separated paths to scope (e.g. "apps/api,apps/web")'),
-        vars: z
-          .record(z.string(), z.string())
-          .optional()
-          .describe('Dynamic reference vars (default: { PROFILE: "local" })'),
+        vars: z.record(z.string(), z.string()).optional().describe('Dynamic reference vars'),
       }),
     },
     async (args) => {

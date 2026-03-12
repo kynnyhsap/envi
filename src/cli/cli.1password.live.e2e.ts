@@ -415,7 +415,7 @@ describe('live 1Password CLI e2e', () => {
 
   liveTest('1password-environments example switches by profile var', async () => {
     await withExampleWorkspace('1password-environments', async (workspaceDir) => {
-      const defaultSync = await runCliJson(workspaceDir, ['--json', 'sync', '--no-backup'])
+      const defaultSync = await runCliJson(workspaceDir, ['--json', '--var', 'PROFILE=default', 'sync', '--no-backup'])
       expect(defaultSync.ok).toBe(true)
       expect(await Bun.file(path.join(workspaceDir, '.env')).text()).toContain('API_KEY=sk_default_example_123')
 

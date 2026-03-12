@@ -38,8 +38,8 @@ done
 ## Usage
 
 ```bash
-# Default profile
-envi sync
+# Default profile item
+envi sync --var PROFILE=default
 
 # Local development
 envi sync --var PROFILE=local

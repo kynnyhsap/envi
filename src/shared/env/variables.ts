@@ -1,7 +1,3 @@
-export const DEFAULT_REFERENCE_VARS = {
-  PROFILE: 'default',
-} as const
-
 export function normalizeReferenceVars(vars: Record<string, string>): Record<string, string> {
   const normalized = Object.entries(vars)
     .map(([key, value]) => [key.trim(), value.trim()] as [string, string])
@@ -12,23 +8,14 @@ export function normalizeReferenceVars(vars: Record<string, string>): Record<str
 }
 
 export function resolveReferenceVars(vars: Record<string, string>): Record<string, string> {
-  return normalizeReferenceVars({ ...DEFAULT_REFERENCE_VARS, ...vars })
+  return normalizeReferenceVars(vars)
 }
 
 export function shouldPersistReferenceVars(vars: Record<string, string> | undefined): boolean {
   if (!vars) return false
 
   const explicit = normalizeReferenceVars(vars)
-  if (Object.keys(explicit).length === 0) return false
-
-  const resolved = resolveReferenceVars(explicit)
-  const defaults = normalizeReferenceVars({ ...DEFAULT_REFERENCE_VARS })
-
-  const resolvedKeys = Object.keys(resolved)
-  const defaultKeys = Object.keys(defaults)
-  if (resolvedKeys.length !== defaultKeys.length) return true
-
-  return resolvedKeys.some((key) => resolved[key] !== defaults[key])
+  return Object.keys(explicit).length > 0
 }
 
 function unwrapSecretReference(value: string): { body: string; quote: string | null } {

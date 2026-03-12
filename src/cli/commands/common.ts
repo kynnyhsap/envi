@@ -11,9 +11,10 @@ export function createCommandContext(): { config: RuntimeConfig; engine: EnviEng
 }
 
 export function formatReferenceVars(vars: Record<string, string>): string {
-  return Object.entries(resolveReferenceVars(vars))
-    .map(([key, value]) => `${key}=${value}`)
-    .join(', ')
+  const entries = Object.entries(resolveReferenceVars(vars))
+  if (entries.length === 0) return '(none)'
+
+  return entries.map(([key, value]) => `${key}=${value}`).join(', ')
 }
 
 export function writeJsonResult(result: { ok: boolean }): never {

@@ -1,27 +1,29 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
-  DEFAULT_REFERENCE_VARS,
   hasUnresolvedVariables,
   normalizeReferenceVars,
+  resolveReferenceVars,
   shouldPersistReferenceVars,
   substituteVariables,
 } from './variables'
 
-describe('DEFAULT_REFERENCE_VARS', () => {
-  it('defaults to PROFILE=default', () => {
-    expect(DEFAULT_REFERENCE_VARS).toEqual({ PROFILE: 'default' })
+describe('resolveReferenceVars', () => {
+  it('does not inject defaults', () => {
+    expect(resolveReferenceVars({})).toEqual({})
+    expect(resolveReferenceVars({ PROFILE: 'prod' })).toEqual({ PROFILE: 'prod' })
   })
 })
 
 describe('shouldPersistReferenceVars', () => {
-  it('does not persist missing or default-only vars', () => {
+  it('does not persist missing or empty vars', () => {
     expect(shouldPersistReferenceVars(undefined)).toBe(false)
     expect(shouldPersistReferenceVars({})).toBe(false)
-    expect(shouldPersistReferenceVars({ PROFILE: 'default' })).toBe(false)
+    expect(shouldPersistReferenceVars({ ' ': 'value' })).toBe(false)
   })
 
-  it('persists non-default vars', () => {
+  it('persists explicit vars', () => {
+    expect(shouldPersistReferenceVars({ PROFILE: 'default' })).toBe(true)
     expect(shouldPersistReferenceVars({ PROFILE: 'prod' })).toBe(true)
     expect(shouldPersistReferenceVars({ REGION: 'eu' })).toBe(true)
   })
@@ -77,6 +79,10 @@ describe('substituteVariables', () => {
     expect(substituteVariables('op://${PROFILE}/item/field', { PROFILE: 'production' })).toBe(
       'op://production/item/field',
     )
+  })
+
+  it('keeps placeholders unresolved when vars are missing', () => {
+    expect(substituteVariables('op://core-${PROFILE}/item/field', {})).toBe('op://core-${PROFILE}/item/field')
   })
 })
 
