@@ -15,6 +15,7 @@ import type {
 import { emitProgress, runStage } from './progress'
 import { checkProviderReady } from './provider-check'
 import { resolveReferenceBatch } from './resolve-secrets'
+import { summarizeUnresolvedVariableIssues } from './unresolved-vars'
 
 export async function validateOperation(
   ctx: ExecutionContext,
@@ -99,19 +100,27 @@ export async function validateOperation(
           continue
         }
 
+        const unresolvedIssue: Issue = {
+          code: 'UNRESOLVED_VARIABLE',
+          message: `Unresolved variables in ${key}`,
+          key,
+          reference: resolvedReference,
+          path: pathInfo.templatePath,
+        }
+        const unresolvedSummary = summarizeUnresolvedVariableIssues([unresolvedIssue])
+        const unresolvedError =
+          unresolvedSummary.missingVars.length > 0
+            ? `Missing dynamic vars: ${unresolvedSummary.missingVars.join(', ')}`
+            : 'Unresolved variables in reference'
+
         references.push({
           key,
           reference,
           resolvedReference,
           valid: false,
-          error: 'Unresolved variables in reference',
+          error: unresolvedError,
         })
-        issues.push({
-          code: 'UNRESOLVED_VARIABLE',
-          message: `Unresolved variables in ${key}`,
-          key,
-          reference: resolvedReference,
-        })
+        issues.push(unresolvedIssue)
         invalid++
         continue
       }

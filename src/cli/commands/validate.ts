@@ -22,6 +22,21 @@ interface ValidateOptions {
   remote?: boolean
 }
 
+function collectMissingDynamicVars(issues: Array<{ code: string; reference?: string }>): string[] {
+  const missing = new Set<string>()
+
+  for (const issue of issues) {
+    if (issue.code !== 'UNRESOLVED_VARIABLE' || !issue.reference) continue
+
+    for (const match of issue.reference.matchAll(/\$\{([A-Z_][A-Z0-9_]*)\}/g)) {
+      const name = match[1]
+      if (name) missing.add(name)
+    }
+  }
+
+  return [...missing].sort()
+}
+
 export async function validateCommand(options: ValidateOptions = {}): Promise<void> {
   const isRemote = options.remote ?? false
   const { config, engine } = createCommandContext()
@@ -104,6 +119,14 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
     )
     log.info('')
     log.info(`  ${pc.red('Fix invalid references before running sync')}`)
+
+    const missingVars = collectMissingDynamicVars(result.issues)
+    if (isRemote && missingVars.length > 0) {
+      log.info('')
+      log.info(`  ${pc.yellow(`Missing dynamic vars: ${missingVars.join(', ')}`)}`)
+      log.detail(`Pass required vars: ${missingVars.map((name) => `--var ${name}=<value>`).join(' ')}`)
+      log.detail('Or set "vars" in envi.json')
+    }
   }
 
   log.info('')

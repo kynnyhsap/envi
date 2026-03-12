@@ -122,6 +122,34 @@ describe('sdk engine (smoke)', () => {
     expect(firstPath?.message).toContain('--var PROFILE=<value>')
   })
 
+  it('validate --remote reports missing dynamic vars by name', async () => {
+    const cwd = '/repo'
+    const runtime = createMemoryRuntime({
+      cwd,
+      files: {
+        '/repo/.env.example': 'API_KEY=op://vault-${PROFILE}/item/API_KEY\n',
+      },
+      templateMatches: ['.env.example'],
+    })
+
+    const engine = createEnviEngine({
+      runtime,
+      provider: createFakeProvider(),
+      options: {
+        rootDir: cwd,
+        provider: '1password',
+      },
+    })
+
+    const result = await engine.validate({ remote: true })
+    expect(result.ok).toBe(false)
+    expect(result.issues.some((issue) => issue.code === 'UNRESOLVED_VARIABLE')).toBe(true)
+
+    const firstPath = result.data.paths[0]
+    expect(firstPath?.references[0]?.valid).toBe(false)
+    expect(firstPath?.references[0]?.error).toContain('Missing dynamic vars: PROFILE')
+  })
+
   it('resolveRunEnvironment can include secrets when requested', async () => {
     const cwd = '/repo'
     const runtime = createMemoryRuntime({
