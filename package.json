@@ -30,7 +30,7 @@
     "test": "bun test",
     "test:e2e:1password": "bun run test:e2e:1password:run; code=$?; bun run test:e2e:1password:cleanup; exit $code",
     "test:e2e:1password:run": "bun test --timeout 600000 ./src/cli/cli.1password.live.e2e.ts",
-    "test:e2e:1password:cleanup": "bun run src/testing/onepassword-e2e-cleanup.ts",
+    "test:e2e:1password:cleanup": "bun run src/testing/onepassword-e2e-cleanup.ts --include-shared",
     "test:e2e:1password:preflight": "bun run src/testing/onepassword-ratelimit-preflight.ts",
     "typecheck": "tsgo --noEmit",
     "fmt": "oxfmt --write .",

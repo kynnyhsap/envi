@@ -7,9 +7,9 @@ interface RateLimitRow {
   remaining?: number
 }
 
-const MIN_HOURLY_READ = numberEnv('ENVI_1PASSWORD_MIN_HOURLY_READ', 500)
-const MIN_HOURLY_WRITE = numberEnv('ENVI_1PASSWORD_MIN_HOURLY_WRITE', 100)
-const MIN_DAILY_REMAINING = numberEnv('ENVI_1PASSWORD_MIN_DAILY_REMAINING', 2000)
+const MIN_HOURLY_READ = numberEnv('ENVI_1PASSWORD_MIN_HOURLY_READ', 50)
+const MIN_HOURLY_WRITE = numberEnv('ENVI_1PASSWORD_MIN_HOURLY_WRITE', 20)
+const MIN_DAILY_REMAINING = numberEnv('ENVI_1PASSWORD_MIN_DAILY_REMAINING', 100)
 
 const config = await loadOnePasswordE2EConfig()
 if (!config) {
@@ -17,16 +17,7 @@ if (!config) {
   process.exit(1)
 }
 
-const whoami = await runOp(['whoami', '--format', 'json'], config.token)
-const identifier = extractServiceAccountIdentifier(whoami.stdout)
-
-if (!identifier) {
-  console.error('[preflight] Could not determine service account identifier from `op whoami --format json`')
-  console.error(whoami.stdout.trim())
-  process.exit(1)
-}
-
-const ratelimit = await runOp(['service-account', 'ratelimit', identifier, '--format', 'json'], config.token)
+const ratelimit = await runOp(['service-account', 'ratelimit', '--format', 'json'], config.token)
 const rows = extractRateLimitRows(ratelimit.stdout)
 
 if (rows.length === 0) {
@@ -113,34 +104,6 @@ async function runOp(args: string[], token: string): Promise<{ stdout: string; s
   return { stdout, stderr }
 }
 
-function extractServiceAccountIdentifier(rawJson: string): string | undefined {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(rawJson)
-  } catch {
-    return undefined
-  }
-
-  const object = asRecord(parsed)
-  if (!object) return undefined
-
-  const candidates = [
-    object['serviceAccountId'],
-    object['service_account_id'],
-    object['id'],
-    object['uuid'],
-    object['name'],
-  ]
-
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.length > 0) {
-      return candidate
-    }
-  }
-
-  return undefined
-}
-
 function extractRateLimitRows(rawJson: string): RateLimitRow[] {
   let parsed: unknown
   try {
@@ -176,19 +139,28 @@ function collectObjects(value: unknown): Array<Record<string, unknown>> {
 function toRateLimitRow(object: Record<string, unknown>): RateLimitRow | undefined {
   const loweredEntries = Object.entries(object).map(([key, value]) => [key.toLowerCase(), value] as const)
 
+  const directAction = stringFromKeys(loweredEntries, ['action'])
+  const directType = stringFromKeys(loweredEntries, ['type'])
   const textBlob = loweredEntries.map(([, value]) => (typeof value === 'string' ? value.toLowerCase() : '')).join(' ')
 
-  const action: RateLimitRow['action'] = textBlob.includes('read')
+  const actionText = (directAction ?? textBlob).toLowerCase()
+  const typeText = (directType ?? textBlob).toLowerCase()
+
+  const action: RateLimitRow['action'] = actionText.includes('read')
     ? 'read'
-    : textBlob.includes('write')
+    : actionText.includes('write')
       ? 'write'
       : 'unknown'
 
-  const period: RateLimitRow['period'] = textBlob.includes('hour')
+  const period: RateLimitRow['period'] = typeText.includes('token')
     ? 'hourly'
-    : textBlob.includes('day')
+    : typeText.includes('account')
       ? 'daily'
-      : 'unknown'
+      : textBlob.includes('hour')
+        ? 'hourly'
+        : textBlob.includes('day')
+          ? 'daily'
+          : 'unknown'
 
   const limit = numberFromKeys(loweredEntries, ['limit'])
   const remaining =
@@ -213,6 +185,15 @@ function numberFromKeys(entries: Array<readonly [string, unknown]>, keyFragments
       const parsed = Number(value.replace(/,/g, ''))
       if (Number.isFinite(parsed)) return parsed
     }
+  }
+
+  return undefined
+}
+
+function stringFromKeys(entries: Array<readonly [string, unknown]>, keyFragments: string[]): string | undefined {
+  for (const [key, value] of entries) {
+    if (!keyFragments.some((fragment) => key.includes(fragment))) continue
+    if (typeof value === 'string' && value.length > 0) return value
   }
 
   return undefined

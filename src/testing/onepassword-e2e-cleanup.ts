@@ -6,7 +6,7 @@ const MAX_RETRIES = 6
 const BASE_BACKOFF_MS = 750
 const MAX_BACKOFF_MS = 10_000
 
-const includeShared = Bun.argv.includes('--include-shared')
+const includeShared = Bun.argv.includes('--include-shared') || !Bun.argv.includes('--legacy-only')
 const dryRun = Bun.argv.includes('--dry-run')
 const strict = process.env['ENVI_E2E_CLEANUP_STRICT'] === 'true'
 
