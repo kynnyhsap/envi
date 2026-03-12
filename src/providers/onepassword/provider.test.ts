@@ -110,6 +110,27 @@ describe('OnePasswordProvider (backend selection)', () => {
     })
   })
 
+  it('backend=sdk does not check op CLI during availability probe', async () => {
+    await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: 'token', OP_ACCOUNT_NAME: undefined }, async () => {
+      const calls: string[] = []
+
+      const provider = new OnePasswordProvider(
+        { backend: 'sdk' },
+        {
+          exec: async (command: string, args: string[] = []) => {
+            calls.push(`${command} ${args.join(' ')}`.trim())
+            return { exitCode: 1, stdout: '', stderr: 'unexpected exec call' }
+          },
+        },
+      )
+
+      const availability = await provider.checkAvailability()
+      expect(availability.available).toBe(true)
+      expect(availability.statusLines).toContain('OP_SERVICE_ACCOUNT_TOKEN: found')
+      expect(calls).toEqual([])
+    })
+  })
+
   it('backend=cli does not fall back to SDK', async () => {
     await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: 'token', OP_ACCOUNT_NAME: undefined }, async () => {
       let createClientCalls = 0

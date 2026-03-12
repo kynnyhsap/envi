@@ -122,23 +122,36 @@ export class OnePasswordProvider implements Provider {
   }
 
   async checkAvailability(): Promise<AvailabilityResult> {
-    const [cli, sdk] = await Promise.all([this.checkCliAvailability(), this.checkSdkAvailability()])
+    if (this.backend === 'cli') {
+      const cli = await this.checkCliAvailability()
+      const statusLines = [cli.available ? `${this.cliBinary}: installed` : `${this.cliBinary}: not found`]
 
-    const statusLines: string[] = []
-    statusLines.push(cli.available ? `${this.cliBinary}: installed` : `${this.cliBinary}: not found`)
-    for (const line of sdk.statusLines) statusLines.push(line)
+      if (!cli.available) {
+        return {
+          available: false,
+          statusLines,
+          helpLines: [
+            `Install and sign in to 1Password CLI (${this.cliBinary}):`,
+            `- Install the ${this.cliBinary} binary and ensure it is on PATH`,
+            `- Run ${this.cliBinary} signin`,
+          ],
+        }
+      }
 
-    const available =
-      this.backend === 'cli' ? cli.available : this.backend === 'sdk' ? sdk.available : sdk.available || cli.available
+      return { available: true, statusLines }
+    }
 
-    if (!available) {
+    const sdk = await this.checkSdkAvailability()
+    const statusLines = [...sdk.statusLines]
+
+    if (!sdk.available) {
       return {
         available: false,
         statusLines,
         helpLines: [
-          `Install and sign in to 1Password CLI (${this.cliBinary}), or configure the SDK:`,
-          `- Set OP_SERVICE_ACCOUNT_TOKEN (CI/CD)`,
-          `- Or set OP_ACCOUNT_NAME and open the 1Password desktop app (local dev)`,
+          'Configure 1Password SDK authentication:',
+          '- Set OP_SERVICE_ACCOUNT_TOKEN (CI/CD)',
+          '- Or set OP_ACCOUNT_NAME and open the 1Password desktop app (local dev)',
         ],
       }
     }

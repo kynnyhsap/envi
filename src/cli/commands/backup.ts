@@ -2,7 +2,13 @@ import pc from 'picocolors'
 
 import { log } from '../../app/logger'
 import { formatBackupTimestamp } from '../../shared/env/format'
-import { createCommandContext, printIssuesAndExit, withCommandProgress, writeJsonResult } from './common'
+import {
+  createCommandContext,
+  printIssuesAndExit,
+  printSummaryBanner,
+  withCommandProgress,
+  writeJsonResult,
+} from './common'
 
 function summarizeSnapshot(snapshot: { files?: Array<{ size: number }> }): { fileCount: number; sizeKb: string } {
   const files = snapshot.files ?? []
@@ -105,8 +111,7 @@ export async function backupCommand(options: { dryRun: boolean; list: boolean })
     log.success(`Backed up ${file}`)
   }
 
-  log.banner('Summary')
-  log.info('')
+  printSummaryBanner()
   log.info(`  Backed up: ${pc.green(String(result.data.backedUp ?? 0))} file(s) to ${result.data.backupRoot}`)
   log.info('')
 

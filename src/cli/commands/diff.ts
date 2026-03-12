@@ -3,7 +3,16 @@ import pc from 'picocolors'
 import { log } from '../../app/logger'
 import type { EnvPathInfo } from '../../sdk/types'
 import type { Change } from '../../shared/env/types'
-import { createCommandContext, formatReferenceVars, maybeWriteJsonResult, withCommandProgress } from './common'
+import {
+  createCommandContext,
+  maybeWriteJsonResult,
+  printCommandBanner,
+  printMissingEnvPath,
+  printMultilineDetails,
+  printNoTemplatePath,
+  printSummaryBanner,
+  withCommandProgress,
+} from './common'
 
 function maskValue(value: string, maxLen = 40): string {
   if (value.length <= 8) return value
@@ -67,11 +76,7 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
 
   if (maybeWriteJsonResult(result, config.json)) return
 
-  log.banner('Environment Diff')
-  const varsLabel = formatReferenceVars(config.vars)
-  if (varsLabel) {
-    log.info(`  Vars: ${pc.cyan(varsLabel)}`)
-  }
+  printCommandBanner('Environment Diff', config.vars)
 
   let printedPathBlock = false
 
@@ -84,27 +89,24 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
     const pathInfo = pathResult.pathInfo
 
     if (!pathResult.hasTemplate) {
-      log.skip(`${pathInfo.envPath} (no template)`)
-      log.detail(`Template not found: ${pathInfo.templatePath}`)
+      printNoTemplatePath(pathInfo.envPath, pathInfo.templatePath)
       continue
     }
 
     if (pathResult.error) {
       log.fail(`${pathInfo.envPath}: Failed to resolve secrets`)
-      for (const line of pathResult.error.split('\n')) {
-        if (!line.trim()) continue
-        log.detail(line)
-      }
+      printMultilineDetails(pathResult.error)
       continue
     }
 
     if (!pathResult.hasEnv) {
-      log.missing(`${pathInfo.envPath} not found`)
-      log.detail(`Run ${pc.cyan('envi sync')} to create it`)
       const pendingNew = pathResult.changes.filter((c) => c.type === 'new').length
-      if (pendingNew > 0) {
-        log.detail(`${pendingNew} template var(s) will be created`)
-      }
+      printMissingEnvPath({
+        envPath: pathInfo.envPath,
+        includeNotFoundSuffix: true,
+        suggestion: `Run ${pc.cyan('envi sync')} to create it`,
+        details: pendingNew > 0 ? [`${pendingNew} template var(s) will be created`] : [],
+      })
       continue
     }
 
@@ -124,8 +126,7 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
     displayGitStyleDiff(pathResult.changes, pathInfo)
   }
 
-  log.banner('Summary')
-  log.info('')
+  printSummaryBanner()
 
   const failedPaths = result.data.paths.filter((pathResult) => !!pathResult.error).length
   const missingEnvPaths = result.data.paths.filter(

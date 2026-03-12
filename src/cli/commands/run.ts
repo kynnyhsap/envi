@@ -3,8 +3,8 @@ import pc from 'picocolors'
 import { log } from '../../app/logger'
 import {
   createCommandContext,
-  formatReferenceVars,
   maybeWriteJsonResult,
+  printCommandBanner,
   printIssuesAndExit,
   withCommandProgress,
 } from './common'
@@ -22,11 +22,7 @@ export async function runCommand(command: string[], options: RunOptions = {}): P
 
   const { config, engine } = createCommandContext()
   if (!config.quiet) {
-    log.banner('Run')
-    const varsLabel = formatReferenceVars(config.vars)
-    if (varsLabel) {
-      log.info(`  Vars: ${pc.cyan(varsLabel)}`)
-    }
+    printCommandBanner('Run', config.vars)
     log.info(`  Command: ${pc.cyan(command.join(' '))}`)
     log.info('')
   }

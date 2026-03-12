@@ -28,6 +28,70 @@ export function formatReferenceVars(vars: Record<string, string>): string | unde
   return entries.map(([key, value]) => `${key}=${value}`).join(', ')
 }
 
+export function printCommandBanner(title: string, vars: Record<string, string>): void {
+  log.banner(title)
+  const varsLabel = formatReferenceVars(vars)
+  if (varsLabel) {
+    log.info(`  Vars: ${pc.cyan(varsLabel)}`)
+  }
+}
+
+export function printSummaryBanner(): void {
+  log.banner('Summary')
+  log.info('')
+}
+
+function splitNonEmptyLines(value: string): string[] {
+  return value
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0)
+}
+
+export function printMultilineDetails(value: string): void {
+  for (const line of splitNonEmptyLines(value)) {
+    log.detail(line)
+  }
+}
+
+export function formatProviderReference(reference: string): string {
+  const trimmed = reference.trim()
+
+  if (!trimmed.startsWith('op://')) {
+    return trimmed
+  }
+
+  const path = trimmed.slice('op://'.length)
+  const parts = path.split('/')
+  const [vault, item, ...rest] = parts
+  const field = rest.join('/')
+
+  return pc.dim('op://') + pc.blue(vault ?? '') + pc.dim('/') + pc.cyan(item ?? '') + pc.dim('/') + pc.yellow(field)
+}
+
+export function printMissingEnvPath(args: {
+  envPath: string
+  includeNotFoundSuffix?: boolean
+  suggestion?: string
+  details?: string[]
+}): void {
+  const line = args.includeNotFoundSuffix ? `${args.envPath} not found` : args.envPath
+  log.missing(line)
+
+  if (args.suggestion) {
+    log.detail(args.suggestion)
+  }
+
+  for (const detail of args.details ?? []) {
+    log.detail(detail)
+  }
+}
+
+export function printNoTemplatePath(envPath: string, templatePath: string): void {
+  log.skip(`${envPath} (no template)`)
+  log.detail(`Template not found: ${templatePath}`)
+}
+
 export function writeJsonResult(result: { ok: boolean }): never {
   process.stdout.write(stringifyEnvelope(result))
   process.exit(result.ok ? 0 : 1)
@@ -43,7 +107,7 @@ export function maybeWriteJsonResult<TData, TCommand extends EnviCommand>(
 
 export function printIssuesAndExit(issues: Issue[], mode: 'error' | 'fail' = 'fail'): never {
   for (const issue of issues) {
-    const lines = issue.message.split('\n').filter((line) => line.trim().length > 0)
+    const lines = splitNonEmptyLines(issue.message)
     const [firstLine = issue.message, ...rest] = lines
 
     if (mode === 'error') {
@@ -52,9 +116,7 @@ export function printIssuesAndExit(issues: Issue[], mode: 'error' | 'fail' = 'fa
       log.fail(firstLine)
     }
 
-    for (const line of rest) {
-      log.detail(line)
-    }
+    printMultilineDetails(rest.join('\n'))
   }
   process.exit(1)
 }

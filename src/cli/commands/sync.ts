@@ -5,7 +5,14 @@ import { log } from '../../app/logger'
 import { isSecretReference } from '../../sdk'
 import { redactSecret, truncateValue } from '../../shared/env/format'
 import type { Change } from '../../shared/env/types'
-import { createCommandContext, formatReferenceVars, maybeWriteJsonResult, withCommandProgress } from './common'
+import {
+  createCommandContext,
+  maybeWriteJsonResult,
+  printCommandBanner,
+  printMultilineDetails,
+  printSummaryBanner,
+  withCommandProgress,
+} from './common'
 
 function formatValue(value: string, isSecret: boolean): string {
   if (isSecret) {
@@ -128,11 +135,7 @@ export async function syncCommand(options: { dryRun: boolean; noBackup: boolean 
 
   if (maybeWriteJsonResult(result, config.json)) return
 
-  log.banner('Environment Sync')
-  const varsLabel = formatReferenceVars(config.vars)
-  if (varsLabel) {
-    log.info(`  Vars: ${pc.cyan(varsLabel)}`)
-  }
+  printCommandBanner('Environment Sync', config.vars)
 
   if (options.dryRun) {
     log.info(pc.yellow('  Running in dry-run mode'))
@@ -150,9 +153,7 @@ export async function syncCommand(options: { dryRun: boolean; noBackup: boolean 
       const lines = (pathResult.message ?? 'Failed').split('\n').filter((line) => line.trim().length > 0)
       const [firstLine = 'Failed', ...rest] = lines
       log.fail(firstLine)
-      for (const line of rest) {
-        log.detail(line)
-      }
+      printMultilineDetails(rest.join('\n'))
       continue
     }
 
@@ -180,8 +181,7 @@ export async function syncCommand(options: { dryRun: boolean; noBackup: boolean 
     }
   }
 
-  log.banner('Summary')
-  log.info('')
+  printSummaryBanner()
   log.info(
     `  Files processed: ${pc.green(`${result.data.summary.success} success`)}, ` +
       `${pc.red(`${result.data.summary.failed} failed`)}, ` +

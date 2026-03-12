@@ -1,22 +1,14 @@
 import pc from 'picocolors'
 
 import { log } from '../../app/logger'
-import { createCommandContext, formatReferenceVars, maybeWriteJsonResult, withCommandProgress } from './common'
-
-function formatReference(reference: string): string {
-  const trimmed = reference.trim()
-
-  if (trimmed.startsWith('op://')) {
-    const path = trimmed.slice('op://'.length)
-    const parts = path.split('/')
-    const [vault, item, ...rest] = parts
-    const field = rest.join('/')
-
-    return pc.dim('op://') + pc.blue(vault ?? '') + pc.dim('/') + pc.cyan(item ?? '') + pc.dim('/') + pc.yellow(field)
-  }
-
-  return trimmed
-}
+import {
+  createCommandContext,
+  formatProviderReference,
+  maybeWriteJsonResult,
+  printCommandBanner,
+  printSummaryBanner,
+  withCommandProgress,
+} from './common'
 
 interface ValidateOptions {
   remote?: boolean
@@ -48,13 +40,8 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
 
   if (maybeWriteJsonResult(result, config.json)) return
 
-  log.banner('Validate Secret References')
-
+  printCommandBanner('Validate Secret References', config.vars)
   log.info('')
-  const varsLabel = formatReferenceVars(config.vars)
-  if (varsLabel) {
-    log.info(`  Vars: ${pc.cyan(varsLabel)}`)
-  }
   log.info(`  Provider: ${pc.cyan(result.meta.provider)}`)
   if (isRemote) {
     log.info('  Validating references against provider...')
@@ -79,7 +66,7 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
     log.header(pathInfo.templatePath)
 
     for (const ref of pathResult.references) {
-      const formattedRef = formatReference(ref.resolvedReference)
+      const formattedRef = formatProviderReference(ref.resolvedReference)
       const line = `${ref.key}=${formattedRef}`
 
       if (ref.valid) {
@@ -96,8 +83,7 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
   )
 
   // Summary
-  log.banner('Summary')
-  log.info('')
+  printSummaryBanner()
 
   if (providerIssue) {
     log.fail(providerIssue.message)

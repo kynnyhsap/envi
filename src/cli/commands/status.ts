@@ -2,7 +2,15 @@ import pc from 'picocolors'
 
 import { log } from '../../app/logger'
 import { formatBackupTimestamp } from '../../shared/env/format'
-import { createCommandContext, formatReferenceVars, maybeWriteJsonResult, withCommandProgress } from './common'
+import {
+  createCommandContext,
+  maybeWriteJsonResult,
+  printCommandBanner,
+  printMissingEnvPath,
+  printNoTemplatePath,
+  printSummaryBanner,
+  withCommandProgress,
+} from './common'
 
 export async function statusCommand(): Promise<void> {
   const { config, engine } = createCommandContext()
@@ -14,14 +22,10 @@ export async function statusCommand(): Promise<void> {
 
   if (maybeWriteJsonResult(result, config.json)) return
 
-  log.banner('Environment Status')
-  const varsLabel = formatReferenceVars(config.vars)
-  if (varsLabel) {
-    log.info(`  Vars: ${pc.cyan(varsLabel)}`)
-  }
-  log.info(`  Provider: ${pc.cyan(result.data.provider.name)}`)
+  printCommandBanner('Environment Status', config.vars)
 
-  log.header(result.data.provider.name)
+  log.header('Authentication')
+  log.info(`  ${pc.cyan(result.data.provider.name)}`)
   log.info('')
 
   for (const line of result.data.provider.availability.statusLines) {
@@ -62,9 +66,13 @@ export async function statusCommand(): Promise<void> {
 
     switch (status.status) {
       case 'missing':
-        log.missing(`${pathInfo.envPath}${backupIndicator}`)
-        log.detail(`Template: ${pathInfo.templatePath}`)
-        log.detail(`Template has ${status.templateVarCount} vars, file not found`)
+        printMissingEnvPath({
+          envPath: `${pathInfo.envPath}${backupIndicator}`,
+          details: [
+            `Template: ${pathInfo.templatePath}`,
+            `Template has ${status.templateVarCount} vars, file not found`,
+          ],
+        })
         break
       case 'synced':
         log.synced(`${pathInfo.envPath}${backupIndicator}`)
@@ -77,8 +85,7 @@ export async function statusCommand(): Promise<void> {
         log.detail(pc.dim('Run sync to add missing variables'))
         break
       case 'no-template':
-        log.skip(`${pathInfo.envPath} (no template)`)
-        log.detail(`Template not found: ${pathInfo.templatePath}`)
+        printNoTemplatePath(pathInfo.envPath, pathInfo.templatePath)
         break
     }
   }
@@ -96,8 +103,7 @@ export async function statusCommand(): Promise<void> {
 
   const { missing, synced, outdated, noTemplate } = result.data.summary
 
-  log.header('Summary')
-  log.info('')
+  printSummaryBanner()
   log.info(
     `  ${pc.green(`${synced} synced`)}, ` +
       `${pc.yellow(`${outdated} outdated`)}, ` +
