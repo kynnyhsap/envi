@@ -17,6 +17,46 @@ import { checkProviderReady } from './provider-check'
 import { resolveReferenceBatch } from './resolve-secrets'
 import { summarizeUnresolvedVariableIssues } from './unresolved-vars'
 
+function firstNonEmptyLine(value: string): string {
+  const line = value
+    .split('\n')
+    .map((entry) => entry.trim())
+    .find((entry) => entry.length > 0)
+
+  return line ?? value.trim()
+}
+
+function humanizeProviderResolveError(rawError: string): string {
+  const firstLine = firstNonEmptyLine(rawError)
+  const stripped = firstLine.replace(/^Failed to resolve\s+[^:]+:\s*/i, '').trim()
+
+  const isToken = /^[A-Za-z][A-Za-z0-9_-]*$/.test(stripped) && !stripped.includes('://')
+  if (!isToken) {
+    return stripped || 'Failed to resolve reference'
+  }
+
+  const normalized = stripped
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .trim()
+
+  const knownMessages: Record<string, string> = {
+    'item not found': 'Item not found in 1Password',
+    'vault not found': 'Vault not found in 1Password',
+    'field not found': 'Field not found in 1Password item',
+    'section not found': 'Section not found in 1Password item',
+    'permission denied': 'Access denied in 1Password',
+    'access denied': 'Access denied in 1Password',
+    unauthorized: 'Not authorized in 1Password',
+  }
+
+  const known = knownMessages[normalized]
+  if (known) return known
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
+
 export async function validateOperation(
   ctx: ExecutionContext,
   options: ValidateOperationOptions = {},
@@ -154,7 +194,7 @@ export async function validateOperation(
         const error = batch.errors.get(nativeReference)
 
         if (error) {
-          const firstLine = error.split('\n')[0] ?? error
+          const firstLine = humanizeProviderResolveError(error)
           references.push({
             key: candidate.key,
             reference: candidate.reference,

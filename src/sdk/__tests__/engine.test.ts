@@ -150,6 +150,44 @@ describe('sdk engine (smoke)', () => {
     expect(firstPath?.references[0]?.error).toContain('Missing dynamic vars: PROFILE')
   })
 
+  it('validate --remote humanizes provider token errors', async () => {
+    const cwd = '/repo'
+    const runtime = createMemoryRuntime({
+      cwd,
+      files: {
+        '/repo/.env.example': 'API_KEY=op://vault/item/API_KEY\n',
+      },
+      templateMatches: ['.env.example'],
+    })
+
+    const provider = {
+      ...createFakeProvider(),
+      async resolveSecrets(references: string[]) {
+        return {
+          resolved: new Map<string, string>(),
+          errors: new Map(references.map((reference) => [reference, 'itemNotFound'])),
+        }
+      },
+    }
+
+    const engine = createEnviEngine({
+      runtime,
+      provider,
+      options: {
+        rootDir: cwd,
+        provider: '1password',
+      },
+    })
+
+    const result = await engine.validate({ remote: true })
+    expect(result.ok).toBe(false)
+
+    const firstPath = result.data.paths[0]
+    expect(firstPath?.references[0]?.valid).toBe(false)
+    expect(firstPath?.references[0]?.error).toBe('Item not found in 1Password')
+    expect(result.issues[0]?.message).toBe('Item not found in 1Password')
+  })
+
   it('resolveRunEnvironment can include secrets when requested', async () => {
     const cwd = '/repo'
     const runtime = createMemoryRuntime({
