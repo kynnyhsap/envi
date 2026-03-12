@@ -41,6 +41,24 @@ export function printSummaryBanner(): void {
   log.info('')
 }
 
+export function printSummaryMetrics(
+  metrics: Array<{ value: string | number; label: string; color?: (text: string) => string }>,
+): void {
+  for (const metric of metrics) {
+    const formattedValue = metric.color ? metric.color(String(metric.value)) : String(metric.value)
+    log.info(`  ${formattedValue} ${metric.label}`)
+  }
+}
+
+export function pluralize(count: number, singular: string, plural?: string): string {
+  if (count === 1) return singular
+  return plural ?? `${singular}s`
+}
+
+export function formatCountNoun(count: number, singular: string, plural?: string): string {
+  return `${count} ${pluralize(count, singular, plural)}`
+}
+
 function splitNonEmptyLines(value: string): string[] {
   return value
     .split('\n')

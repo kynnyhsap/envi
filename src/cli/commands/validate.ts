@@ -5,13 +5,15 @@ import {
   createCommandContext,
   formatProviderReference,
   maybeWriteJsonResult,
+  pluralize,
   printCommandBanner,
   printSummaryBanner,
+  printSummaryMetrics,
   withCommandProgress,
 } from './common'
 
 interface ValidateOptions {
-  remote?: boolean
+  local?: boolean
 }
 
 function collectMissingDynamicVars(issues: Array<{ code: string; reference?: string }>): string[] {
@@ -30,23 +32,25 @@ function collectMissingDynamicVars(issues: Array<{ code: string; reference?: str
 }
 
 export async function validateCommand(options: ValidateOptions = {}): Promise<void> {
-  const isRemote = options.remote ?? false
+  const isLocal = options.local ?? false
+  const remote = !isLocal
   const { config, engine } = createCommandContext()
   const result = await withCommandProgress({
     enabled: !config.json && !config.quiet,
-    startMessage: isRemote ? 'Starting remote validate...' : 'Starting validate...',
-    run: (progress) => engine.validate({ remote: isRemote, progress }),
+    startMessage: isLocal ? 'Starting local validate...' : 'Starting validate...',
+    run: (progress) => engine.validate({ remote, progress }),
   })
 
   if (maybeWriteJsonResult(result, config.json)) return
 
   printCommandBanner('Validate Secret References', config.vars)
   log.info('')
-  log.info(`  Provider: ${pc.cyan(result.meta.provider)}`)
-  if (isRemote) {
-    log.info('  Validating references against provider...')
-  } else {
+  if (isLocal) {
+    log.info(`  ${pc.yellow('Mode: local-only (provider not checked)')}`)
     log.info('  Validating reference format in templates...')
+  } else {
+    log.info(`  Provider: ${pc.cyan(result.meta.provider)}`)
+    log.info('  Validating references against provider...')
   }
   log.info('')
 
@@ -91,23 +95,37 @@ export async function validateCommand(options: ValidateOptions = {}): Promise<vo
     log.warn('No templates found')
   } else if (result.data.summary.invalid === 0) {
     log.info(`  ${pc.green('All references are valid!')}`)
-    log.info(
-      `  ${pc.green(String(result.data.summary.valid))} reference(s) validated across ${result.data.summary.templates} template(s)`,
-    )
-    if (!isRemote) {
+    printSummaryMetrics([
+      {
+        value: result.data.summary.valid,
+        label: `${pluralize(result.data.summary.valid, 'valid reference')}`,
+        color: pc.green,
+      },
+      {
+        value: result.data.summary.templates,
+        label: `${pluralize(result.data.summary.templates, 'template')} scanned`,
+        color: pc.dim,
+      },
+    ])
+    if (isLocal) {
       log.info('')
-      log.info(`  ${pc.dim(`Use ${pc.cyan('--remote')} to check against provider`)}`)
+      log.info(`  ${pc.dim(`Run ${pc.cyan('envi validate')} to check against provider`)}`)
     }
   } else {
-    log.info(
-      `  ${pc.green(`${result.data.summary.valid} valid`)}, ${pc.red(`${result.data.summary.invalid} invalid`)} ` +
-        `across ${result.data.summary.templates} template(s)`,
-    )
+    printSummaryMetrics([
+      { value: result.data.summary.valid, label: 'valid', color: pc.green },
+      { value: result.data.summary.invalid, label: 'invalid', color: pc.red },
+      {
+        value: result.data.summary.templates,
+        label: `${pluralize(result.data.summary.templates, 'template')} scanned`,
+        color: pc.dim,
+      },
+    ])
     log.info('')
     log.info(`  ${pc.red('Fix invalid references before running sync')}`)
 
     const missingVars = collectMissingDynamicVars(result.issues)
-    if (isRemote && missingVars.length > 0) {
+    if (!isLocal && missingVars.length > 0) {
       log.info('')
       log.info(`  ${pc.yellow(`Missing dynamic vars: ${missingVars.join(', ')}`)}`)
       log.detail(`Pass required vars: ${missingVars.map((name) => `--var ${name}=<value>`).join(' ')}`)

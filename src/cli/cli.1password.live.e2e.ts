@@ -106,60 +106,20 @@ describe('live 1Password CLI e2e', () => {
     })
   })
 
-  liveTest('validate covers local format checks and remote provider checks', async () => {
+  liveTest('validate defaults to provider checks and supports local mode', async () => {
     await withWorkspace(async (workspaceDir) => {
-      const localValidate = await runCliJson(workspaceDir, ['--json', 'validate'])
-      expect(localValidate.command).toBe('validate')
-      expect(localValidate.ok).toBe(true)
-      expect(localValidate.data.summary.invalid).toBe(0)
-      expect(localValidate.data.summary.templates).toBe(3)
-
-      const remoteValidate = await runCliJson(workspaceDir, ['--json', 'validate', '--remote'])
+      const remoteValidate = await runCliJson(workspaceDir, ['--json', 'validate'])
       expect(remoteValidate.command).toBe('validate')
       expect(remoteValidate.ok).toBe(true)
       expect(remoteValidate.data.remote).toBe(true)
       expect(remoteValidate.data.summary.invalid).toBe(0)
-    })
-  })
 
-  liveTest('provider options are wired in live CLI (backend + resolve mode)', async () => {
-    await withWorkspace(async (workspaceDir) => {
-      const statusCliBackend = await runCliJson(workspaceDir, ['--json', '--provider-opt', 'backend=cli', 'status'])
-      expect(statusCliBackend.command).toBe('status')
-      expect(statusCliBackend.ok).toBe(true)
-      expect(statusCliBackend.data.provider.auth.success).toBe(true)
-      expect(statusCliBackend.data.provider.auth.type).toBe('cli')
-
-      const reference = `op://${getVaultName()}/api-envs/DATABASE_URL`
-      const secondReference = `op://${getVaultName()}/api-envs/JWT_SECRET`
-
-      const batch = await runCliJson(workspaceDir, [
-        '--json',
-        '--provider-opt',
-        'resolveMode=batch',
-        'resolve',
-        reference,
-        secondReference,
-      ])
-      expect(batch.ok).toBe(true)
-      expect(batch.data.results.map((entry: { secret: string }) => entry.secret)).toEqual([
-        getSeedFieldValue('api-envs', 'DATABASE_URL'),
-        getSeedFieldValue('api-envs', 'JWT_SECRET'),
-      ])
-
-      const sequential = await runCliJson(workspaceDir, [
-        '--json',
-        '--provider-opt',
-        'resolveMode=sequential',
-        'resolve',
-        reference,
-        secondReference,
-      ])
-      expect(sequential.ok).toBe(true)
-      expect(sequential.data.results.map((entry: { secret: string }) => entry.secret)).toEqual([
-        getSeedFieldValue('api-envs', 'DATABASE_URL'),
-        getSeedFieldValue('api-envs', 'JWT_SECRET'),
-      ])
+      const localValidate = await runCliJson(workspaceDir, ['--json', 'validate', '--local'])
+      expect(localValidate.command).toBe('validate')
+      expect(localValidate.ok).toBe(true)
+      expect(localValidate.data.remote).toBe(false)
+      expect(localValidate.data.summary.invalid).toBe(0)
+      expect(localValidate.data.summary.templates).toBe(3)
     })
   })
 
@@ -170,7 +130,7 @@ describe('live 1Password CLI e2e', () => {
       for (const args of [
         ['--json', 'diff'],
         ['--json', 'sync', '--no-backup'],
-        ['--json', 'validate', '--remote'],
+        ['--json', 'validate'],
         ['--json', 'run', '--', 'printenv', 'JWT_SECRET'],
       ]) {
         const result = await runCliRaw(workspaceDir, args, {
@@ -572,9 +532,6 @@ async function prepareWorkspace(workspaceDir: string, vaultName: string): Promis
     JSON.stringify(
       {
         provider: '1password',
-        providerOptions: {
-          backend: 'sdk',
-        },
         vars: { PROFILE: 'local' },
         templateFile: '.env.example',
         outputFile: '.env',
@@ -641,7 +598,6 @@ async function runCliRaw(
   args: string[],
   envOverrides: Record<string, string | undefined> = {},
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const normalizedArgs = withDefaultBackend(args)
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries({
     ...process.env,
@@ -654,7 +610,7 @@ async function runCliRaw(
 
   const startedAt = Date.now()
 
-  const proc = Bun.spawn(['bun', CLI_PATH, ...normalizedArgs], {
+  const proc = Bun.spawn(['bun', CLI_PATH, ...args], {
     cwd: workspaceDir,
     env,
     stdout: 'pipe',
@@ -667,17 +623,17 @@ async function runCliRaw(
 
   const elapsedMs = Date.now() - startedAt
   const testName = testContext.getStore() ?? 'suite.setup'
-  const command = findCommandName(normalizedArgs)
+  const command = findCommandName(args)
   commandBenchmarks.push({
     testName,
     command,
-    args: normalizedArgs,
+    args,
     elapsedMs,
     exitCode,
   })
 
   if (elapsedMs >= SLOW_COMMAND_THRESHOLD_MS) {
-    console.info(`[bench][command] ${elapsedMs}ms | test="${testName}" | cmd="${normalizedArgs.join(' ')}"`)
+    console.info(`[bench][command] ${elapsedMs}ms | test="${testName}" | cmd="${args.join(' ')}"`)
   }
 
   return { stdout, stderr, exitCode }
@@ -711,23 +667,6 @@ function liveTest(name: string, run: () => Promise<void>): void {
   })
 }
 
-function withDefaultBackend(args: string[]): string[] {
-  if (hasProviderBackendOverride(args)) {
-    return args
-  }
-
-  return ['--provider-opt', 'backend=sdk', ...args]
-}
-
-function hasProviderBackendOverride(args: string[]): boolean {
-  for (let index = 0; index < args.length; index++) {
-    if (args[index] !== '--provider-opt') continue
-    const value = args[index + 1]
-    if (value?.startsWith('backend=')) return true
-  }
-  return false
-}
-
 function findCommandName(args: string[]): string {
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]
@@ -748,7 +687,6 @@ function findCommandName(args: string[]): string {
 function takesOptionValue(arg: string): boolean {
   return (
     arg === '--var' ||
-    arg === '--provider-opt' ||
     arg === '--config' ||
     arg === '--only' ||
     arg === '--output' ||

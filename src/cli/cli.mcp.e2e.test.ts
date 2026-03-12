@@ -236,7 +236,7 @@ describe('MCP server e2e', () => {
     await mkdir(path.join(workDir, 'app'), { recursive: true })
     await Bun.write(path.join(workDir, 'app/.env.example'), 'SECRET=op://vault/item/field\nPORT=3000\n')
 
-    const validate = parseContent(await callTool('validate'))
+    const validate = parseContent(await callTool('validate', { local: true }))
     expect(validate.command).toBe('validate')
     expect(validate.ok).toBe(true)
     expect(validate.data.summary.templates).toBe(1)

@@ -10,6 +10,10 @@ const includeShared = Bun.argv.includes('--include-shared') || !Bun.argv.include
 const dryRun = Bun.argv.includes('--dry-run')
 const strict = process.env['ENVI_E2E_CLEANUP_STRICT'] === 'true'
 
+function countLabel(count: number, singular: string, plural?: string): string {
+  return `${count} ${count === 1 ? singular : (plural ?? `${singular}s`)}`
+}
+
 const config = await loadOnePasswordE2EConfig()
 if (!config) {
   console.info('[cleanup] skipped (missing ENVI_1PASSWORD_E2E_SERVICE_ACCOUNT_TOKEN)')
@@ -27,7 +31,7 @@ if (candidates.length === 0) {
   process.exit(0)
 }
 
-console.info(`[cleanup] matched ${candidates.length} vault(s)`)
+console.info(`[cleanup] matched ${countLabel(candidates.length, 'vault')}`)
 
 const failures: Array<{ title: string; error: string }> = []
 for (const candidate of candidates) {
@@ -47,7 +51,7 @@ for (const candidate of candidates) {
 }
 
 if (failures.length > 0) {
-  console.error(`[cleanup] ${failures.length} vault(s) failed to delete`)
+  console.error(`[cleanup] ${countLabel(failures.length, 'vault')} failed to delete`)
   if (strict) {
     process.exit(1)
   }

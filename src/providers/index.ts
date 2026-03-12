@@ -28,6 +28,6 @@ export function toNativeReference(reference: string): string {
   return normalizeSecretReferenceInput(reference)
 }
 
-export function createProvider(options: Record<string, string> = {}): Provider {
-  return new OnePasswordProvider(options)
+export function createProvider(): Provider {
+  return new OnePasswordProvider()
 }

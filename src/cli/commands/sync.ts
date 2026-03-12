@@ -11,6 +11,7 @@ import {
   printCommandBanner,
   printMultilineDetails,
   printSummaryBanner,
+  printSummaryMetrics,
   withCommandProgress,
 } from './common'
 
@@ -165,12 +166,13 @@ export async function syncCommand(options: { dryRun: boolean; noBackup: boolean 
     const { newCount, updateCount, customCount, unchangedCount } = displayChanges(pathResult.changes)
 
     log.info('')
-    log.info(
-      `  Summary: ${pc.green(`${newCount} new`)}, ` +
-        `${pc.yellow(`${updateCount} updated`)}, ` +
-        `${pc.cyan(`${customCount} custom`)}, ` +
-        `${pc.dim(`${unchangedCount} unchanged`)}`,
-    )
+    log.info('  Summary:')
+    printSummaryMetrics([
+      { value: newCount, label: 'new', color: pc.green },
+      { value: updateCount, label: 'updated', color: pc.yellow },
+      { value: customCount, label: 'custom', color: pc.cyan },
+      { value: unchangedCount, label: 'unchanged', color: pc.dim },
+    ])
 
     if (options.dryRun) {
       log.warn('Dry run - no changes written')
@@ -182,16 +184,17 @@ export async function syncCommand(options: { dryRun: boolean; noBackup: boolean 
   }
 
   printSummaryBanner()
-  log.info(
-    `  Files processed: ${pc.green(`${result.data.summary.success} success`)}, ` +
-      `${pc.red(`${result.data.summary.failed} failed`)}, ` +
-      `${pc.dim(`${result.data.summary.skipped} skipped`)}`,
-  )
-  log.info(
-    `  Variables: ${pc.green(`${result.data.summary.new} new`)}, ` +
-      `${pc.yellow(`${result.data.summary.updated} updated`)}, ` +
-      `${pc.cyan(`${result.data.summary.custom} custom`)}`,
-  )
+  printSummaryMetrics([
+    { value: result.data.summary.success, label: 'files succeeded', color: pc.green },
+    { value: result.data.summary.failed, label: 'files failed', color: pc.red },
+    { value: result.data.summary.skipped, label: 'files skipped', color: pc.dim },
+  ])
+  log.info('')
+  printSummaryMetrics([
+    { value: result.data.summary.new, label: 'new variables', color: pc.green },
+    { value: result.data.summary.updated, label: 'updated variables', color: pc.yellow },
+    { value: result.data.summary.custom, label: 'custom variables', color: pc.cyan },
+  ])
   log.info('')
 
   process.exitCode = result.ok ? 0 : 1

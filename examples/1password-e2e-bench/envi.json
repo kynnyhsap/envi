@@ -1,8 +1,5 @@
 {
   "provider": "1password",
-  "providerOptions": {
-    "backend": "cli"
-  },
   "vars": {
     "PROFILE": "local"
   },

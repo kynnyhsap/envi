@@ -57,7 +57,6 @@ const GLOBAL_HELP_OPTIONS: HelpOption[] = [
     flags: '--var <NAME=value>',
     description: 'Dynamic reference variable (repeatable)',
   },
-  { flags: '--provider-opt <k=v>', description: 'Provider-specific option (repeatable)' },
   { flags: '--config <path>', description: 'Load config from JSON file' },
   { flags: '--only <paths>', description: 'Only process specified paths (comma-separated)' },
   { flags: '--output <file>', description: `Output file name (default: ${DEFAULT_OUTPUT_FILE})` },
@@ -147,8 +146,8 @@ const COMMAND_HELP: Record<string, CommandHelp> = {
     name: 'validate',
     description: 'Validate all secret references in templates',
     usage: 'envi validate [options]',
-    options: [{ flags: '-r, --remote', description: 'Check references against provider (slower, requires auth)' }],
-    examples: ['envi validate', 'envi validate --remote', 'envi validate --only apps/api'],
+    options: [{ flags: '-l, --local', description: 'Validate format locally only (skip provider checks)' }],
+    examples: ['envi validate', 'envi validate --local', 'envi validate --only apps/api'],
   },
 }
 
@@ -291,7 +290,6 @@ interface GlobalOptions {
   json?: boolean
   color?: boolean
   var?: string | string[]
-  providerOpt?: string | string[]
   config?: string
   only?: string
   output?: string
@@ -311,22 +309,6 @@ function rewriteTemplateFlag(args: string[]): string[] {
     if (arg.startsWith('--template=')) return `--template-file=${arg.slice('--template='.length)}`
     return arg
   })
-}
-
-function parseProviderOpts(opts: string | string[] | undefined): Record<string, string> {
-  const values = Array.isArray(opts) ? opts : opts ? [opts] : []
-  const entries = values.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
-  if (entries.length === 0) return {}
-
-  const result: Record<string, string> = {}
-  for (const entry of entries) {
-    const eq = entry.indexOf('=')
-    if (eq === -1) {
-      throw new Error(`Invalid --provider-opt format: "${entry}" (expected key=value)`)
-    }
-    result[entry.slice(0, eq)] = entry.slice(eq + 1)
-  }
-  return result
 }
 
 function parseVars(opts: string | string[] | undefined): Record<string, string> {
@@ -367,12 +349,9 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
     }
   }
 
-  const cliProviderOpts = parseProviderOpts(options.providerOpt)
-
   const configFile: Record<string, unknown> = {}
   if (fileConfig.vars !== undefined) configFile['vars'] = fileConfig.vars
   if (fileConfig.provider !== undefined) configFile['provider'] = fileConfig.provider
-  if (fileConfig.providerOptions !== undefined) configFile['providerOptions'] = fileConfig.providerOptions
   if (fileConfig.paths !== undefined) configFile['paths'] = fileConfig.paths
   if (fileConfig.outputFile !== undefined) configFile['outputFile'] = fileConfig.outputFile
   if (fileConfig.templateFile !== undefined) configFile['templateFile'] = fileConfig.templateFile
@@ -382,9 +361,6 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
 
   const overrides: Record<string, unknown> = {}
   if (options.var !== undefined) overrides['vars'] = parseVars(options.var)
-  if (options.providerOpt !== undefined && options.providerOpt.length > 0) {
-    overrides['providerOptions'] = cliProviderOpts
-  }
   const onlyPaths = parseOnlyFlag(options.only)
   if (onlyPaths !== undefined) overrides['paths'] = onlyPaths
   if (options.output !== undefined) overrides['outputFile'] = options.output
@@ -409,7 +385,6 @@ async function applyGlobalOptions(options: GlobalOptions): Promise<void> {
     json: resolved.json,
     vars: resolved.vars,
     provider: resolved.provider,
-    providerOptions: resolved.providerOptions,
   })
 }
 
@@ -468,7 +443,6 @@ function findCommandName(args: string[]): string | undefined {
       const takesValue =
         arg === '--config' ||
         arg === '--var' ||
-        arg === '--provider-opt' ||
         arg === '--only' ||
         arg === '--output' ||
         arg === '--template-file' ||
@@ -529,7 +503,6 @@ cli.option('-q, --quiet', 'Suppress non-essential output')
 cli.option('--json', 'Output machine-readable JSON')
 cli.option('--no-color', 'Disable ANSI colors')
 cli.option('--var <NAME=value>', 'Dynamic reference variable (repeatable)')
-cli.option('--provider-opt <key=value>', 'Provider-specific option (repeatable)')
 cli.option('--config <path>', 'Load config from JSON file')
 cli.option('--only <paths>', 'Only process specified paths (comma-separated)')
 cli.option('--output <file>', `Output file name (default: ${DEFAULT_OUTPUT_FILE})`)
@@ -646,10 +619,10 @@ addExamples(
 addExamples(
   cli
     .command('validate', 'Validate all secret references in templates')
-    .option('-r, --remote', 'Check references against provider (slower, requires auth)'),
-  ['envi validate', 'envi validate --remote', 'envi validate --only apps/api'],
-).action(async (options: { remote?: boolean } & GlobalOptions) => {
-  await withGlobalOptions(options, () => validateCommand({ remote: options.remote ?? false }))
+    .option('-l, --local', 'Validate format locally only (skip provider checks)'),
+  ['envi validate', 'envi validate --local', 'envi validate --only apps/api'],
+).action(async (options: { local?: boolean } & GlobalOptions) => {
+  await withGlobalOptions(options, () => validateCommand({ local: options.local ?? false }))
 })
 
 try {

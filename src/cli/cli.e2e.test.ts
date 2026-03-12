@@ -258,7 +258,7 @@ describe('CLI e2e tests', () => {
         'API_KEY=op://envi-example/api-service-${PROFILE}/API_KEY\n',
       )
 
-      const { json, exitCode } = await runCliJson('validate', '--json', '--only', 'test-app')
+      const { json, exitCode } = await runCliJson('validate', '--json', '--local', '--only', 'test-app')
 
       expect(exitCode).toBe(0)
       expect(json.ok).toBe(true)
@@ -697,8 +697,6 @@ describe('CLI e2e tests', () => {
         3000,
         { OP_SERVICE_ACCOUNT_TOKEN: 'invalid', OP_ACCOUNT_NAME: '' },
         'status',
-        '--provider-opt',
-        'backend=sdk',
       )
 
       expect(exitCode).toBe(0)
@@ -708,16 +706,12 @@ describe('CLI e2e tests', () => {
       expect(output).toContain('Authentication failed')
     })
 
-    it('should report provider auth/availability errors for validate --remote', async () => {
+    it('should report provider auth/availability errors for default validate mode', async () => {
       await Bun.write(join(TEST_DIR, 'test-app/.env.example'), 'API_KEY=op://example-vault/example-item/API_KEY\n')
 
-      const { stdout, stderr, exitCode } = await runCli(
+      const { stdout, stderr, exitCode } = await runCliWithEnv(
+        { OP_SERVICE_ACCOUNT_TOKEN: 'invalid-token', OP_ACCOUNT_NAME: '' },
         'validate',
-        '--remote',
-        '--provider-opt',
-        'backend=cli',
-        '--provider-opt',
-        'cliBinary=op-does-not-exist',
       )
 
       expect(exitCode).toBe(1)
@@ -786,13 +780,6 @@ QUOTED="value with spaces"
       // Verify content preserved
       const restored = await Bun.file(join(TEST_DIR, 'test-app/.env')).text()
       expect(restored).toBe(content)
-    })
-
-    it('should fail on invalid provider opt format', async () => {
-      const { stdout, stderr, exitCode } = await runCli('--provider-opt', 'backend', 'backup')
-
-      expect(exitCode).toBe(1)
-      expect(stdout + stderr).toContain('Invalid --provider-opt format')
     })
   })
 })

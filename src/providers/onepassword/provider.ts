@@ -1,8 +1,5 @@
 /**
- * 1Password secret provider.
- *
- * Prefers the JavaScript SDK (`@1password/sdk`) when available and authenticated.
- * Users can opt into the 1Password CLI (`op`) via `--provider-opt backend=cli`.
+ * 1Password secret provider (SDK-only).
  */
 
 import { createClient, DesktopAuth, type Client } from '@1password/sdk'
@@ -10,10 +7,8 @@ import { createClient, DesktopAuth, type Client } from '@1password/sdk'
 import { VERSION } from '../../app/config'
 import { mapWithConcurrency } from '../../shared/concurrency'
 import { exec, type ExecResult } from '../../shared/process/exec'
-import type { AuthInfo, AuthFailureHints, AvailabilityResult, Provider, ResolveSecretsResult } from '../provider'
+import type { AuthFailureHints, AuthInfo, AvailabilityResult, Provider, ResolveSecretsResult } from '../provider'
 
-type BackendMode = 'auto' | 'cli' | 'sdk'
-type SelectedBackend = 'cli' | 'sdk'
 type ResolveMode = 'auto' | 'batch' | 'sequential'
 
 const DEFAULT_RESOLVE_CHUNK_SIZE = 100
@@ -24,13 +19,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), ms)
     promise.then(
-      (v) => {
+      (value) => {
         clearTimeout(timer)
-        resolve(v)
+        resolve(value)
       },
-      (e) => {
+      (error) => {
         clearTimeout(timer)
-        reject(e)
+        reject(error)
       },
     )
   })
@@ -42,49 +37,30 @@ interface OnePasswordDeps {
   DesktopAuth?: typeof DesktopAuth
 }
 
-interface OpAccount {
-  url?: string
-  email?: string
-  user_uuid?: string
-  account_uuid?: string
-}
-
-interface AuthAttemptState {
-  tried: SelectedBackend[]
-  cliError?: string
-  sdkError?: string
-}
-
 export class OnePasswordProvider implements Provider {
   readonly id = '1password'
   readonly name = '1Password'
   readonly scheme = 'op://'
 
-  private readonly backend: BackendMode
   private readonly resolveMode: ResolveMode
   private readonly resolveChunkSize: number
   private readonly resolveConcurrency: number
-  private readonly cliBinary: string
   private readonly accountName: string | undefined
-  private detectedAccountName: string | undefined
 
   private readonly _exec: (command: string, args?: string[], timeoutMs?: number) => Promise<ExecResult>
   private readonly _createClient: typeof createClient
   private readonly _DesktopAuth: typeof DesktopAuth
 
   private sdkClient: Client | null = null
-  private selectedBackend: SelectedBackend | null = null
   private authVerified = false
-  private lastAuthAttempt: AuthAttemptState | null = null
+  private lastAuthError: string | null = null
   private readonly secretCache = new Map<string, string>()
   private readonly inFlightResolutions = new Map<string, Promise<string>>()
 
   constructor(options: Record<string, string> = {}, deps: OnePasswordDeps = {}) {
-    const rawBackend = (options['backend'] ?? 'sdk').trim()
-    this.backend = isBackendMode(rawBackend) ? rawBackend : 'auto'
-
     const rawResolveMode = (options['resolveMode'] ?? process.env['ENVI_OP_RESOLVE_MODE'] ?? 'auto').trim()
     this.resolveMode = isResolveMode(rawResolveMode) ? rawResolveMode : 'auto'
+
     this.resolveChunkSize = parsePositiveInt(
       options['resolveChunkSize'] ?? process.env['ENVI_OP_RESOLVE_CHUNK_SIZE'],
       DEFAULT_RESOLVE_CHUNK_SIZE,
@@ -94,7 +70,6 @@ export class OnePasswordProvider implements Provider {
       DEFAULT_RESOLVE_CONCURRENCY,
     )
 
-    this.cliBinary = options['cliBinary'] ?? 'op'
     this.accountName = options['accountName'] ?? process.env['OP_ACCOUNT_NAME']
 
     this._exec = deps.exec ?? exec
@@ -103,48 +78,31 @@ export class OnePasswordProvider implements Provider {
   }
 
   getAuthInfo(): AuthInfo {
-    const active = this.selectedBackend
-    if (active === 'cli') {
-      return { type: 'cli', identifier: this.cliBinary }
-    }
-    if (active === 'sdk') {
-      return this.getSdkAuthInfo()
-    }
-
-    if (this.backend === 'cli') {
-      return { type: 'cli', identifier: this.cliBinary }
-    }
-    if (this.backend === 'sdk') {
-      return this.getSdkAuthInfo()
-    }
-
-    return { type: 'auto', identifier: 'sdk->cli' }
+    return this.getSdkAuthInfo()
   }
 
   async checkAvailability(): Promise<AvailabilityResult> {
-    if (this.backend === 'cli') {
-      const cli = await this.checkCliAvailability()
-      const statusLines = [cli.available ? `${this.cliBinary}: installed` : `${this.cliBinary}: not found`]
+    const statusLines: string[] = []
 
-      if (!cli.available) {
-        return {
-          available: false,
-          statusLines,
-          helpLines: [
-            `Install and sign in to 1Password CLI (${this.cliBinary}):`,
-            `- Install the ${this.cliBinary} binary and ensure it is on PATH`,
-            `- Run ${this.cliBinary} signin`,
-          ],
-        }
-      }
-
+    const token = process.env['OP_SERVICE_ACCOUNT_TOKEN']
+    if (token) {
+      statusLines.push('OP_SERVICE_ACCOUNT_TOKEN: found')
       return { available: true, statusLines }
     }
 
-    const sdk = await this.checkSdkAvailability()
-    const statusLines = [...sdk.statusLines]
+    statusLines.push('OP_SERVICE_ACCOUNT_TOKEN: not set')
 
-    if (!sdk.available) {
+    const appRunning = await is1PasswordAppRunning(this._exec)
+    statusLines.push(appRunning ? '1Password desktop app: running' : '1Password desktop app: not running')
+
+    if (this.accountName) {
+      statusLines.push(`OP_ACCOUNT_NAME: set (${this.accountName})`)
+    } else {
+      statusLines.push('OP_ACCOUNT_NAME: not set')
+    }
+
+    const available = appRunning && !!this.accountName
+    if (!available) {
       return {
         available: false,
         statusLines,
@@ -160,67 +118,28 @@ export class OnePasswordProvider implements Provider {
   }
 
   async verifyAuth(): Promise<{ success: boolean; error?: string }> {
-    this.lastAuthAttempt = { tried: [] }
-
-    if (this.backend === 'cli') {
-      const result = await this.verifyCliAuth()
-      return result
-    }
-
-    if (this.backend === 'sdk') {
-      const result = await this.verifySdkAuth()
-      return result
-    }
-
-    const sdkAvailable = (await this.checkSdkAvailability()).available
-    const cliAvailable = (await this.checkCliAvailability()).available
-
-    if (sdkAvailable) {
-      const sdk = await this.verifySdkAuth()
-      if (sdk.success) return sdk
-    }
-
-    if (cliAvailable) {
-      const cli = await this.verifyCliAuth()
-      if (cli.success) return cli
-    }
-
-    const sdkError = this.lastAuthAttempt?.sdkError
-    const cliError = this.lastAuthAttempt?.cliError
-
-    if (sdkError && cliError) {
-      return { success: false, error: `SDK: ${sdkError}; CLI: ${cliError}` }
-    }
-    return { success: false, error: sdkError ?? cliError ?? 'No authentication method available' }
+    return this.verifySdkAuth()
   }
 
   getAuthFailureHints(): AuthFailureHints {
-    const tried = this.lastAuthAttempt?.tried ?? []
-
-    const lines: string[] = []
-
-    if (tried.includes('sdk')) {
-      const sdkInfo = this.getSdkAuthInfo()
-      if (sdkInfo.type === 'desktop-app') {
-        lines.push('Make sure "Integrate with other apps" is enabled in Settings > Developer')
-        const sdkError = this.lastAuthAttempt?.sdkError
-        if (sdkError && sdkError.toLowerCase().includes('account not found')) {
-          lines.push('Check OP_ACCOUNT_NAME / --provider-opt accountName: it must match an account in the desktop app')
-          lines.push('Common values look like a sign-in address (e.g. my.1password.com, my.1password.eu)')
-        } else {
-          lines.push('Set OP_ACCOUNT_NAME or pass --provider-opt accountName=<name>')
-        }
-      } else {
-        lines.push('Check your OP_SERVICE_ACCOUNT_TOKEN value')
-      }
+    const sdkInfo = this.getSdkAuthInfo()
+    if (sdkInfo.type === 'service-account') {
+      return { lines: ['Check your OP_SERVICE_ACCOUNT_TOKEN value'] }
     }
 
-    if (tried.includes('cli')) {
-      lines.push(`If you want to use the CLI, make sure you're signed in: ${this.cliBinary} whoami`)
-      lines.push(`Then run: ${this.cliBinary} signin`)
+    const lines: string[] = ['Make sure "Integrate with other apps" is enabled in Settings > Developer']
+    if (!this.accountName) {
+      lines.push('Set OP_ACCOUNT_NAME env var (for example: my.1password.com)')
+      return { lines }
     }
 
-    return { lines: lines.length > 0 ? lines : ['No authentication method available'] }
+    const sdkError = this.lastAuthError
+    if (sdkError && sdkError.toLowerCase().includes('account not found')) {
+      lines.push('Check OP_ACCOUNT_NAME: it must match an account in the 1Password desktop app')
+      lines.push('Common values look like a sign-in address (e.g. my.1password.com, my.1password.eu)')
+    }
+
+    return { lines }
   }
 
   async resolveSecret(reference: string): Promise<string> {
@@ -260,11 +179,6 @@ export class OnePasswordProvider implements Provider {
       return { resolved, errors }
     }
 
-    if (this.selectedBackend === 'cli') {
-      await this.resolveSecretsViaCli(toFetch, resolved, errors)
-      return { resolved, errors }
-    }
-
     const client = await this.getSdkClient()
     await this.resolveSecretsViaSdk(client, toFetch, resolved, errors)
 
@@ -274,13 +188,72 @@ export class OnePasswordProvider implements Provider {
   async listVaults(): Promise<{ id: string; name: string }[]> {
     await this.ensureAuthenticated()
 
-    if (this.selectedBackend === 'cli') {
-      return this.cliListVaults()
-    }
-
     const client = await this.getSdkClient()
     const vaults = await client.vaults.list(undefined)
-    return vaults.map((v) => ({ id: v.id, name: v.title }))
+    return vaults.map((vault) => ({ id: vault.id, name: vault.title }))
+  }
+
+  private getSdkAuthInfo(): AuthInfo {
+    const token = process.env['OP_SERVICE_ACCOUNT_TOKEN']
+    if (token) {
+      return { type: 'service-account', identifier: 'set' }
+    }
+
+    return { type: 'desktop-app', identifier: this.accountName ?? 'unknown' }
+  }
+
+  private async verifySdkAuth(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const client = await this.getSdkClient()
+      await withTimeout(
+        client.vaults.list(undefined),
+        SDK_TIMEOUT_MS,
+        'Timed out listing vaults (is desktop app integration enabled?)',
+      )
+      this.authVerified = true
+      this.lastAuthError = null
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.lastAuthError = message
+      return { success: false, error: message }
+    }
+  }
+
+  private async ensureAuthenticated(): Promise<void> {
+    if (this.authVerified) return
+
+    const result = await this.verifyAuth()
+    if (!result.success) {
+      throw new Error(result.error ?? 'Authentication failed')
+    }
+  }
+
+  private async getSdkClient(): Promise<Client> {
+    if (this.sdkClient) return this.sdkClient
+
+    const token = process.env['OP_SERVICE_ACCOUNT_TOKEN']
+    const auth = token ? token : this.getDesktopAuth()
+
+    this.sdkClient = await withTimeout(
+      this._createClient({
+        auth,
+        integrationName: 'envi-cli',
+        integrationVersion: VERSION,
+      }),
+      SDK_TIMEOUT_MS,
+      'Timed out connecting to 1Password (is desktop app integration enabled?)',
+    )
+
+    return this.sdkClient
+  }
+
+  private getDesktopAuth() {
+    if (!this.accountName) {
+      throw new Error('1Password account name is required for desktop app auth. Set OP_ACCOUNT_NAME env var.')
+    }
+
+    return new this._DesktopAuth(this.accountName)
   }
 
   private async resolveReferenceCached(reference: string): Promise<string> {
@@ -303,39 +276,8 @@ export class OnePasswordProvider implements Provider {
   }
 
   private async resolveReference(reference: string): Promise<string> {
-    if (this.selectedBackend === 'cli') {
-      return this.cliRead(reference)
-    }
-
     const client = await this.getSdkClient()
     return client.secrets.resolve(reference)
-  }
-
-  private async resolveSecretsViaCli(
-    references: string[],
-    resolved: Map<string, string>,
-    errors: Map<string, string>,
-  ): Promise<void> {
-    if (this.resolveMode === 'sequential') {
-      for (const reference of references) {
-        try {
-          resolved.set(reference, await this.resolveReference(reference))
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error)
-          errors.set(reference, msg)
-        }
-      }
-      return
-    }
-
-    await mapWithConcurrency(references, this.resolveConcurrency, async (reference) => {
-      try {
-        resolved.set(reference, await this.resolveReferenceCached(reference))
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        errors.set(reference, msg)
-      }
-    })
   }
 
   private async resolveSecretsViaSdk(
@@ -352,8 +294,8 @@ export class OnePasswordProvider implements Provider {
         try {
           resolved.set(reference, await this.resolveReference(reference))
         } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error)
-          errors.set(reference, msg)
+          const message = error instanceof Error ? error.message : String(error)
+          errors.set(reference, message)
         }
       }
       return
@@ -371,17 +313,15 @@ export class OnePasswordProvider implements Provider {
         }
       }
 
-      if (!batchFailed) {
-        return
-      }
+      if (!batchFailed) return
     }
 
     await mapWithConcurrency(references, this.resolveConcurrency, async (reference) => {
       try {
         resolved.set(reference, await this.resolveReferenceCached(reference))
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        errors.set(reference, msg)
+        const message = error instanceof Error ? error.message : String(error)
+        errors.set(reference, message)
       }
     })
   }
@@ -423,195 +363,6 @@ export class OnePasswordProvider implements Provider {
       return false
     }
   }
-
-  private getSdkAuthInfo(): AuthInfo {
-    const token = process.env['OP_SERVICE_ACCOUNT_TOKEN']
-    if (token) {
-      return { type: 'service-account', identifier: 'set' }
-    }
-    return { type: 'desktop-app', identifier: this.getEffectiveAccountName() ?? 'unknown' }
-  }
-
-  private getEffectiveAccountName(): string | undefined {
-    return this.accountName ?? this.detectedAccountName
-  }
-
-  private async detectAccountNameFromOp(): Promise<string | undefined> {
-    if (this.detectedAccountName) return this.detectedAccountName
-
-    const available = (await this.checkCliAvailability()).available
-    if (!available) return undefined
-
-    const result = await this._exec(this.cliBinary, ['account', 'list', '--format', 'json'])
-    if (result.exitCode !== 0) return undefined
-
-    const out = result.stdout.trim()
-    if (!out) return undefined
-
-    let accounts: OpAccount[]
-    try {
-      accounts = JSON.parse(out) as OpAccount[]
-    } catch {
-      return undefined
-    }
-
-    const urls = accounts.map((a) => (a.url ?? '').trim()).filter((u) => u.length > 0)
-
-    if (urls.length === 0) return undefined
-
-    const personal = urls.find((u) => u.startsWith('my.'))
-    this.detectedAccountName = personal ?? urls[0]
-    return this.detectedAccountName
-  }
-
-  private async checkCliAvailability(): Promise<{ available: boolean }> {
-    const result = await this._exec(this.cliBinary, ['--version'])
-    if (result.exitCode === 0) return { available: true }
-
-    const err = `${result.stderr}\n${result.stdout}`
-    if (looksLikeCommandNotFound(err) || looksLikeTimeout(err)) {
-      return { available: false }
-    }
-    return { available: true }
-  }
-
-  private async checkSdkAvailability(): Promise<{ available: boolean; statusLines: string[] }> {
-    const statusLines: string[] = []
-
-    const token = process.env['OP_SERVICE_ACCOUNT_TOKEN']
-    if (token) {
-      statusLines.push('OP_SERVICE_ACCOUNT_TOKEN: found')
-      return { available: true, statusLines }
-    }
-    statusLines.push('OP_SERVICE_ACCOUNT_TOKEN: not set')
-
-    const appRunning = await is1PasswordAppRunning(this._exec)
-    statusLines.push(appRunning ? '1Password desktop app: running' : '1Password desktop app: not running')
-
-    let hasAccountName = !!this.accountName
-    if (!hasAccountName && appRunning) {
-      const detected = await this.detectAccountNameFromOp()
-      if (detected) {
-        statusLines.push(`OP_ACCOUNT_NAME: auto (${detected})`)
-        hasAccountName = true
-      }
-    }
-
-    if (!hasAccountName) {
-      statusLines.push('OP_ACCOUNT_NAME: not set')
-    }
-
-    const available = appRunning
-    return { available, statusLines }
-  }
-
-  private async verifyCliAuth(): Promise<{ success: boolean; error?: string }> {
-    this.lastAuthAttempt?.tried.push('cli')
-
-    const available = (await this.checkCliAvailability()).available
-    if (!available) {
-      const error = `${this.cliBinary} not found`
-      if (this.lastAuthAttempt) this.lastAuthAttempt.cliError = error
-      return { success: false, error }
-    }
-
-    const result = await this._exec(this.cliBinary, ['whoami', '--format', 'json'])
-    if (result.exitCode === 0) {
-      this.selectedBackend = 'cli'
-      this.authVerified = true
-      return { success: true }
-    }
-
-    const error = normalizeCliError(result, `${this.cliBinary} whoami`)
-    if (this.lastAuthAttempt) this.lastAuthAttempt.cliError = error
-    return { success: false, error }
-  }
-
-  private async verifySdkAuth(): Promise<{ success: boolean; error?: string }> {
-    this.lastAuthAttempt?.tried.push('sdk')
-
-    try {
-      const client = await this.getSdkClient()
-      await withTimeout(
-        client.vaults.list(undefined),
-        SDK_TIMEOUT_MS,
-        'Timed out listing vaults (is desktop app integration enabled?)',
-      )
-      this.selectedBackend = 'sdk'
-      this.authVerified = true
-      return { success: true }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      if (this.lastAuthAttempt) this.lastAuthAttempt.sdkError = msg
-      return { success: false, error: msg }
-    }
-  }
-
-  private async ensureAuthenticated(): Promise<void> {
-    if (this.authVerified && this.selectedBackend) return
-
-    const result = await this.verifyAuth()
-    if (!result.success) {
-      throw new Error(result.error ?? 'Authentication failed')
-    }
-  }
-
-  private async getSdkClient(): Promise<Client> {
-    if (this.sdkClient) return this.sdkClient
-
-    const token = process.env['OP_SERVICE_ACCOUNT_TOKEN']
-    const auth = token ? token : await this.getDesktopAuth()
-
-    this.sdkClient = await withTimeout(
-      this._createClient({
-        auth,
-        integrationName: 'envi-cli',
-        integrationVersion: VERSION,
-      }),
-      SDK_TIMEOUT_MS,
-      'Timed out connecting to 1Password (is desktop app integration enabled?)',
-    )
-
-    return this.sdkClient
-  }
-
-  private async getDesktopAuth() {
-    const accountName = this.accountName ?? (await this.detectAccountNameFromOp())
-    if (!accountName) {
-      throw new Error(
-        '1Password account name is required for desktop app auth. ' +
-          'Set OP_ACCOUNT_NAME env var or pass --provider-opt accountName=<name>.',
-      )
-    }
-    return new this._DesktopAuth(accountName)
-  }
-
-  private async cliRead(reference: string): Promise<string> {
-    const result = await this._exec(this.cliBinary, ['read', reference])
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to resolve ${reference}: ${normalizeCliError(result, `${this.cliBinary} read`)}`)
-    }
-    return stripFinalNewline(result.stdout)
-  }
-
-  private async cliListVaults(): Promise<{ id: string; name: string }[]> {
-    const result = await this._exec(this.cliBinary, ['vault', 'list', '--format', 'json'])
-    if (result.exitCode !== 0) {
-      throw new Error(`Failed to list vaults: ${normalizeCliError(result, `${this.cliBinary} vault list`)}`)
-    }
-
-    const out = result.stdout.trim()
-    try {
-      const parsed = JSON.parse(out) as Array<{ id?: string; name?: string; title?: string }>
-      return parsed.map((v) => ({ id: v.id ?? '', name: v.name ?? v.title ?? '' }))
-    } catch {
-      throw new Error(`Failed to parse vault list output: ${out}`)
-    }
-  }
-}
-
-function isBackendMode(value: string): value is BackendMode {
-  return value === 'auto' || value === 'cli' || value === 'sdk'
 }
 
 function isResolveMode(value: string): value is ResolveMode {
@@ -620,6 +371,7 @@ function isResolveMode(value: string): value is ResolveMode {
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   if (!raw) return fallback
+
   const parsed = Number(raw)
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback
   return Math.floor(parsed)
@@ -636,8 +388,8 @@ function chunkArray<T>(items: T[], chunkSize: number): T[][] {
   if (items.length <= size) return [items]
 
   const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size))
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
   }
   return chunks
 }
@@ -660,31 +412,10 @@ function formatResolveReferenceError(error: unknown): string {
   return 'Failed to resolve reference'
 }
 
-function stripFinalNewline(value: string): string {
-  if (value.endsWith('\r\n')) return value.slice(0, -2)
-  if (value.endsWith('\n')) return value.slice(0, -1)
-  return value
-}
-
-function looksLikeCommandNotFound(text: string): boolean {
-  const t = text.toLowerCase()
-  return t.includes('enoent') || t.includes('not found') || t.includes('spawn')
-}
-
-function normalizeCliError(result: ExecResult, commandLabel: string): string {
-  const stderr = result.stderr.trim()
-  const stdout = result.stdout.trim()
-  if (stderr) return stderr
-  if (stdout) return stdout
-  return `${commandLabel} exited with code ${result.exitCode}`
-}
-
-async function is1PasswordAppRunning(run: (command: string, args?: string[]) => Promise<ExecResult>): Promise<boolean> {
+async function is1PasswordAppRunning(
+  run: (command: string, args?: string[], timeoutMs?: number) => Promise<ExecResult>,
+): Promise<boolean> {
   if (process.platform === 'win32') return false
   const result = await run('pgrep', ['-x', '1Password'])
   return result.exitCode === 0
-}
-
-function looksLikeTimeout(text: string): boolean {
-  return text.toLowerCase().includes('timed out')
 }

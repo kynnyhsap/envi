@@ -5,12 +5,15 @@ import type { EnvPathInfo } from '../../sdk/types'
 import type { Change } from '../../shared/env/types'
 import {
   createCommandContext,
+  formatCountNoun,
   maybeWriteJsonResult,
   printCommandBanner,
+  printIssuesAndExit,
   printMissingEnvPath,
   printMultilineDetails,
   printNoTemplatePath,
   printSummaryBanner,
+  printSummaryMetrics,
   withCommandProgress,
 } from './common'
 
@@ -51,7 +54,7 @@ function displayGitStyleDiff(changes: Change[], pathInfo: EnvPathInfo): void {
 
   if (localOnlyChanges.length > 0) {
     log.info('')
-    log.info(pc.dim(`  # ${localOnlyChanges.length} local-only var(s) will be preserved`))
+    log.info(pc.dim(`  # ${formatCountNoun(localOnlyChanges.length, 'local-only var')} will be preserved`))
   }
 }
 
@@ -77,6 +80,11 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
   if (maybeWriteJsonResult(result, config.json)) return
 
   printCommandBanner('Environment Diff', config.vars)
+
+  if (result.data.paths.length === 0 && result.issues.length > 0) {
+    log.info('')
+    printIssuesAndExit(result.issues)
+  }
 
   let printedPathBlock = false
 
@@ -105,7 +113,7 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
         envPath: pathInfo.envPath,
         includeNotFoundSuffix: true,
         suggestion: `Run ${pc.cyan('envi sync')} to create it`,
-        details: pendingNew > 0 ? [`${pendingNew} template var(s) will be created`] : [],
+        details: pendingNew > 0 ? [`${formatCountNoun(pendingNew, 'template var')} will be created`] : [],
       })
       continue
     }
@@ -118,7 +126,7 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
     if (newChanges.length === 0 && updatedChanges.length === 0 && localModifiedChanges.length === 0) {
       log.synced(`${pathInfo.envPath}`)
       if (localOnlyChanges.length > 0) {
-        log.detail(`${localOnlyChanges.length} local-only var(s)`)
+        log.detail(formatCountNoun(localOnlyChanges.length, 'local-only var'))
       }
       continue
     }
@@ -136,18 +144,32 @@ export async function diffCommand(options: { path?: string }): Promise<void> {
   if (!result.data.summary.hasAnyChanges) {
     log.info(`  ${pc.green('All environments are in sync!')}`)
     if (result.data.summary.localModified > 0) {
-      log.info(`  ${pc.blue(`${result.data.summary.localModified} local modification(s)`)} preserved`)
+      printSummaryMetrics([
+        {
+          value: result.data.summary.localModified,
+          label:
+            result.data.summary.localModified === 1 ? 'local modification preserved' : 'local modifications preserved',
+          color: pc.blue,
+        },
+      ])
     }
   } else {
-    log.info(
-      `  ${pc.green(`${result.data.summary.new} new`)}, ` +
-        `${pc.yellow(`${result.data.summary.updated} updated`)}, ` +
-        `${pc.blue(`${result.data.summary.localModified} local mods`)}, ` +
-        `${pc.dim(`${result.data.summary.unchanged} unchanged`)}`,
-    )
+    printSummaryMetrics([
+      { value: result.data.summary.new, label: 'new', color: pc.green },
+      { value: result.data.summary.updated, label: 'updated', color: pc.yellow },
+      { value: result.data.summary.localModified, label: 'local mods', color: pc.blue },
+      { value: result.data.summary.unchanged, label: 'unchanged', color: pc.dim },
+    ])
 
     if (failedPaths > 0 || missingEnvPaths > 0) {
-      log.info(`  ${pc.red(`${failedPaths} failed`)}, ${pc.yellow(`${missingEnvPaths} missing env file(s)`)}`)
+      printSummaryMetrics([
+        { value: failedPaths, label: 'failed', color: pc.red },
+        {
+          value: missingEnvPaths,
+          label: missingEnvPaths === 1 ? 'missing env file' : 'missing env files',
+          color: pc.yellow,
+        },
+      ])
     }
 
     log.info('')

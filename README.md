@@ -98,7 +98,7 @@ Format: `op://vault/item[/section]/field`
 
 ## 1Password
 
-Envi only supports 1Password. It can resolve secrets through the JavaScript SDK or the `op` CLI.
+Envi only supports 1Password via the JavaScript SDK.
 
 **Authentication** - Choose one:
 
@@ -120,38 +120,14 @@ Envi only supports 1Password. It can resolve secrets through the JavaScript SDK 
 - Envi automatically runs `bun run test:e2e:1password:cleanup` after live E2E to remove leaked temporary test vaults.
 - Official docs: [Service Account Rate Limits](https://developer.1password.com/docs/service-accounts/rate-limits/)
 
-**Backend selection** (optional):
-
-```bash
-# Default (SDK backend)
-envi status
-
-# Auto (SDK first, then CLI fallback)
-envi status --provider-opt backend=auto
-
-# Force CLI only
-envi status --provider-opt backend=cli
-
-# Force SDK only
-envi status --provider-opt backend=sdk
-
-# Use a specific op binary
-envi status --provider-opt cliBinary=/usr/local/bin/op
-
-# Secret resolution strategy tuning (1Password)
-envi sync --provider-opt resolveMode=batch
-envi sync --provider-opt resolveChunkSize=150
-envi sync --provider-opt resolveConcurrency=12
-```
-
 **Performance provider options (1Password):**
 
 - `resolveMode`: `auto` (default), `batch`, or `sequential`
-  - `auto` prefers batched SDK resolution with fallback, and concurrent CLI resolution
-  - `batch` forces batched SDK resolution and concurrent CLI resolution
+  - `auto` prefers batched SDK resolution with fallback
+  - `batch` forces batched SDK resolution
   - `sequential` forces per-reference resolution (useful as a baseline)
 - `resolveChunkSize`: chunk size for batched SDK calls (default: `100`)
-- `resolveConcurrency`: max parallel resolves for CLI/fallback paths (default: `8`)
+- `resolveConcurrency`: max parallel resolves for SDK fallback paths (default: `8`)
 
 **Secret reference format:** `op://vault/item[/section]/field`
 
@@ -184,7 +160,7 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 | `run`      | Run a command with secrets injected as env vars                     |
 | `backup`   | Backup current output files (`latest` plus archived snapshots)      |
 | `restore`  | Restore output files from the latest or a specific backup snapshot  |
-| `validate` | Validate secret reference format (use `--remote` to check provider) |
+| `validate` | Validate secret references against provider by default (`--local` for format-only) |
 
 ### Common Options
 
@@ -193,8 +169,7 @@ DB_PASSWORD=op://core-local/engine-api/database/password
 | `-d, --dry-run`        | Preview changes without writing files                               |
 | `-q, --quiet`          | Suppress non-essential output                                       |
 | `--json`               | Output machine-readable JSON (same envelope as SDK)                 |
-| `--var <NAME=value>`   | Dynamic reference variable (repeatable)                              |
-| `--provider-opt <k=v>` | 1Password backend option (repeatable)                               |
+| `--var <NAME=value>`   | Dynamic reference variable (repeatable)                             |
 | `--config <path>`      | Load config from JSON file                                          |
 | `--only <paths>`       | Filter which paths to process                                       |
 | `--template-file <f>`  | Override the template filename                                      |
@@ -534,17 +509,13 @@ OP_SERVICE_ACCOUNT_TOKEN="..." bun run bench:e2e
 | ----------------------------- | ----------------------------------------------------------- |
 | `OP_SERVICE_ACCOUNT_TOKEN`    | 1Password service account token (overrides desktop auth)    |
 | `OP_ACCOUNT_NAME`             | 1Password account name/sign-in address for desktop auth     |
-| `OP_CACHE`                    | 1Password CLI cache toggle (`true`/`false`, default `true`) |
 | `ENVI_OP_RESOLVE_MODE`        | 1Password resolve strategy (`auto`, `batch`, `sequential`)  |
 | `ENVI_OP_RESOLVE_CHUNK_SIZE`  | Chunk size for 1Password SDK `resolveAll` batching          |
-| `ENVI_OP_RESOLVE_CONCURRENCY` | Max parallel 1Password fallback/CLI resolves                |
+| `ENVI_OP_RESOLVE_CONCURRENCY` | Max parallel 1Password fallback resolves                    |
 
 ### Authentication Priority (1Password)
 
-Default behavior (`--provider-opt backend=sdk`):
+Default behavior:
 
 1. `OP_SERVICE_ACCOUNT_TOKEN` env var -> SDK service account auth (for CI/CD)
-2. `--provider-opt accountName=<account>` or `OP_ACCOUNT_NAME` env var + desktop app running -> SDK desktop app auth
-   - If unset, Envi will try to auto-detect a personal account from `op account list` (prefers `my.*`).
-
-You can switch backends with `--provider-opt backend=cli` or `--provider-opt backend=sdk`.
+2. `OP_ACCOUNT_NAME` env var + desktop app running -> SDK desktop app auth

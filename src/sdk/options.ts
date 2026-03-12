@@ -13,7 +13,6 @@ export function resolveRuntimeOptions(input: RuntimeOptionsInput = {}): RuntimeO
     json: false,
     vars: {},
     provider: DEFAULT_PROVIDER,
-    providerOptions: {},
   }
 
   const merged: RuntimeOptions = {
@@ -21,12 +20,6 @@ export function resolveRuntimeOptions(input: RuntimeOptionsInput = {}): RuntimeO
     ...(input.defaults ?? {}),
     ...(input.configFile ?? {}),
     ...(input.overrides ?? {}),
-    providerOptions: {
-      ...(defaults.providerOptions ?? {}),
-      ...((input.defaults ?? {}).providerOptions ?? {}),
-      ...((input.configFile ?? {}).providerOptions ?? {}),
-      ...((input.overrides ?? {}).providerOptions ?? {}),
-    },
     vars: normalizeReferenceVars({
       ...(defaults.vars ?? {}),
       ...((input.defaults ?? {}).vars ?? {}),

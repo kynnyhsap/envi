@@ -4,8 +4,10 @@ import { log } from '../../app/logger'
 import { formatBackupTimestamp } from '../../shared/env/format'
 import {
   createCommandContext,
+  formatCountNoun,
   printIssuesAndExit,
   printSummaryBanner,
+  printSummaryMetrics,
   withCommandProgress,
   writeJsonResult,
 } from './common'
@@ -77,7 +79,7 @@ export async function restoreCommand(options: { dryRun: boolean; list: boolean; 
       log.detail(`Path: ${result.data.selectedSnapshotPath}`)
     }
     log.info('')
-    log.info(`  ${pc.green(String(files.length))} file(s) to restore:`)
+    log.info(`  ${pc.green(formatCountNoun(files.length, 'file'))} to restore:`)
     log.info('')
     for (const file of files) {
       log.file(file)
@@ -111,9 +113,10 @@ export async function restoreCommand(options: { dryRun: boolean; list: boolean; 
   }
 
   printSummaryBanner()
-  log.info(
-    `  Restored: ${pc.green(String(result.data.restored ?? 0))}, Failed: ${pc.red(String(result.data.failed ?? 0))}`,
-  )
+  printSummaryMetrics([
+    { value: result.data.restored ?? 0, label: 'restored', color: pc.green },
+    { value: result.data.failed ?? 0, label: 'failed', color: pc.red },
+  ])
   log.info('')
 
   process.exitCode = result.ok ? 0 : 1

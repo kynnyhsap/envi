@@ -4,7 +4,7 @@ import { createEnviEngine, createRuntimeAdapter } from '../sdk'
 
 export function createCliEngine() {
   const config = getConfig()
-  const provider = createProvider(config.providerOptions)
+  const provider = createProvider()
 
   return createEnviEngine({
     options: {
@@ -16,7 +16,6 @@ export function createCliEngine() {
       json: config.json,
       vars: config.vars,
       provider: config.provider,
-      providerOptions: config.providerOptions,
     },
     provider,
     runtime: createRuntimeAdapter(),

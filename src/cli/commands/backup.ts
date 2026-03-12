@@ -4,8 +4,10 @@ import { log } from '../../app/logger'
 import { formatBackupTimestamp } from '../../shared/env/format'
 import {
   createCommandContext,
+  formatCountNoun,
   printIssuesAndExit,
   printSummaryBanner,
+  printSummaryMetrics,
   withCommandProgress,
   writeJsonResult,
 } from './common'
@@ -46,7 +48,7 @@ export async function backupCommand(options: { dryRun: boolean; list: boolean })
     }
 
     log.info('')
-    log.info(`  Found ${pc.green(String(snapshots.length))} backup(s):`)
+    log.info(`  Found ${pc.green(formatCountNoun(snapshots.length, 'backup'))}:`)
     log.info('')
 
     for (const snapshot of snapshots) {
@@ -80,7 +82,7 @@ export async function backupCommand(options: { dryRun: boolean; list: boolean })
   }
 
   log.info('')
-  log.info(`  Found ${pc.green(String(files.length))} file(s):`)
+  log.info(`  Found ${pc.green(formatCountNoun(files.length, 'file'))}:`)
   log.info('')
   for (const file of files) {
     log.file(file)
@@ -112,7 +114,11 @@ export async function backupCommand(options: { dryRun: boolean; list: boolean })
   }
 
   printSummaryBanner()
-  log.info(`  Backed up: ${pc.green(String(result.data.backedUp ?? 0))} file(s) to ${result.data.backupRoot}`)
+  const backedUp = result.data.backedUp ?? 0
+  printSummaryMetrics([
+    { value: backedUp, label: backedUp === 1 ? 'file backed up' : 'files backed up', color: pc.green },
+  ])
+  log.info(`  Backup location: ${pc.cyan(result.data.backupRoot ?? 'unknown')}`)
   log.info('')
 
   process.exitCode = result.ok ? 0 : 1

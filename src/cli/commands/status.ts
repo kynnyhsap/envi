@@ -4,11 +4,13 @@ import { log } from '../../app/logger'
 import { formatBackupTimestamp } from '../../shared/env/format'
 import {
   createCommandContext,
+  formatCountNoun,
   maybeWriteJsonResult,
   printCommandBanner,
   printMissingEnvPath,
   printNoTemplatePath,
   printSummaryBanner,
+  printSummaryMetrics,
   withCommandProgress,
 } from './common'
 
@@ -34,6 +36,8 @@ export async function statusCommand(): Promise<void> {
 
   log.info('')
 
+  const providerAuthOk = result.data.provider.availability.available && result.data.provider.auth.success
+
   if (!result.data.provider.availability.available) {
     log.fail('No authentication method available')
     log.info('')
@@ -56,6 +60,10 @@ export async function statusCommand(): Promise<void> {
     }
   }
 
+  if (!providerAuthOk) {
+    log.warn('Provider auth failed - path status below is local template/file checks only')
+  }
+
   log.header('Configured Paths')
   log.info('')
 
@@ -75,14 +83,26 @@ export async function statusCommand(): Promise<void> {
         })
         break
       case 'synced':
-        log.synced(`${pathInfo.envPath}${backupIndicator}`)
-        log.detail(`${status.envVarCount} vars (template: ${status.templateVarCount})`)
-        log.detail(pc.dim('Note: only checks key presence, run diff to verify values'))
+        if (providerAuthOk) {
+          log.synced(`${pathInfo.envPath}${backupIndicator}`)
+          log.detail(`${status.envVarCount} vars (template: ${status.templateVarCount})`)
+          log.detail(pc.dim('Note: only checks key presence, run diff to verify values'))
+        } else {
+          log.file(`${pathInfo.envPath}${backupIndicator}`)
+          log.detail(`${status.envVarCount} vars (template: ${status.templateVarCount})`)
+          log.detail(pc.dim('Local keys align with template (provider check unavailable)'))
+        }
         break
       case 'outdated':
-        log.outdated(`${pathInfo.envPath}${backupIndicator}`)
-        log.detail(`${status.envVarCount} vars, template expects ${status.templateVarCount}`)
-        log.detail(pc.dim('Run sync to add missing variables'))
+        if (providerAuthOk) {
+          log.outdated(`${pathInfo.envPath}${backupIndicator}`)
+          log.detail(`${status.envVarCount} vars, template expects ${status.templateVarCount}`)
+          log.detail(pc.dim('Run sync to add missing variables'))
+        } else {
+          log.warn(`${pathInfo.envPath}${backupIndicator}`)
+          log.detail(`${status.envVarCount} vars, template expects ${status.templateVarCount}`)
+          log.detail(pc.dim('Local file is missing template keys (provider check unavailable)'))
+        }
         break
       case 'no-template':
         printNoTemplatePath(pathInfo.envPath, pathInfo.templatePath)
@@ -98,22 +118,35 @@ export async function statusCommand(): Promise<void> {
     log.info(`  ${pc.dim('No backups found')}`)
   } else {
     const latestFormatted = backupInfo.latestTimestamp ? formatBackupTimestamp(backupInfo.latestTimestamp) : 'unknown'
-    log.info(`  ${pc.green(String(backupInfo.count))} backup(s), latest: ${latestFormatted}`)
+    log.info(`  ${pc.green(formatCountNoun(backupInfo.count, 'backup'))}, latest: ${latestFormatted}`)
   }
 
   const { missing, synced, outdated, noTemplate } = result.data.summary
 
   printSummaryBanner()
-  log.info(
-    `  ${pc.green(`${synced} synced`)}, ` +
-      `${pc.yellow(`${outdated} outdated`)}, ` +
-      `${pc.red(`${missing} missing`)}, ` +
-      `${pc.dim(`${noTemplate} no template`)}`,
-  )
+  if (providerAuthOk) {
+    printSummaryMetrics([
+      { value: synced, label: 'synced', color: pc.green },
+      { value: outdated, label: 'outdated', color: pc.yellow },
+      { value: missing, label: 'missing', color: pc.red },
+      { value: noTemplate, label: 'no template', color: pc.dim },
+    ])
+  } else {
+    printSummaryMetrics([
+      { value: synced, label: 'key-aligned (local)', color: pc.blue },
+      { value: outdated, label: 'missing template keys (local)', color: pc.yellow },
+      { value: missing, label: 'missing env files (local)', color: pc.red },
+      { value: noTemplate, label: 'no template', color: pc.dim },
+    ])
+  }
 
   if (missing > 0 || outdated > 0) {
     log.info('')
-    log.info(`  Run ${pc.cyan('envi sync')} to sync secrets`)
+    if (providerAuthOk) {
+      log.info(`  Run ${pc.cyan('envi sync')} to sync secrets`)
+    } else {
+      log.info(`  Fix provider auth, then run ${pc.cyan('envi sync')}`)
+    }
   }
 
   log.info('')

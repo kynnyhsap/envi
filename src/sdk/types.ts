@@ -57,7 +57,6 @@ export interface RuntimeOptions {
   json: boolean
   vars: Record<string, string>
   provider: ProviderType
-  providerOptions: Record<string, string>
   rootDir?: string
 }
 

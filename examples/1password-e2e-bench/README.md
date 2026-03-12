@@ -6,7 +6,7 @@ The benchmark now runs in a temporary workspace outside the repo, so it does not
 
 ## What it benchmarks
 
-- Real secret resolution through 1Password CLI service account auth
+- Real secret resolution through 1Password SDK service account auth
 - `sync` dry-run latency
 - `diff` latency
 - `run` environment resolution latency

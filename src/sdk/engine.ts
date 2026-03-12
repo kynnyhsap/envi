@@ -17,7 +17,7 @@ function makeContext(args: {
   runtime?: ExecutionContext['runtime']
   prompts?: ExecutionContext['prompts']
 }): ExecutionContext {
-  const provider = args.provider ?? createProvider(args.options.providerOptions)
+  const provider = args.provider ?? createProvider()
   const runtime = args.runtime ?? createRuntimeAdapter()
   const ctx: ExecutionContext = {
     options: args.options,

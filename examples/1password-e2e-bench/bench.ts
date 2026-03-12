@@ -113,18 +113,9 @@ async function runMode(workspaceDir: string, scenario: Scenario, mode: ResolveMo
 async function runCli(workspaceDir: string, scenario: Scenario, mode: ResolveMode): Promise<number> {
   const env: Record<string, string> = { ...process.env } as Record<string, string>
   env['NO_COLOR'] = '1'
+  env['ENVI_OP_RESOLVE_MODE'] = mode
 
-  const command = [
-    'bun',
-    'run',
-    cliPath,
-    '--config',
-    'envi.json',
-    '--json',
-    '--provider-opt',
-    `resolveMode=${mode}`,
-    ...scenario.args,
-  ]
+  const command = ['bun', 'run', cliPath, '--config', 'envi.json', '--json', ...scenario.args]
 
   const startedAt = performance.now()
   const proc = Bun.spawn(command, {

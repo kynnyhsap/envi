@@ -3,6 +3,7 @@ import pc from 'picocolors'
 import { log } from '../../app/logger'
 import {
   createCommandContext,
+  formatCountNoun,
   maybeWriteJsonResult,
   printCommandBanner,
   printIssuesAndExit,
@@ -46,7 +47,7 @@ export async function runCommand(command: string[], options: RunOptions = {}): P
   }
 
   if (!config.quiet) {
-    log.info(`  Injecting ${pc.green(String(resolved.data.summary.total))} variable(s) into environment`)
+    log.info(`  Injecting ${pc.green(formatCountNoun(resolved.data.summary.total, 'variable'))} into environment`)
     log.info(`  Executing: ${pc.cyan(command.join(' '))}`)
     log.info('')
   }

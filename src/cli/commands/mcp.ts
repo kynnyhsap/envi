@@ -114,18 +114,17 @@ export async function mcpCommand(): Promise<void> {
     'validate',
     {
       title: 'Validate References',
-      description:
-        'Validate all secret references in .env.example templates. Use remote=true to verify they exist in the provider.',
+      description: 'Validate secret references against provider by default. Set local=true to skip provider checks.',
       inputSchema: z.object({
         only: z.string().optional().describe('Comma-separated paths to scope'),
         vars: z.record(z.string(), z.string()).optional().describe('Dynamic reference vars'),
-        remote: z.boolean().optional().describe('Also check references exist in the provider'),
+        local: z.boolean().optional().describe('Validate format locally only (skip provider checks)'),
       }),
     },
     async (args) => {
       const engine = makeEngine(args)
       const result = await engine.validate({
-        ...(args.remote !== undefined ? { remote: args.remote } : {}),
+        ...(args.local !== undefined ? { remote: !args.local } : {}),
       } satisfies ValidateOperationOptions)
       return text(result)
     },

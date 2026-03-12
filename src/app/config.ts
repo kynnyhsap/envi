@@ -20,7 +20,6 @@ export interface RuntimeConfig {
   json: boolean
   vars: Record<string, string>
   provider: ProviderType
-  providerOptions: Record<string, string>
 }
 
 let runtimeConfig: RuntimeConfig = {
@@ -32,7 +31,6 @@ let runtimeConfig: RuntimeConfig = {
   json: false,
   vars: {},
   provider: DEFAULT_PROVIDER,
-  providerOptions: {},
 }
 
 export function setRuntimeConfig(config: Partial<RuntimeConfig>): void {
@@ -54,7 +52,6 @@ export function parseOnlyFlag(value: string | undefined): string[] | undefined {
 
 export interface ConfigFile {
   provider?: ProviderType
-  providerOptions?: Record<string, string>
   vars?: Record<string, string>
   paths?: string[]
   templateFile?: string
