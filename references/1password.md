@@ -383,26 +383,12 @@ await client.items.archive(vaultId, itemId)
 
 ### Envi integration
 
-Envi supports two 1Password backends in `src/providers/1password.provider.ts`:
+Envi uses the 1Password JavaScript SDK in `src/providers/onepassword/provider.ts`.
 
-1. **JavaScript SDK (`@1password/sdk`)** (preferred)
-   - Uses service account token (`OP_SERVICE_ACCOUNT_TOKEN`) when set
-   - Otherwise uses desktop app integration via `DesktopAuth(OP_ACCOUNT_NAME)`
-     - `OP_ACCOUNT_NAME` must match an account configured in the 1Password desktop app.
-     - If unset, Envi will try to auto-detect a personal account from `op account list` (prefers `my.*`).
-   - Resolve secrets: `client.secrets.resolve(reference)`
-   - List vaults: `client.vaults.list()`
-
-2. **1Password CLI (`op`)** (opt-in)
-   - Enable with `--provider-opt backend=cli`
-   - Auth check: `op whoami --format json`
-   - Resolve secrets: `op read "op://..."`
-   - List vaults: `op vault list --format json`
-   - Caching: CLI daemon caching is enabled by default on UNIX-like systems. Control it via `OP_CACHE=false` or `--cache=false` on the CLI.
-
-By default, Envi runs in `backend=sdk` mode.
-
-If you want the 1Password CLI, opt in with `--provider-opt backend=cli`.
+- Uses service account token (`OP_SERVICE_ACCOUNT_TOKEN`) when set.
+- Otherwise uses desktop app integration via `DesktopAuth(OP_ACCOUNT_NAME)`.
+- Resolve secrets: `client.secrets.resolve(reference)`.
+- List vaults: `client.vaults.list()`.
 
 ---
 

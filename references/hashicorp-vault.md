@@ -550,9 +550,9 @@ KV version detection:
 
 Important: Vault can return 404 for missing paths and for some permission scenarios. "Try v2 then v1" can mislead if the caller lacks permissions.
 
-### Suggested provider options
+### Suggested provider settings
 
-Implement provider options (via `--provider-opt key=value`) as plain strings to stay provider-agnostic at the CLI layer:
+If a Vault provider is added later, use provider-specific settings (env vars + config file) while keeping the CLI provider-agnostic:
 
 - `backend=auto|cli|http` (default `auto`, which prefers `cli`)
 - `cliBinary=vault`
