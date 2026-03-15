@@ -14,6 +14,7 @@ type ResolveMode = 'auto' | 'batch' | 'sequential'
 const DEFAULT_RESOLVE_CHUNK_SIZE = 100
 const DEFAULT_RESOLVE_CONCURRENCY = 8
 const SDK_TIMEOUT_MS = 10_000
+const DEFAULT_DESKTOP_ACCOUNT_NAME = 'my.1password.com'
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -98,10 +99,10 @@ export class OnePasswordProvider implements Provider {
     if (this.accountName) {
       statusLines.push(`OP_ACCOUNT_NAME: set (${this.accountName})`)
     } else {
-      statusLines.push('OP_ACCOUNT_NAME: not set')
+      statusLines.push(`OP_ACCOUNT_NAME: default (${DEFAULT_DESKTOP_ACCOUNT_NAME})`)
     }
 
-    const available = appRunning && !!this.accountName
+    const available = appRunning
     if (!available) {
       return {
         available: false,
@@ -129,8 +130,9 @@ export class OnePasswordProvider implements Provider {
 
     const lines: string[] = ['Make sure "Integrate with other apps" is enabled in Settings > Developer']
     if (!this.accountName) {
-      lines.push('Set OP_ACCOUNT_NAME env var (for example: my.1password.com)')
-      return { lines }
+      lines.push(
+        `Using default OP_ACCOUNT_NAME=${DEFAULT_DESKTOP_ACCOUNT_NAME}. Set OP_ACCOUNT_NAME if your account differs.`,
+      )
     }
 
     const sdkError = this.lastAuthError
@@ -199,7 +201,11 @@ export class OnePasswordProvider implements Provider {
       return { type: 'service-account', identifier: 'set' }
     }
 
-    return { type: 'desktop-app', identifier: this.accountName ?? 'unknown' }
+    return { type: 'desktop-app', identifier: this.getEffectiveAccountName() }
+  }
+
+  private getEffectiveAccountName(): string {
+    return this.accountName ?? DEFAULT_DESKTOP_ACCOUNT_NAME
   }
 
   private async verifySdkAuth(): Promise<{ success: boolean; error?: string }> {
@@ -249,11 +255,7 @@ export class OnePasswordProvider implements Provider {
   }
 
   private getDesktopAuth() {
-    if (!this.accountName) {
-      throw new Error('1Password account name is required for desktop app auth. Set OP_ACCOUNT_NAME env var.')
-    }
-
-    return new this._DesktopAuth(this.accountName)
+    return new this._DesktopAuth(this.getEffectiveAccountName())
   }
 
   private async resolveReferenceCached(reference: string): Promise<string> {

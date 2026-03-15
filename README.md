@@ -105,6 +105,7 @@ Envi only supports 1Password via the JavaScript SDK.
 1. **1Password Desktop App** (recommended for local dev):
    - Install [1Password desktop app](https://1password.com/downloads/)
    - Enable **"Integrate with other apps"** in Settings > Developer
+   - Default account is `my.1password.com`; set `OP_ACCOUNT_NAME` if your account differs
    - See: [Desktop App Integration](https://developer.1password.com/docs/sdks/desktop-app-integrations/)
 
 2. **Service Account** (for CI/CD):
@@ -508,7 +509,7 @@ OP_SERVICE_ACCOUNT_TOKEN="..." bun run bench:e2e
 | Variable                      | Description                                                 |
 | ----------------------------- | ----------------------------------------------------------- |
 | `OP_SERVICE_ACCOUNT_TOKEN`    | 1Password service account token (overrides desktop auth)    |
-| `OP_ACCOUNT_NAME`             | 1Password account name/sign-in address for desktop auth     |
+| `OP_ACCOUNT_NAME`             | Optional override for desktop auth account (default: `my.1password.com`) |
 | `ENVI_OP_RESOLVE_MODE`        | 1Password resolve strategy (`auto`, `batch`, `sequential`)  |
 | `ENVI_OP_RESOLVE_CHUNK_SIZE`  | Chunk size for 1Password SDK `resolveAll` batching          |
 | `ENVI_OP_RESOLVE_CONCURRENCY` | Max parallel 1Password fallback resolves                    |
@@ -518,4 +519,5 @@ OP_SERVICE_ACCOUNT_TOKEN="..." bun run bench:e2e
 Default behavior:
 
 1. `OP_SERVICE_ACCOUNT_TOKEN` env var -> SDK service account auth (for CI/CD)
-2. `OP_ACCOUNT_NAME` env var + desktop app running -> SDK desktop app auth
+2. Desktop app auth with account `my.1password.com` by default
+3. If your account differs, set `OP_ACCOUNT_NAME` to your sign-in address

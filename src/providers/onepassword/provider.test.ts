@@ -83,6 +83,20 @@ describe('OnePasswordProvider (sdk auth)', () => {
     })
   })
 
+  it('reports default desktop account when OP_ACCOUNT_NAME is unset', async () => {
+    await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: undefined, OP_ACCOUNT_NAME: undefined }, async () => {
+      const exec = makeExec({
+        'pgrep -x 1Password': () => ({ exitCode: 0, stdout: '123\n', stderr: '' }),
+      })
+
+      const provider = new OnePasswordProvider({}, { exec })
+      const availability = await provider.checkAvailability()
+
+      expect(availability.available).toBe(true)
+      expect(availability.statusLines).toContain('OP_ACCOUNT_NAME: default (my.1password.com)')
+    })
+  })
+
   it('reports unavailable when desktop auth prerequisites are missing', async () => {
     await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: undefined, OP_ACCOUNT_NAME: undefined }, async () => {
       const exec = makeExec({
@@ -120,17 +134,28 @@ describe('OnePasswordProvider (sdk auth)', () => {
     })
   })
 
-  it('verifyAuth fails when desktop account name is missing', async () => {
+  it('verifyAuth uses default desktop account name when unset', async () => {
     await withEnv({ OP_SERVICE_ACCOUNT_TOKEN: undefined, OP_ACCOUNT_NAME: undefined }, async () => {
       const exec = makeExec({
         'pgrep -x 1Password': () => ({ exitCode: 0, stdout: '123\n', stderr: '' }),
       })
 
-      const provider = new OnePasswordProvider({}, { exec })
+      const provider = new OnePasswordProvider(
+        {},
+        {
+          exec,
+          createClient: async (args: any) => {
+            expect(args.auth.accountName).toBe('my.1password.com')
+            return {
+              vaults: { list: async () => [] },
+              secrets: { resolve: async () => 'sdk-value' },
+            } as any
+          },
+        },
+      )
       const auth = await provider.verifyAuth()
 
-      expect(auth.success).toBe(false)
-      expect(auth.error).toContain('OP_ACCOUNT_NAME')
+      expect(auth.success).toBe(true)
     })
   })
 })
