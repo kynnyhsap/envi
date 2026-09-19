@@ -1,4 +1,0 @@
-{
-  "templateFile": ".env.tpl",
-  "outputFile": ".env.local"
-}
