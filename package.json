@@ -17,7 +17,7 @@
     "fmt:check": "oxfmt --check",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p design/tsconfig.json",
     "check": "bun fmt:check && bun lint && bun typecheck",
     "test:unit": "vitest run --project unit",
     "test:e2e": "bun run build && vitest run --project e2e",
@@ -40,7 +40,7 @@
   },
   "engines": {
     "bun": ">=1.3",
-    "node": ">=22"
+    "node": ">=22.18.0"
   },
   "packageManager": "bun@1.4.2"
 }

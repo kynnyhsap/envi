@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "envi": ["./api/index.ts"],
+      "envi/effect": ["./api/effect.ts"],
+      "envi/1password": ["./api/onepassword.ts"],
+      "envi/memory": ["./api/memory.ts"]
+    }
+  },
+  "include": ["api", "examples"]
+}
