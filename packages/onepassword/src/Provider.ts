@@ -1,4 +1,4 @@
-import { Provider, ProviderError, ProviderFailure, ReferenceFailure } from "@envi/core";
+import { Provider, ProviderError, ProviderFailure, ReferenceFailure, Timing } from "@envi/core";
 import * as Arr from "effect/Array";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -136,7 +136,7 @@ export const makeProvider = <DesktopAuth>(
               ProviderFailure.Unavailable,
               "The 1Password app did not authorize Envi. Unlock the app, approve the prompt, and enable the SDK integration in Settings > Developer.",
             ),
-    });
+    }).pipe(Timing.measure("onepassword.client", { credential: kind }));
 
   /** One client for each account in one process. A failed connection is not kept. */
   const clientFor = (key: string, create: Effect.Effect<SdkClient, ProviderError>) =>
@@ -162,6 +162,7 @@ export const makeProvider = <DesktopAuth>(
       catch: () =>
         failure(ProviderFailure.Unavailable, "The request to 1Password failed or timed out."),
     }).pipe(
+      Timing.measure("onepassword.resolveAll", { references: requests.length }),
       Effect.flatMap(({ individualResponses }) =>
         Effect.forEach(requests, (request): Effect.Effect<BatchEntry, ProviderError> => {
           const response = individualResponses[describeReference(request.reference)];
@@ -257,7 +258,7 @@ const loadRealSdk = Effect.tryPromise({
       ProviderFailure.Misconfigured,
       "The package @1password/sdk does not load. Install it next to @envi/1password.",
     ),
-});
+}).pipe(Timing.measure("onepassword.sdk.import"));
 
 /** The 1Password provider. It imports `@1password/sdk` on the first cache miss only. */
 export const onePasswordProvider = (

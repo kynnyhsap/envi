@@ -28,7 +28,7 @@ const argv = process.argv.slice(2);
 const runHere = Effect.gen(function* () {
   const exitCode = yield* Ref.make(0);
 
-  yield* Effect.provideService(main(argv), ExitCode, exitCode);
+  yield* Effect.provideService(main(argv, Math.round(process.uptime() * 1000)), ExitCode, exitCode);
 
   return yield* Ref.get(exitCode);
 });

@@ -230,6 +230,67 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
       }),
     );
 
+    it.effect("logs the duration of every command and of every step with --debug", () =>
+      Effect.gen(function* () {
+        const sandbox = yield* makeSandbox("none");
+        const cached = ["--cache-dir", sandbox.cacheDirectory, "--debug"];
+
+        const commands: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
+          ["sync", ["sync"]],
+          ["check", ["check"]],
+          ["inspect", ["inspect"]],
+          ["export", ["export"]],
+          ["run", ["run", "--", "node", "-e", ""]],
+          ["cache path", ["cache", "path"]],
+          ["cache list", ["cache", "list"]],
+          ["cache clear", ["cache", "clear"]],
+        ];
+
+        for (const [name, args] of commands) {
+          const result = yield* runCli(runtime, app, [...cached, ...args], sandbox.env);
+
+          expect(result.stderr).toMatch(/step=startup durationMs=\d+ outcome=success/);
+          expect(result.stderr).toMatch(
+            new RegExp(`step=command durationMs=\\d+ outcome=success command="?${name}"?`),
+          );
+        }
+
+        const first = yield* runCli(
+          runtime,
+          app,
+          [...cached, "--refresh", "run", "--", "node", "-e", ""],
+          sandbox.env,
+        );
+
+        for (const step of [
+          "config.import",
+          "cache.read",
+          "resolve.lock",
+          "provider.resolve",
+          "cache.write",
+          "custom.resolve",
+          "run.child",
+        ]) {
+          expect(first.stderr).toMatch(new RegExp(`step=${step} durationMs=\\d+ outcome=success`));
+        }
+
+        expect(first.stderr).not.toContain("dev-token-value");
+      }),
+    );
+
+    it.effect("logs the duration of a step that fails", () =>
+      Effect.gen(function* () {
+        const sandbox = yield* makeSandbox("none");
+
+        const result = yield* runCli(runtime, app, ["--no-cache", "--debug", "check"], {
+          ...sandbox.env,
+          ENVI_E2E_SECRETS_FILE: `${sandbox.directory}/missing.json`,
+        });
+
+        expect(result.stderr).toMatch(/step=provider\.resolve durationMs=\d+ outcome=failure/);
+      }),
+    );
+
     it.effect("prints no debug log without --debug", () =>
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");

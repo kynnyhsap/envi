@@ -39,6 +39,7 @@ import {
 import * as Resolver from "./Resolver.ts";
 import * as Signals from "./Signals.ts";
 import * as Source from "./Source.ts";
+import * as Timing from "./Timing.ts";
 
 /** The failures of an operation that resolves values. */
 export type EnviError =
@@ -611,6 +612,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     const failure = (reason: RunFailure) => new RunError({ reason, command });
 
     const exitCode = yield* Signals.supervise(child).pipe(
+      Timing.measure("run.child", { command }),
       Effect.mapError((error) =>
         failure(
           Match.value(error.reason).pipe(

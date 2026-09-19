@@ -228,6 +228,27 @@ descriptor. A fresh `custom()` entry hides its inputs from the batch.
   reference texts, a provider failure, and a schema message. A schema message can quote the
   rejected value, so a redacted var never shows it. `--log-format`
   selects `pretty` or `json`.
+- `--debug` also shows how long each step takes. `Timing.measure(step)` wraps a step and writes
+  one debug line when the step ends: `message="Envi finished a step."` with `step`, `durationMs`,
+  `outcome` (`success` or `failure`), and safe annotations. A new slow step gets a
+  `Timing.measure`. The steps:
+
+  | Step                     | Covers                                                       |
+  | ------------------------ | ------------------------------------------------------------ |
+  | `startup`                | the start of the runtime and the imports, before the command |
+  | `command`                | one whole CLI command, with its name                         |
+  | `config.import`          | the `import()` of one config file                            |
+  | `keychain.key`           | the read, or the creation, of the key in the macOS Keychain  |
+  | `cache.read`             | the first cache read                                         |
+  | `resolve.lock`           | the locked section, including the wait for the lock          |
+  | `provider.resolve`       | one batch of one provider                                    |
+  | `cache.write`            | the write of the fetched entries                             |
+  | `custom.resolve`         | one `custom()`, including the evaluation of its inputs       |
+  | `run.child`              | the child of `envi run`, from the spawn to the exit          |
+  | `onepassword.sdk.import` | the lazy import of `@1password/sdk`                          |
+  | `onepassword.client`     | the creation of one SDK client, including a desktop approval |
+  | `onepassword.resolveAll` | one `secrets.resolveAll` call                                |
+
 - Every setting follows one precedence order: CLI flag or call option, client option, environment
   variable, config key, default.
 

@@ -22,6 +22,7 @@ import {
 import * as Provider from "./Provider.ts";
 import { ValueOrigin } from "./Reports.ts";
 import * as Source from "./Source.ts";
+import * as Timing from "./Timing.ts";
 
 /** The settings of one resolution. The caller applies the precedence order before it calls. */
 export interface Options {
@@ -196,7 +197,10 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
 
   // 2. One cache read for every key that can have an entry.
   const cacheKeys = [...new Set([...all].flatMap((source) => Option.toArray(cacheKeyOf(source))))];
-  const cached = yield* cache.getMany(cacheKeys);
+
+  const cached = yield* cache
+    .getMany(cacheKeys)
+    .pipe(Timing.measure("cache.read", { references: cacheKeys.length }));
 
   const durations = (source: Source.AnySource) =>
     Source.CachePolicy.$match(source.cachePolicy, {
@@ -302,6 +306,7 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
             Effect.annotateLogs({ provider: provider.id, error: error.message }),
           ),
         ),
+        Timing.measure("provider.resolve", { provider: provider.id, references: wanted.length }),
         Effect.result,
         Effect.map((outcome) => {
           for (const leaf of wanted) {
@@ -341,28 +346,31 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
   );
 
   if (misses(cached).length > 0) {
-    yield* cache.withResolveLock(
-      Effect.gen(function* () {
-        afterLock = options.refresh ? cached : { ...cached, ...(yield* cache.getMany(cacheKeys)) };
+    // The time of this step includes the wait for the lock.
+    yield* cache
+      .withResolveLock(
+        Effect.gen(function* () {
+          afterLock = options.refresh
+            ? cached
+            : { ...cached, ...(yield* cache.getMany(cacheKeys)) };
 
-        const wanted = misses(afterLock);
-        const byProvider = Arr.groupBy(wanted, (leaf) => leaf.provider.id);
+          const wanted = misses(afterLock);
+          const byProvider = Arr.groupBy(wanted, (leaf) => leaf.provider.id);
 
-        yield* Effect.forEach(
-          Object.values(byProvider),
-          (providerLeaves) => fetchFrom(providerLeaves[0].provider, providerLeaves),
-          { concurrency: "unbounded", discard: true },
-        );
+          yield* Effect.forEach(
+            Object.values(byProvider),
+            (providerLeaves) => fetchFrom(providerLeaves[0].provider, providerLeaves),
+            { concurrency: "unbounded", discard: true },
+          );
 
-        const cacheable = new Set(
-          [...reachable]
-            .filter((source) => !isCacheDisabled(source.cachePolicy))
-            .flatMap((source) => Option.toArray(leafOf(source)))
-            .map((leaf) => leaf.fullKey),
-        );
+          const cacheable = new Set(
+            [...reachable]
+              .filter((source) => !isCacheDisabled(source.cachePolicy))
+              .flatMap((source) => Option.toArray(leafOf(source)))
+              .map((leaf) => leaf.fullKey),
+          );
 
-        yield* cache.setMany(
-          Object.fromEntries(
+          const written = Object.fromEntries(
             wanted.flatMap((leaf) => {
               const result = fetched.get(leaf.fullKey);
 
@@ -380,10 +388,14 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
                   ]
                 : [];
             }),
-          ),
-        );
-      }),
-    );
+          );
+
+          yield* cache
+            .setMany(written)
+            .pipe(Timing.measure("cache.write", { references: Object.keys(written).length }));
+        }),
+      )
+      .pipe(Timing.measure("resolve.lock"));
   }
 
   // 5. Evaluate each descriptor once. The memo holds lazy effects, so the order is free.
@@ -495,16 +507,18 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
               // and the origin tells `inspect` and an outer custom() about it.
               const usedStale = yield* Ref.make(false);
 
-              const raw = yield* origin.run((input) =>
-                Effect.flatMap(
-                  Effect.tap(evaluated(input), (result) =>
-                    result.origin === ValueOrigin.StaleCache
-                      ? Ref.set(usedStale, true)
-                      : Effect.void,
+              const raw = yield* origin
+                .run((input) =>
+                  Effect.flatMap(
+                    Effect.tap(evaluated(input), (result) =>
+                      result.origin === ValueOrigin.StaleCache
+                        ? Ref.set(usedStale, true)
+                        : Effect.void,
+                    ),
+                    (result) => decodeEvaluated(input, "an input of custom()", result),
                   ),
-                  (result) => decodeEvaluated(input, "an input of custom()", result),
-                ),
-              );
+                )
+                .pipe(Timing.measure("custom.resolve", { reference: description }));
 
               const isStale = yield* Ref.get(usedStale);
 

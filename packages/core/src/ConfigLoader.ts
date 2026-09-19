@@ -9,6 +9,7 @@ import * as Schema from "effect/Schema";
 
 import * as Config from "./Config.ts";
 import { ConfigLoadError, ConfigLoadFailure } from "./Errors.ts";
+import * as Timing from "./Timing.ts";
 
 /** The base name of a config file that Envi finds on its own. */
 export const configBaseName = "envi.config";
@@ -133,7 +134,7 @@ const make = Effect.gen(function* () {
     const module: unknown = yield* Effect.tryPromise({
       try: () => import(url.href),
       catch: (cause) => importFailure(absolute, cause),
-    });
+    }).pipe(Timing.measure("config.import", { file: absolute }));
 
     const exported = Predicate.hasProperty(module, "default") ? module.default : undefined;
 

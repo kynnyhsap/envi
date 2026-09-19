@@ -72,6 +72,21 @@ describe.skipIf(process.platform !== "darwin")("envi encrypted cache", () => {
         }),
       );
 
+      it.effect("logs the duration of the Keychain read with --debug", () =>
+        Effect.gen(function* () {
+          const sandbox = yield* makeSandbox("keychain");
+
+          const result = yield* runCli(
+            runtime,
+            app,
+            ["--cache-dir", sandbox.cacheDirectory, "--debug", "check"],
+            sandbox.env,
+          );
+
+          expect(result.stderr).toMatch(/step=keychain\.key durationMs=\d+ outcome=success/);
+        }),
+      );
+
       it.effect("treats an edited entry as a miss", () =>
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;

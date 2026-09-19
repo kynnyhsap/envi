@@ -22,6 +22,8 @@ export * as Signals from "./Signals.ts";
 
 export * as Source from "./Source.ts";
 
+export * as Timing from "./Timing.ts";
+
 export * from "./Errors.ts";
 
 export * from "./Memory.ts";

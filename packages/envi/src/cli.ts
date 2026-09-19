@@ -13,6 +13,7 @@ import {
   InspectReport,
   Keychain,
   SyncReport,
+  Timing,
 } from "@envi/core";
 import * as EffectConfig from "effect/Config";
 import * as Console from "effect/Console";
@@ -189,7 +190,7 @@ const sync = Command.make("sync", {}, () =>
     if (report.failures.length > 0) {
       yield* fail;
     }
-  }),
+  }).pipe(Timing.measure("command", { command: "sync" })),
 ).pipe(Command.withDescription("Resolve every var and fill the cache."));
 
 const check = Command.make("check", {}, () =>
@@ -206,7 +207,7 @@ const check = Command.make("check", {}, () =>
     if (report.failures.length > 0) {
       yield* fail;
     }
-  }),
+  }).pipe(Timing.measure("command", { command: "check" })),
 ).pipe(Command.withDescription("Resolve and validate every var. Show no value."));
 
 const redactFlag = Flag.Boolean("redact").pipe(
@@ -224,7 +225,7 @@ const inspect = Command.make("inspect", { redact: redactFlag }, (flags) =>
     ).pipe(Effect.provide(enviLayer(shared, config.cache)));
 
     yield* print(shared, InspectReport, report, Render.inspect);
-  }),
+  }).pipe(Timing.measure("command", { command: "inspect" })),
 ).pipe(Command.withDescription("Show where each var comes from. Secrets are hidden by default."));
 
 const exportCommand = Command.make(
@@ -256,7 +257,7 @@ const exportCommand = Command.make(
         onNone: () => writeStdout(text),
         onSome: (file) => ExportFile.write(file, text),
       });
-    }),
+    }).pipe(Timing.measure("command", { command: "export" })),
 ).pipe(
   Command.withDescription("Print the resolved vars with real values, or write them to a file."),
 );
@@ -280,7 +281,7 @@ const run = Command.make(
       ).pipe(Effect.provide(enviLayer(shared, config.cache)));
 
       yield* Effect.flatMap(ExitCode, (code) => Ref.set(code, report.exitCode));
-    }),
+    }).pipe(Timing.measure("command", { command: "run" })),
 ).pipe(Command.withDescription("Run a command with the resolved vars: envi run -- bun dev"));
 
 /** The cache commands need no config. `--cache-dir` and `ENVI_CACHE_DIR` select the directory. */
@@ -297,7 +298,7 @@ const cachePath = Command.make("path", {}, () =>
     yield* shared.json
       ? Console.log(JSON.stringify({ directory: Option.getOrNull(directory) }, null, 2))
       : Console.log(Option.getOrElse(directory, () => "The cache is off."));
-  }),
+  }).pipe(Timing.measure("command", { command: "cache path" })),
 ).pipe(Command.withDescription("Print the directory of the cache."));
 
 const cacheList = Command.make("list", {}, () =>
@@ -309,7 +310,7 @@ const cacheList = Command.make("list", {}, () =>
     );
 
     yield* print(shared, CacheListReport, report, Render.cacheList);
-  }),
+  }).pipe(Timing.measure("command", { command: "cache list" })),
 ).pipe(Command.withDescription("List the cache entries. Show no value."));
 
 const cacheClear = Command.make("clear", {}, () =>
@@ -321,7 +322,7 @@ const cacheClear = Command.make("clear", {}, () =>
     );
 
     yield* print(shared, CacheClearReport, report, Render.cacheClear);
-  }),
+  }).pipe(Timing.measure("command", { command: "cache clear" })),
 ).pipe(Command.withDescription("Remove every cache entry."));
 
 const cache = Command.make("cache").pipe(
@@ -351,9 +352,11 @@ const loggerLayer = (argv: ReadonlyArray<string>) => {
  * Runs the CLI. An expected failure prints its message on stderr and sets the exit code 1.
  *
  * @param argv - The arguments after the program name.
+ * @param startupMs - The age of the process. It covers the start of the runtime and the imports.
  */
-export const main = (argv: ReadonlyArray<string>) =>
-  Command.runWith(command, { version: packageJson.version })(argv).pipe(
+export const main = (argv: ReadonlyArray<string>, startupMs: number) =>
+  Timing.report("startup", startupMs, Timing.Outcome.Success).pipe(
+    Effect.andThen(Command.runWith(command, { version: packageJson.version })(argv)),
     Effect.catchTags({
       CacheError: (error) => Effect.andThen(Console.error(error.message), fail),
       ConfigLoadError: (error) => Effect.andThen(Console.error(error.message), fail),

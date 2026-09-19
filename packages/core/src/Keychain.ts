@@ -10,6 +10,7 @@ import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner
 
 import { CacheError, CacheFailure } from "./Errors.ts";
 import { EncryptionKey } from "./FileCache.ts";
+import * as Timing from "./Timing.ts";
 
 /** The service name of the Keychain item. */
 export const keychainService = "envi";
@@ -105,7 +106,7 @@ const make = Effect.gen(function* () {
     return created.exitCode === 0
       ? yield* decodeKey(created.stdout)
       : yield* unavailable("Envi cannot store its key in the macOS Keychain.");
-  });
+  }).pipe(Timing.measure("keychain.key"));
 });
 
 /** The encryption key from the macOS Keychain. Envi creates the key on the first use. */
