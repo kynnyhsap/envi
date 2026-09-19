@@ -90,15 +90,14 @@ describe("render", () => {
             provider: "onepassword",
             reference: "op://app/postgres/url",
             resolvedAt: "2026-01-01T00:00:00.000Z",
-            expiresAt: "2026-01-02T00:00:00.000Z",
           },
         ],
       }),
     ).toBe(
       [
         "Directory: /home/dev/.cache/envi",
-        "PROVIDER     REFERENCE              RESOLVED                  EXPIRES",
-        "onepassword  op://app/postgres/url  2026-01-01T00:00:00.000Z  2026-01-02T00:00:00.000Z",
+        "PROVIDER     REFERENCE              RESOLVED",
+        "onepassword  op://app/postgres/url  2026-01-01T00:00:00.000Z",
         "",
       ].join("\n"),
     );

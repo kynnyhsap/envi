@@ -87,11 +87,14 @@ export const RunReport = Schema.Struct({
 
 export type RunReport = typeof RunReport.Type;
 
+/**
+ * One cache entry. It has no expiry, because each reader applies the ttl of its own config to
+ * `resolvedAt`.
+ */
 export const CacheEntryReport = Schema.Struct({
   provider: Schema.String,
   reference: Schema.String,
   resolvedAt: Schema.String,
-  expiresAt: Schema.String,
 });
 
 export const CacheListReport = Schema.Struct({

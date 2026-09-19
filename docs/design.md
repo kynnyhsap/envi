@@ -201,6 +201,11 @@ SDK rules:
   owner. The lock file always holds a complete time: Envi writes a temp file, and then links it
   to take the lock or renames it to renew the lock. A reader that sees an empty lock file would
   treat the lock as crashed and steal it.
+- The content of the lock file is frozen: one integer, the time in milliseconds. Two worktrees can
+  run different Envi versions against one cache. More lock data goes into a second file. A new
+  lock protocol needs a new lock file name.
+- A cache entry has no single expiry. Each reader applies the `ttl` of its own config to
+  `resolvedAt`. `cache list` therefore shows `resolvedAt` and no expiry column.
 - A `custom()` value that comes from an expired input is itself expired. Envi never caches it,
   and its origin is `stale-cache`.
 - The cache is off by default when `CI=true`. `--cache` or `ENVI_CACHE_ENABLED=true` turns it on.
@@ -274,9 +279,14 @@ release together. The package names are placeholders until the npm name is decid
 folders. `fixtures/file-provider.ts` is a custom provider over a real secrets file. It appends
 each batch to a real log file, so a test counts the provider calls of several processes.
 
+The unit tests run twice: `bun test:unit` runs the workers on Node, and `bun test:unit:bun` runs
+them on Bun.
+
 - `cli.test.ts`, `config.test.ts`: config loading, the global flags, the logs, the install hint,
   and the delegation from a global `envi`.
-- `run.test.ts`: the child environment, exit codes, and signals.
+- `run.test.ts`: the child environment, exit codes, and signals. It sends `SIGTERM`, `SIGINT`,
+  and `SIGHUP` to the Envi process alone, and the child counts exactly one signal. On macOS, it
+  also types Ctrl-C into a real pseudo terminal through `script`.
 - `commands.test.ts`: `sync`, `check`, `inspect`, `export` with `--output`, and `cache`.
 - `cache.test.ts`: cache hits across processes, `--refresh`, `--no-cache`, CI, the stale
   fallback, file modes, and four parallel processes on an empty cache.
@@ -320,8 +330,6 @@ each batch to a real log file, so a test counts the provider calls of several pr
   readable. `run` then fails with `CommandNotExecutable` in place of `CommandNotFound`.
 
 ## Not tested yet
-
-- `SIGINT` from a real terminal under `envi run`. The tests send `SIGTERM` to the Envi process.
 
 - An Expo or Xcode build under `envi run`.
 - `@1password/sdk` on Linux.

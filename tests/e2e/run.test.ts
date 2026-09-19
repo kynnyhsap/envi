@@ -23,22 +23,41 @@ const app = fixture("cached");
 const printEnv = (names: ReadonlyArray<string>): string =>
   `console.log(JSON.stringify(Object.fromEntries(${JSON.stringify(names)}.map((name) => [name, process.env[name] ?? null]))))`;
 
-/** A child that reports that it runs, and then waits for a signal. */
-const waitingChild = (handlesSignal: boolean): string =>
+const signalNumbers = { SIGHUP: 1, SIGINT: 2, SIGTERM: 15 } as const;
+
+type SignalName = keyof typeof signalNumbers;
+
+const signalNames: ReadonlyArray<SignalName> = ["SIGTERM", "SIGINT", "SIGHUP"];
+
+/**
+ * A child that reports that it runs, and then waits for a signal. With a handler, it counts the
+ * signals for a short time, prints the count, and exits with 7.
+ */
+const waitingChild = (handled: SignalName | undefined): string =>
   [
-    handlesSignal
-      ? "process.on('SIGTERM', () => { console.log('child-got-SIGTERM'); process.exit(7); });"
-      : "",
+    handled === undefined
+      ? ""
+      : `let count = 0; process.on('${handled}', () => { count += 1; setTimeout(() => { console.log('child-got-${handled}=' + count); process.exit(7); }, 300); });`,
     "require('node:fs').writeFileSync(process.env.ENVI_E2E_READY_FILE, 'ready');",
     "setInterval(() => {}, 1000);",
   ].join("");
 
-/** Starts `envi run`, sends SIGTERM to the Envi process alone, and returns the end of the run. */
-const runAndTerminate = Effect.fn("runAndTerminate")(function* (
+const waitForFile = (file: string) =>
+  Effect.flatMap(FileSystem.FileSystem, (fs) =>
+    fs
+      .exists(file)
+      .pipe(
+        Effect.repeat({ until: (exists) => exists, schedule: Schedule.spaced("50 millis") }),
+        Effect.timeout("20 seconds"),
+      ),
+  );
+
+/** Starts `envi run`, sends a signal to the Envi process alone, and returns the end of the run. */
+const runAndSignal = Effect.fn("runAndSignal")(function* (
   runtime: string,
-  handlesSignal: boolean,
+  signal: SignalName,
+  hasHandler: boolean,
 ) {
-  const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const sandbox = yield* makeSandbox("none");
   const readyFile = path.join(sandbox.directory, "ready");
@@ -53,7 +72,7 @@ const runAndTerminate = Effect.fn("runAndTerminate")(function* (
       "--",
       "node",
       "-e",
-      waitingChild(handlesSignal),
+      waitingChild(hasHandler ? signal : undefined),
     ],
     {
       cwd: app,
@@ -62,15 +81,61 @@ const runAndTerminate = Effect.fn("runAndTerminate")(function* (
     },
   );
 
-  yield* fs
-    .exists(readyFile)
-    .pipe(
-      Effect.repeat({ until: (exists) => exists, schedule: Schedule.spaced("50 millis") }),
-      Effect.timeout("20 seconds"),
-    );
+  yield* waitForFile(readyFile);
 
   // The signal goes to the Envi process only. The child gets it through the forwarding.
-  yield* Effect.sync(() => process.kill(Number(handle.pid), "SIGTERM"));
+  yield* Effect.sync(() => process.kill(Number(handle.pid), signal));
+
+  const [exitCode, stdout] = yield* Effect.all(
+    [handle.exitCode, Stream.mkString(Stream.decodeText(handle.stdout))],
+    { concurrency: "unbounded" },
+  );
+
+  return { exitCode, stdout };
+});
+
+/**
+ * Waits for the child, types Ctrl-C, and keeps the input open, because `script` ends at the end
+ * of its input. The input is a shell pipe, because `script` rejects the socket that Node gives
+ * to a child as stdin.
+ */
+const pressControlC = [
+  '(while [ ! -f "$ENVI_E2E_READY_FILE" ]; do sleep 0.1; done; sleep 0.2; printf "\\003"; sleep 2)',
+  'script -q /dev/null "$@"',
+].join(" | ");
+
+/**
+ * Starts `envi run` under a pseudo terminal through the BSD `script` command, and types Ctrl-C.
+ * The terminal sends SIGINT to the whole foreground process group: to Envi and to the child.
+ */
+const runAndPressControlC = Effect.fn("runAndPressControlC")(function* (runtime: string) {
+  const path = yield* Path.Path;
+  const sandbox = yield* makeSandbox("none");
+  const readyFile = path.join(sandbox.directory, "ready");
+
+  const handle = yield* ChildProcess.make(
+    "sh",
+    [
+      "-c",
+      pressControlC,
+      "sh",
+      runtime,
+      cliPath,
+      "--cache-dir",
+      sandbox.cacheDirectory,
+      "run",
+      "--",
+      "node",
+      "-e",
+      waitingChild("SIGINT"),
+    ],
+    {
+      cwd: app,
+      env: { ...sandbox.env, CI: undefined, ENVI_E2E_READY_FILE: readyFile },
+      extendEnv: true,
+      stdin: "ignore",
+    },
+  );
 
   const [exitCode, stdout] = yield* Effect.all(
     [handle.exitCode, Stream.mkString(Stream.decodeText(handle.stdout))],
@@ -235,21 +300,34 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
       }),
     );
 
-    it.effect("forwards SIGTERM to the child and returns the exit code of the child", () =>
-      Effect.gen(function* () {
-        const result = yield* runAndTerminate(runtime, true);
+    describe.each(signalNames)("with %s", (signal) => {
+      it.effect("forwards the signal once, and returns the exit code of the child", () =>
+        Effect.gen(function* () {
+          const result = yield* runAndSignal(runtime, signal, true);
 
-        expect(result.stdout).toContain("child-got-SIGTERM");
-        expect(result.exitCode).toBe(7);
-      }),
-    );
+          expect(result.stdout).toContain(`child-got-${signal}=1`);
+          expect(result.exitCode).toBe(7);
+        }),
+      );
 
-    it.effect("returns 143 when SIGTERM ends a child without a handler", () =>
-      Effect.gen(function* () {
-        const result = yield* runAndTerminate(runtime, false);
+      it.effect("returns 128 plus the signal number for a child without a handler", () =>
+        Effect.gen(function* () {
+          const result = yield* runAndSignal(runtime, signal, false);
 
-        expect(result.exitCode).toBe(143);
-      }),
+          expect(result.exitCode).toBe(128 + signalNumbers[signal]);
+        }),
+      );
+    });
+
+    it.effect.skipIf(process.platform !== "darwin")(
+      "gives the child one SIGINT for Ctrl-C in a real terminal",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* runAndPressControlC(runtime);
+
+          expect(result.stdout).toContain("child-got-SIGINT=1");
+          expect(result.exitCode).toBe(7);
+        }),
     );
   });
 });

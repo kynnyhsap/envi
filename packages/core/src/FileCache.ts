@@ -21,7 +21,13 @@ import { CacheError, CacheFailure } from "./Errors.ts";
  */
 export const formatVersion = 1;
 
-/** The name of the lock file inside the cache directory. */
+/**
+ * The name of the lock file inside the cache directory.
+ *
+ * The lock file holds one integer, the epoch milliseconds, and nothing else. This content is
+ * frozen as part of cache format 1: an older Envi treats any other content as a crashed lock and
+ * takes it. Put future data in a second file. A new lock protocol needs a new file name.
+ */
 export const lockFileName = "resolve.lock";
 
 /** How the file cache protects an entry. */

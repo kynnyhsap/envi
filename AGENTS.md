@@ -117,7 +117,8 @@ come from `workspaces.catalog` in the root `package.json`.
 
 - `bun dev <args>` runs the CLI from source on Bun. `bun dev:node <args>` runs it on Node.
 - `bun run build` builds every package into its `dist` folder.
-- `bun run verify` runs format check, lint, typecheck, unit tests, and end-to-end tests.
+- `bun run verify` runs format check, lint, typecheck, the unit tests on Node and on Bun, and the
+  end-to-end tests.
 - `bun run test:onepassword` runs the tests against real 1Password. It needs
   `ENVI_TEST_ONEPASSWORD_TOKEN` in `.env.local`. `bun fixture:onepassword <status|setup|teardown>`
   manages the fake vaults.

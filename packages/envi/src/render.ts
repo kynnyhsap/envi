@@ -81,13 +81,8 @@ export const cacheList = (report: CacheListReport): string =>
     : lines([
         `Directory: ${report.directory ?? absent}`,
         ...table([
-          ["PROVIDER", "REFERENCE", "RESOLVED", "EXPIRES"],
-          ...report.entries.map((entry) => [
-            entry.provider,
-            entry.reference,
-            entry.resolvedAt,
-            entry.expiresAt,
-          ]),
+          ["PROVIDER", "REFERENCE", "RESOLVED"],
+          ...report.entries.map((entry) => [entry.provider, entry.reference, entry.resolvedAt]),
         ]),
       ]);
 

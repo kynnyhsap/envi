@@ -339,7 +339,7 @@ describe("Envi", () => {
         "memory://db/development",
         "memory://token",
       ]);
-      expect(list.entries[0]?.expiresAt).toBe("1970-01-02T00:00:00.000Z");
+      expect(list.entries[0]?.resolvedAt).toBe("1970-01-01T00:00:00.000Z");
       expect(yield* envi.cache.clear).toEqual({ removed: 2 });
       expect((yield* envi.cache.list).entries).toEqual([]);
     }).pipe(Effect.provide(layer)),

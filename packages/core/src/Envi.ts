@@ -2,7 +2,7 @@ import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as EffectConfig from "effect/Config";
 import * as Context from "effect/Context";
-import * as Duration from "effect/Duration";
+import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
@@ -639,7 +639,6 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
         provider: entry.provider,
         reference: entry.reference,
         resolvedAt: new Date(entry.resolvedAt).toISOString(),
-        expiresAt: new Date(entry.resolvedAt + Duration.toMillis(defaultTtl)).toISOString(),
       })),
   }));
 
