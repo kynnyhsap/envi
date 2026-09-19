@@ -1,0 +1,34 @@
+{
+  "name": "envi",
+  "version": "0.0.0",
+  "bin": {
+    "envi": "./dist/bin.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "@envi/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@envi/core": "workspace:*"
+  },
+  "devDependencies": {
+    "effect": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

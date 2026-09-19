@@ -77,7 +77,7 @@ export default defineConfig({
     ".agents/**",
     ".claude/**",
     "tools/oxlint/anti-slop/**",
-    // Type-only API sketches and examples. `tsc` checks them through `design/tsconfig.json`.
-    "design/**",
+    // Type-only API sketches and examples. `tsc` checks them through `examples/tsconfig.json`.
+    "examples/**",
   ],
 });

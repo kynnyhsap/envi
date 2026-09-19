@@ -5,10 +5,22 @@ import * as Stream from "effect/Stream";
 import { ChildProcess } from "effect/unstable/process";
 import { fileURLToPath } from "node:url";
 
-const cliPath = fileURLToPath(new URL("../../dist/envi.js", import.meta.url));
+const cliPath = fileURLToPath(new URL("../../packages/envi/dist/bin.js", import.meta.url));
 
-const runCli = Effect.fn("runCli")(function* (runtime: string, args: ReadonlyArray<string>) {
-  const handle = yield* ChildProcess.make(runtime, [cliPath, ...args]);
+const fixture = (name: string): string =>
+  fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
+
+/** Runs the built CLI. `CI` is unset, so the run behaves like a run on a developer machine. */
+const runCli = Effect.fn("runCli")(function* (
+  runtime: string,
+  cwd: string,
+  args: ReadonlyArray<string>,
+) {
+  const handle = yield* ChildProcess.make(runtime, [cliPath, ...args], {
+    cwd,
+    env: { CI: undefined, ENVI_STAGE: undefined, ENVI_CONFIG: undefined },
+    extendEnv: true,
+  });
 
   const [exitCode, stdout, stderr] = yield* Effect.all(
     [
@@ -24,31 +36,111 @@ const runCli = Effect.fn("runCli")(function* (runtime: string, args: ReadonlyArr
 
 layer(NodeServices.layer)("envi CLI", (it) => {
   describe.each(["node", "bun"])("on %s", (runtime) => {
-    it.effect("prints a greeting", () =>
-      Effect.gen(function* () {
-        const result = yield* runCli(runtime, ["greet", "Ada"]);
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toBe("Hello, Ada!\n");
-      }),
-    );
-
     it.effect("prints the package version", () =>
       Effect.gen(function* () {
-        const result = yield* runCli(runtime, ["--version"]);
+        const result = yield* runCli(runtime, fixture("app"), ["--version"]);
 
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain("0.0.0");
       }),
     );
 
-    it.effect("exits with a failure code for a blank name", () =>
+    it.effect("inspects the nearest config with hidden secrets", () =>
       Effect.gen(function* () {
-        const result = yield* runCli(runtime, ["greet", " "]);
+        const result = yield* runCli(runtime, fixture("app/nested"), ["inspect"]);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain("memory://db/development");
+        expect(result.stdout).not.toContain("postgres://");
+      }),
+    );
+
+    it.effect("exports real values for the stage of the flag", () =>
+      Effect.gen(function* () {
+        const result = yield* runCli(runtime, fixture("app"), ["export", "--stage", "production"]);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toBe("PORT=3000\nDATABASE_URL=postgres://prod\n");
+      }),
+    );
+
+    it.effect("prints a report as JSON with --json", () =>
+      Effect.gen(function* () {
+        const result = yield* runCli(runtime, fixture("app"), ["sync", "--json"]);
+
+        expect(result.exitCode).toBe(0);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          stage: "development",
+          configs: 1,
+          failures: [],
+        });
+      }),
+    );
+
+    it.effect("runs a command with the vars and returns its exit code", () =>
+      Effect.gen(function* () {
+        const result = yield* runCli(runtime, fixture("app"), [
+          "run",
+          "--",
+          "node",
+          "-e",
+          "console.log(process.env.DATABASE_URL, process.env.ENVI_STAGE); process.exit(5)",
+        ]);
+
+        expect(result.exitCode).toBe(5);
+        expect(result.stdout).toBe("postgres://dev development\n");
+      }),
+    );
+
+    it.effect("starts no child when a var fails, and reports the reference on stderr", () =>
+      Effect.gen(function* () {
+        const result = yield* runCli(runtime, fixture("broken"), [
+          "run",
+          "--",
+          "node",
+          "-e",
+          "console.log('started')",
+        ]);
 
         expect(result.exitCode).toBe(1);
-        // The default Effect logger writes failures to stdout.
-        expect(result.stdout + result.stderr).toContain("EmptyName");
+        expect(result.stdout).toBe("");
+        expect(result.stderr).toContain("memory://token");
+      }),
+    );
+
+    it.effect("checks a config and exits with 1 for a failed var", () =>
+      Effect.gen(function* () {
+        const result = yield* runCli(runtime, fixture("broken"), ["check"]);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stdout).toContain("✗ TOKEN (memory://token)");
+      }),
+    );
+
+    it.effect("rejects a stage that the config does not declare", () =>
+      Effect.gen(function* () {
+        const result = yield* runCli(runtime, fixture("app"), ["check", "--stage", "qa"]);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain("qa");
+      }),
+    );
+
+    it.effect("reports a missing config", () =>
+      Effect.gen(function* () {
+        const result = yield* runCli(runtime, "/", ["inspect"]);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain("envi.config.ts");
+      }),
+    );
+
+    it.effect("reports that the cache is off", () =>
+      Effect.gen(function* () {
+        const result = yield* runCli(runtime, fixture("app"), ["cache", "path", "--no-cache"]);
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toBe("The cache is off.\n");
       }),
     );
   });

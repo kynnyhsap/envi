@@ -24,7 +24,8 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "lib": ["ES2023"],
-    "types": ["node"]
+    "types": ["node"],
+    "customConditions": ["@envi/source"]
   },
-  "include": ["src", "tests", "scripts", "*.config.ts"]
+  "include": ["packages/*/src", "packages/*/e2e", "packages/*/scripts", "tests", "*.config.ts"]
 }

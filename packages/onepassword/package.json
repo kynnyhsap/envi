@@ -1,0 +1,33 @@
+{
+  "name": "@envi/1password",
+  "version": "0.0.0",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "@envi/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@1password/sdk": "catalog:"
+  },
+  "devDependencies": {
+    "@envi/core": "workspace:*",
+    "effect": "catalog:",
+    "envi": "workspace:*"
+  },
+  "peerDependencies": {
+    "@envi/core": "workspace:*",
+    "effect": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

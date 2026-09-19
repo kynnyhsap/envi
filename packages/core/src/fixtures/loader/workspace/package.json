@@ -1,0 +1,11 @@
+{
+  "name": "fixture-workspace",
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "packages/*",
+      "tools/cli",
+      "missing/*"
+    ]
+  }
+}

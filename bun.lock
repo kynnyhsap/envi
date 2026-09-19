@@ -4,28 +4,91 @@
   "workspaces": {
     "": {
       "name": "envi",
-      "dependencies": {
-        "@effect/platform-node": "4.0.0-rc.116",
-        "effect": "4.0.0-rc.116",
-      },
       "devDependencies": {
-        "@effect/vitest": "4.0.0-rc.116",
+        "@1password/sdk": "catalog:",
+        "@effect/platform-node": "catalog:",
+        "@effect/vitest": "catalog:",
+        "@envi/1password": "workspace:*",
+        "@envi/core": "workspace:*",
         "@oxlint/plugins": "1.83.0",
-        "@types/node": "26.6.2",
+        "@types/node": "catalog:",
+        "effect": "catalog:",
+        "envi": "workspace:*",
         "oxfmt": "0.68.0",
         "oxlint": "1.83.0",
         "oxlint-tsgolint": "7.0.2002",
-        "typescript": "7.0.2",
-        "vitest": "5.0.1",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "packages/core": {
+      "name": "@envi/core",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@effect/platform-node": "catalog:",
+        "effect": "catalog:",
+      },
+      "peerDependencies": {
+        "effect": "catalog:",
+      },
+    },
+    "packages/envi": {
+      "name": "envi",
+      "version": "0.0.0",
+      "bin": {
+        "envi": "./dist/bin.js",
+      },
+      "dependencies": {
+        "@effect/platform-node": "catalog:",
+        "@envi/core": "workspace:*",
+      },
+      "devDependencies": {
+        "effect": "catalog:",
+      },
+      "peerDependencies": {
+        "effect": "catalog:",
+      },
+    },
+    "packages/onepassword": {
+      "name": "@envi/1password",
+      "version": "0.0.0",
+      "dependencies": {
+        "@1password/sdk": "catalog:",
+      },
+      "devDependencies": {
+        "@envi/core": "workspace:*",
+        "effect": "catalog:",
+        "envi": "workspace:*",
+      },
+      "peerDependencies": {
+        "@envi/core": "workspace:*",
+        "effect": "catalog:",
       },
     },
   },
+  "catalog": {
+    "@1password/sdk": "0.5.0",
+    "@effect/platform-node": "4.0.0-rc.116",
+    "@effect/vitest": "4.0.0-rc.116",
+    "@types/node": "26.6.2",
+    "effect": "4.0.0-rc.116",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1",
+  },
   "packages": {
+    "@1password/sdk": ["@1password/sdk@0.5.0", "", { "dependencies": { "@1password/sdk-core": "0.5.0" } }, "sha512-k6kov3pcA7PRg2tev9CgTfEf/3JSyAp11BPQNCEsqAD32QbqM032OXC1rfjyC8Ba0sfH+NHYZxcifUZToyGyYA=="],
+
+    "@1password/sdk-core": ["@1password/sdk-core@0.5.0", "", {}, "sha512-9g7LWOKRKdePZ85evVgE9xEom3DAg3hRIyQdOwLPvpL/F7KpDXmUHMi72rsqJxKaDbWApXmrYjDExMSPqUg7xw=="],
+
     "@effect/platform-node": ["@effect/platform-node@4.0.0-rc.116", "", { "dependencies": { "@effect/platform-node-shared": "^4.0.0-rc.116", "undici": "^8.10.2" }, "peerDependencies": { "effect": "^4.0.0-rc.116", "redis": ">=5.0.0 <7.0.0" } }, "sha512-uA66Nh998OcChBVX83tQDkBDvQQcVaMXodP9gNGWVeIwWWquy7bzIkAq/fMZGKs/BVFhFQ0XCp3VIqYjnXu5ng=="],
 
     "@effect/platform-node-shared": ["@effect/platform-node-shared@4.0.0-rc.116", "", { "dependencies": { "@types/ws": "^8.18.1", "ws": "^8.21.3" }, "peerDependencies": { "effect": "^4.0.0-rc.116" } }, "sha512-4FB6UriGqArWFUaFqVchhfCRmmtOVzmD/k/bH6LErlKY8a9amt5dk6c3Arsi7AvUpChsdO+3jsG+P85HsxMkNA=="],
 
     "@effect/vitest": ["@effect/vitest@4.0.0-rc.116", "", { "peerDependencies": { "effect": "^4.0.0-rc.116", "vitest": ">=5.0.0 <6.0.0" } }, "sha512-q42ue4hAa5AcPBwqi8rvMvR1Jstr+JjsyyxEBUoBk+WWm8otnqFxQ+XbWslW1QSwdg5+2Fdgd7z59IValt9Oiw=="],
+
+    "@envi/1password": ["@envi/1password@workspace:packages/onepassword"],
+
+    "@envi/core": ["@envi/core@workspace:packages/core"],
 
     "@jridgewell/resolve-uri": ["@jridgewell/resolve-uri@3.1.2", "", {}, "sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw=="],
 
@@ -230,6 +293,8 @@
     "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
 
     "effect": ["effect@4.0.0-rc.116", "", {}, "sha512-nawqJHSjHV8XIBRZNZ+D7cLZpN3kkSjzy6aiT9ofKENsl7xAMFKEoDa0itN5JFl3GUQ1PIN1T1HNlva5+xyO/A=="],
+
+    "envi": ["envi@workspace:packages/envi"],
 
     "es-module-lexer": ["es-module-lexer@2.3.2", "", {}, "sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw=="],
 
