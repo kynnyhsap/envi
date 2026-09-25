@@ -28,16 +28,25 @@ const cwd = fileURLToPath(new URL("./fixtures/app", import.meta.url));
 const printVars =
   "console.log([process.env.PORT, process.env.API_TOKEN, process.env.STRIPE_KEY, Object.keys(process.env).some((name) => name.startsWith('ENVI_PROVIDER_')) ? 'leaked' : 'removed'].join('|'))";
 
-/** Runs the built CLI. `CI` is unset, so the run behaves like a run on a developer machine. */
+/**
+ * Runs one command of the built CLI. A flag follows the command. `CI` is unset, so the run
+ * behaves like a run on a developer machine. The fixture lives in the Envi repo, so the search
+ * goes up only: `repo` would find every fixture of the repo.
+ */
 const runCli = Effect.fn("runCli")(function* (
   runtime: string,
   cacheDirectory: string,
+  command: string,
   args: ReadonlyArray<string>,
 ) {
   const handle = yield* ChildProcess.make(
     runtime,
-    [cliPath, "--cache-dir", cacheDirectory, ...args],
-    { cwd, env: { CI: undefined, ENVI_STAGE: undefined, ...credential }, extendEnv: true },
+    [cliPath, command, "--cache-dir", cacheDirectory, ...args],
+    {
+      cwd,
+      env: { CI: undefined, ENVI_STAGE: undefined, ENVI_CONFIG_SEARCH: "up", ...credential },
+      extendEnv: true,
+    },
   );
 
   const [exitCode, stdout] = yield* Effect.all(
@@ -63,13 +72,12 @@ describe.skipIf(account === undefined && token === undefined)(
 
             const apiToken = yield* expected(primaryVault, "app", "API_TOKEN");
             const stripeKey = yield* expected(secondaryVault, "payments", "STRIPE_KEY");
-            const sync = yield* runCli(runtime, cacheDirectory, ["sync", "--json"]);
+            const sync = yield* runCli(runtime, cacheDirectory, "sync", ["--json"]);
 
             expect(sync.exitCode).toBe(0);
             expect(sync.stdout).not.toContain(stripeKey);
 
-            const child = yield* runCli(runtime, cacheDirectory, [
-              "run",
+            const child = yield* runCli(runtime, cacheDirectory, "run", [
               "--",
               runtime,
               "-e",
@@ -83,7 +91,7 @@ describe.skipIf(account === undefined && token === undefined)(
               ),
             );
 
-            const inspect = yield* runCli(runtime, cacheDirectory, ["inspect"]);
+            const inspect = yield* runCli(runtime, cacheDirectory, "inspect", []);
 
             expect(inspect.exitCode).toBe(0);
             expect(inspect.stdout).toContain(`op://${secondaryVault}/payments/STRIPE_KEY`);

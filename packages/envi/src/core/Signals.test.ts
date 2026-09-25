@@ -18,6 +18,11 @@ const node = (script: string) =>
 
 const endsItself = "process.kill(process.pid, 'SIGTERM'); setInterval(() => {}, 1000);";
 
+// Envi records a received signal before the child ends. The delay keeps that order in a test,
+// where the child sends the signal to itself.
+const endsItselfLater =
+  "setTimeout(() => process.kill(process.pid, 'SIGTERM'), 300); setInterval(() => {}, 1000);";
+
 const handlesSigterm = "process.on('SIGTERM', () => process.exit(7)); setInterval(() => {}, 1000);";
 
 const ignoresSighup =
@@ -45,7 +50,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("Signals.supervise", (i
 
     it.effect("returns 128 plus the number of the received signal", () =>
       Effect.gen(function* () {
-        const code = yield* Signals.supervise(node(endsItself)).pipe(
+        const code = yield* Signals.supervise(node(endsItselfLater)).pipe(
           withSignals(Stream.make({ name: "SIGTERM", forward: false })),
         );
 
