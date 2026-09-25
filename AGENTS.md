@@ -131,8 +131,11 @@ from `workspaces.catalog` in the root `package.json`.
 
 - `envi` exports a small public API from `src/index.ts`, and the test helpers from
   `envi/testing`. Every other module of `src/core` is internal.
-- A published package holds `dist`, `src` for the declaration maps, and the root `README.md` and
-  `LICENSE`, which `prepack` copies. The peer range of `effect` is `^4.0.0-rc.116`.
+- A published package holds `dist`, and `src` for the declaration maps. `@envi/1password` has its
+  own `README.md`. `scripts/prepack.ts` copies the root `LICENSE` into each package, and the root
+  `README.md` into `envi`. The peer range of `effect` is `^4.0.0-rc.116`.
+- `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/build.ts`
+  builds one package: `poof` removes `dist`, then `tsc` compiles `src`.
 - `.github/workflows/ci.yml` runs `bun run verify` on macOS and on Linux, and the Linux images.
 - `tests/e2e/` holds the end-to-end tests of the CLI and the SDK. They run the built CLI on Node
   and on Bun on real files in scoped temp folders. `fixtures/file-provider.ts` logs each batch
@@ -151,10 +154,10 @@ from `workspaces.catalog` in the root `package.json`.
 - `bun dev <args>` runs the CLI from source on Bun. `bun dev:node <args>` runs it on Node.
 - `bun run build` builds every package into its `dist` folder.
 - `bun run verify` runs format check, lint, typecheck, the unit tests on Node and on Bun, and the
-  end-to-end tests.
+  end-to-end tests, all in parallel.
 - `bun run test:onepassword` runs the tests against real 1Password. It needs
   `ENVI_TEST_ONEPASSWORD_TOKEN` in `.env.local`. `bun fixture:onepassword <status|setup|teardown>`
   manages the fake vaults.
-- `bun run test:linux` builds and runs the Linux images. It needs Docker. `bun run verify` does
-  not run it. CI runs it.
+- `bun run test:linux [target]` builds and runs the Linux images. It needs Docker. `bun run
+verify` does not run it. CI runs each image in its own job.
 - Use `bun run build` and `bun run test`. Bare `bun build` and `bun test` start Bun built-ins.

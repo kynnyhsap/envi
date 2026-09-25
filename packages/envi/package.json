@@ -25,8 +25,8 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "prepack": "cp ../../LICENSE ../../README.md ."
+    "build": "bun ../../scripts/build.ts",
+    "prepack": "bun ../../scripts/prepack.ts LICENSE README.md"
   },
   "dependencies": {
     "@effect/platform-node": "catalog:"

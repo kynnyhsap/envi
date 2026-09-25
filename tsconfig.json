@@ -27,5 +27,12 @@
     "types": ["node"],
     "customConditions": ["@envi/source"]
   },
-  "include": ["packages/*/src", "packages/*/e2e", "packages/*/scripts", "tests", "*.config.ts"]
+  "include": [
+    "packages/*/src",
+    "packages/*/e2e",
+    "packages/*/scripts",
+    "scripts",
+    "tests",
+    "*.config.ts"
+  ]
 }

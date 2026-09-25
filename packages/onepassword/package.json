@@ -16,8 +16,8 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "prepack": "cp ../../LICENSE ../../README.md ."
+    "build": "bun ../../scripts/build.ts",
+    "prepack": "bun ../../scripts/prepack.ts LICENSE"
   },
   "dependencies": {
     "@1password/sdk": "catalog:"

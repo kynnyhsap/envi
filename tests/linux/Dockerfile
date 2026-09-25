@@ -23,7 +23,7 @@ FROM base AS linux-bare
 
 ENV ENVI_E2E_NO_KEYCHAIN=1
 
-CMD ["sh", "-c", "bun run test:unit && bun run test:e2e"]
+CMD ["sh", "-c", "bun run --parallel test:unit test:e2e"]
 
 FROM base AS linux-secret-service
 
@@ -34,4 +34,4 @@ RUN apt-get update \
 ENV ENVI_E2E_SECRET_SERVICE=1
 
 # A D-Bus session with an unlocked keyring, as after a desktop login. The password is empty.
-CMD ["dbus-run-session", "--", "sh", "-c", "printf '\\n' | gnome-keyring-daemon --unlock --components=secrets > /dev/null && bun run test:unit && bun run test:e2e"]
+CMD ["dbus-run-session", "--", "sh", "-c", "printf '\\n' | gnome-keyring-daemon --unlock --components=secrets > /dev/null && bun run --parallel test:unit test:e2e"]

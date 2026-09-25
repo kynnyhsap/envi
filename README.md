@@ -263,30 +263,17 @@ the entries. `--cache-dir`, `ENVI_CACHE_DIR`, or `cache.directory` selects anoth
 
 ## 1Password
 
-```ts
-import { onePasswordProvider } from "@envi/1password";
-
-onePasswordProvider({ account: "my-team" }); // desktop app authentication
-onePasswordProvider({ serviceAccountToken: process.env["CI_OP_TOKEN"] }); // a service account
-```
-
-`op()` takes one of three forms. All three give the same cache entry.
+`@envi/1password` is the 1Password provider. It gives `vars` the helper `op()`:
 
 ```ts
 op("op://app/postgres/url");
 op("app", "postgres", "url"); // vault, item, field
-op({ account: "partner-team", vault: "app", item: "postgres", section: "prod", field: "url" });
 ```
 
-- A name with `/` or `?` needs its ID, because the reference syntax cannot escape them.
-- With a token, Envi uses the service account. Without a token, Envi asks the 1Password app for an
-  approval, but only when the run is interactive. Enable the SDK integration in the app under
-  Settings > Developer.
-- Envi imports `@1password/sdk` and creates a client only on a cache miss, because a client takes
-  2 to 5 seconds.
-- A rate limit, a network failure, and a timeout give
-  [`Unavailable`](#error-provider-unavailable), so an expired entry can serve the run. A call with
-  a token times out after 30 seconds. A desktop call waits 90 seconds for the approval.
+A token in `OP_SERVICE_ACCOUNT_TOKEN` selects a service account. Without a token, the provider
+asks the 1Password app for an approval. The
+[provider README](https://github.com/kynnyhsap/envi/tree/main/packages/onepassword#readme) describes the reference forms, the
+authentication, the timeouts, and the error classification.
 
 ## CI
 

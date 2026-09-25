@@ -28,11 +28,12 @@ jobs:
       - run: bun run verify
 
   linux-images:
-    name: linux images
+    name: linux image (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [linux-secret-service, linux-bare]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
-      - run: bun run test:linux
+      - run: sh tests/linux/run.sh ${{ matrix.target }}

@@ -19,4 +19,4 @@ bun-error.log
 
 # Copies that `prepack` puts into each package.
 packages/*/LICENSE
-packages/*/README.md
+packages/envi/README.md
