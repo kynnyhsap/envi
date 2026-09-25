@@ -22,6 +22,28 @@ describe("Provider", () => {
     }),
   );
 
+  it.effect("defaults to a string reference that it describes with its id", () =>
+    Effect.gen(function* () {
+      const provider = Provider.make({
+        id: "vault",
+        scope: "https://vault.example.com",
+        resolveMany: (requests) =>
+          Effect.succeed(
+            Object.fromEntries(requests.map((request) => [request.key, Result.succeed("value")])),
+          ),
+        helpers: {},
+      });
+
+      expect(yield* provider.prepare("db/url")).toEqual({
+        referenceKey: "vault://db/url",
+        description: "vault://db/url",
+      });
+      expect((yield* Effect.flip(provider.prepare({ not: "a string" }))).reason).toBe(
+        ReferenceFailure.Invalid,
+      );
+    }),
+  );
+
   it.effect("rejects a reference that does not match the schema of the provider", () =>
     Effect.gen(function* () {
       const provider = memoryProvider({});

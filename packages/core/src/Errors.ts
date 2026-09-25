@@ -68,6 +68,67 @@ export class DecodeError extends Schema.TaggedError<DecodeError>()("DecodeError"
   }
 }
 
+/** The reasons why a `custom()` value fails. */
+export const CustomReason = {
+  /** User code threw, rejected, or failed with an error that is not a `CustomFailure`. */
+  Threw: "Threw",
+  /** User code failed with a `CustomFailure`. Its message is safe to show. */
+  Failed: "Failed",
+} as const;
+
+/** The schema of `CustomReason`. */
+export const CustomReasonSchema = Schema.Literals([CustomReason.Threw, CustomReason.Failed]);
+
+export type CustomReason = typeof CustomReasonSchema.Type;
+
+/**
+ * The failure that user code in `custom()` throws or returns to show a safe message. Envi hides
+ * the message of every other error, because it can hold a secret.
+ */
+export class CustomFailure extends Schema.TaggedError<CustomFailure>()("CustomFailure", {
+  /** Safe text. Envi shows it in errors and reports. */
+  message: Schema.String,
+  /** `true` lets Envi use an expired cache entry of the same inputs, like a provider outage. */
+  transient: Schema.optional(Schema.Boolean),
+}) {}
+
+const thrownText = (thrown: string | undefined, location: string | undefined): string =>
+  `threw ${thrown ?? "an error"}${location === undefined ? "" : ` at ${location}`}. Envi hides the error message, because it can hold a secret`;
+
+/**
+ * A `custom()` value failed. `id` names the value. The error never holds the message of a thrown
+ * error, only its class name and the location of the throw.
+ */
+export class CustomError extends Schema.TaggedError<CustomError>()("CustomError", {
+  reason: CustomReasonSchema,
+  id: Schema.String,
+  /** The message of a `CustomFailure`. */
+  detail: Schema.optional(Schema.String),
+  /** The class name of a thrown error, such as `TypeError`. */
+  thrown: Schema.optional(Schema.String),
+  /** The file, line, and column of the throw in user code. */
+  location: Schema.optional(Schema.String),
+  transient: Schema.Boolean,
+}) {
+  override get message(): string {
+    return this.reason === CustomReason.Failed
+      ? `Envi custom("${this.id}") failed: ${this.detail ?? "no detail"}`
+      : `Envi custom("${this.id}") ${thrownText(this.thrown, this.location)}. Throw a CustomFailure to show a safe message.`;
+  }
+}
+
+/** A `derive()` function threw. The error never holds the message of the thrown error. */
+export class DeriveError extends Schema.TaggedError<DeriveError>()("DeriveError", {
+  /** The class name of the thrown error, such as `TypeError`. */
+  thrown: Schema.optional(Schema.String),
+  /** The file, line, and column of the throw in user code. */
+  location: Schema.optional(Schema.String),
+}) {
+  override get message(): string {
+    return `Envi derive() ${thrownText(this.thrown, this.location)}.`;
+  }
+}
+
 /** A stage is not in the `stages` list of the config. */
 export class UnknownStageError extends Schema.TaggedError<UnknownStageError>()(
   "UnknownStageError",

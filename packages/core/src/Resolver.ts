@@ -6,15 +6,16 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
-import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
-import type * as Schema from "effect/Schema";
+import * as Schema from "effect/Schema";
 
 import * as Cache from "./Cache.ts";
 import * as Digest from "./Digest.ts";
 import {
   type CacheError,
+  type CustomError,
   type DecodeError,
+  type DeriveError,
   ProviderError,
   ProviderFailure,
   ReferenceError,
@@ -27,6 +28,8 @@ import * as Timing from "./Timing.ts";
 
 /** The settings of one resolution. The caller applies the precedence order before it calls. */
 export interface Options {
+  /** The stage. A `custom()` value keeps one cache entry for each stage. */
+  readonly stage: string;
   /** Ignores fresh cache entries. A stale entry still serves the fallback. */
   readonly refresh: boolean;
   /** Disables the stale fallback. CI is always strict. */
@@ -37,7 +40,7 @@ export interface Options {
 }
 
 /** The failure of one var. A cache failure is not one: it fails the whole resolution. */
-export type VarError = ReferenceError | ProviderError | DecodeError;
+export type VarError = ReferenceError | ProviderError | DecodeError | CustomError | DeriveError;
 
 /** One resolved var. `raw` is absent for an optional var without a value. */
 export interface Resolved {
@@ -83,7 +86,18 @@ interface Evaluated {
   readonly resolvedAt: Option.Option<number>;
 }
 
+/** The evaluated inputs of a `derive()` or `custom()` value. */
+interface Inputs {
+  readonly decoded: Source.DecodedInputs;
+  /** The raw values, sorted by input name. Only a digest of them leaves the resolver. */
+  readonly raws: ReadonlyArray<readonly [string, string | null]>;
+  /** `true` when an input comes from an expired cache entry. */
+  readonly isStale: boolean;
+}
+
 const isCustom = Source.Origin.$is("Custom");
+
+const isDerived = Source.Origin.$is("Derived");
 
 const isReference = Source.Origin.$is("Reference");
 
@@ -92,10 +106,29 @@ const isCacheDisabled = Source.CachePolicy.$is("Disabled");
 /** The hex digits of the scope hash in a cache key. 64 bits keep two scopes apart. */
 const scopeHashLength = 16;
 
-const customKeyOf = (key: string): string => `${Source.customProviderId}:${key}`;
+/** The hex digits of the stage and scope hash in the cache key of a `custom()` value. */
+const customHashLength = 16;
 
-const isTransient = (error: VarError | CacheError): error is ProviderError =>
-  Predicate.isTagged(error, "ProviderError") && error.reason === ProviderFailure.Unavailable;
+/**
+ * The cache value of a `custom()` value: the result plus a digest of what produced it. The digest
+ * stays inside the encrypted value, because it comes from the input values.
+ */
+const CustomRecord = Schema.fromJsonString(
+  Schema.Struct({ digest: Schema.String, value: Schema.NullOr(Schema.String) }),
+);
+
+const decodeCustomRecord = Schema.decodeUnknownOption(CustomRecord);
+
+const encodeCustomRecord = Schema.encodeSync(CustomRecord);
+
+/** Only a provider outage and a `CustomFailure` that says so allow the stale fallback. */
+const isTransient = (error: VarError | CacheError): boolean =>
+  (Predicate.isTagged(error, "ProviderError") && error.reason === ProviderFailure.Unavailable) ||
+  (Predicate.isTagged(error, "CustomError") && error.transient);
+
+/** The inputs of a `derive()` or `custom()` value. */
+const inputsOf = (source: Source.AnySource): ReadonlyArray<Source.AnySource> =>
+  isCustom(source.origin) || isDerived(source.origin) ? Object.values(source.origin.inputs) : [];
 
 const invalidResponse = (provider: string, detail: string): ProviderError =>
   new ProviderError({ reason: ProviderFailure.InvalidResponse, provider, detail });
@@ -132,6 +165,12 @@ const whenMissing = (
     : Effect.fail(new ReferenceError({ reason: ReferenceFailure.NotFound, provider, reference }));
 };
 
+/** A value from an expired input is itself expired, and the origin tells `inspect` so. */
+const withInputs = (result: Evaluated, inputs: Inputs): Evaluated =>
+  inputs.isStale && result.origin !== ValueOrigin.StaleCache
+    ? { ...result, origin: ValueOrigin.StaleCache }
+    : result;
+
 /** A var with `.optional()` or `.default()` accepts a reference without a value. */
 const allowsMissing = (source: Source.AnySource): boolean =>
   source.isOptional || Option.isSome(source.fallback);
@@ -151,7 +190,7 @@ const fromCached = (
 
 /**
  * Resolves a record of descriptors: one cache read, one call for each provider, then the
- * `custom()` values from the inside to the outside.
+ * `derive()` and `custom()` values from the inside to the outside.
  *
  * @returns One outcome for each var. Only a cache failure fails the whole effect.
  */
@@ -163,7 +202,7 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
   const providers = yield* Provider.Providers;
   const now = yield* Clock.currentTimeMillis;
 
-  // 1. Walk every descriptor, including the inputs of each custom(), and prepare the references.
+  // 1. Walk every descriptor, including every input, and prepare the references.
   const all = new Set<Source.AnySource>();
   const leaves = new Map<Source.AnySource, Result.Result<Leaf, VarError>>();
 
@@ -173,10 +212,7 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
     }
 
     all.add(source);
-
-    if (isCustom(source.origin)) {
-      source.origin.inputs.forEach(collect);
-    }
+    inputsOf(source).forEach(collect);
   };
 
   Object.values(sources).forEach(collect);
@@ -221,9 +257,25 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
     }
   }
 
-  const cacheKeyOf = (source: Source.AnySource): Option.Option<string> => {
+  // A custom() value keeps one entry for each stage and scope. Its record holds the input digest.
+  const customKeys = new Map<Source.AnySource, string>();
+
+  for (const source of all) {
     if (isCustom(source.origin)) {
-      return Option.map(source.origin.key, customKeyOf);
+      const hash = yield* Digest.sha256Hex(JSON.stringify([options.stage, source.origin.scope]));
+
+      customKeys.set(
+        source,
+        `${Source.customProviderId}:${source.origin.id}:${hash.slice(0, customHashLength)}`,
+      );
+    }
+  }
+
+  const cacheKeyOf = (source: Source.AnySource): Option.Option<string> => {
+    const customKey = customKeys.get(source);
+
+    if (customKey !== undefined) {
+      return Option.some(customKey);
     }
 
     const leaf = leaves.get(source);
@@ -250,55 +302,31 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
       }),
     });
 
-  const recordOf = (source: Source.AnySource): Option.Option<Cache.CacheRecord> =>
-    Option.flatMap(cacheKeyOf(source), (key) => Option.fromUndefinedOr(cached[key]));
+  const recordIn = (
+    source: Source.AnySource,
+    records: Cache.CacheRecords,
+  ): Option.Option<Cache.CacheRecord> =>
+    Option.flatMap(cacheKeyOf(source), (key) => Option.fromUndefinedOr(records[key]));
+
+  const isFresh = (source: Source.AnySource, found: Cache.CacheRecord): boolean =>
+    !options.refresh &&
+    now - found.resolvedAt < Duration.toMillis(durations(source).ttl) &&
+    (Option.isSome(found.value) || allowsMissing(source));
+
+  const isUsableStale = (source: Source.AnySource, found: Cache.CacheRecord): boolean =>
+    !options.strict &&
+    now - found.resolvedAt < Duration.toMillis(durations(source).maxStale) &&
+    (Option.isSome(found.value) || allowsMissing(source));
 
   const freshRecord = (
     source: Source.AnySource,
     records: Cache.CacheRecords,
   ): Option.Option<Cache.CacheRecord> =>
-    options.refresh
-      ? Option.none()
-      : cacheKeyOf(source).pipe(
-          Option.flatMap((key) => Option.fromUndefinedOr(records[key])),
-          Option.filter(
-            (found) =>
-              now - found.resolvedAt < Duration.toMillis(durations(source).ttl) &&
-              (Option.isSome(found.value) || allowsMissing(source)),
-          ),
-        );
+    Option.filter(recordIn(source, records), (found) => isFresh(source, found));
 
-  const staleRecord = (source: Source.AnySource): Option.Option<Cache.CacheRecord> =>
-    options.strict
-      ? Option.none()
-      : Option.filter(
-          recordOf(source),
-          (found) =>
-            now - found.resolvedAt < Duration.toMillis(durations(source).maxStale) &&
-            (Option.isSome(found.value) || allowsMissing(source)),
-        );
-
-  // 3. The references that need a provider call. A fresh custom() hides its inputs.
-  const reachable = new Set<Source.AnySource>();
-  const visited = new Set<Source.AnySource>();
-
-  const visit = (source: Source.AnySource): void => {
-    if (visited.has(source)) {
-      return;
-    }
-
-    visited.add(source);
-
-    if (isReference(source.origin)) {
-      reachable.add(source);
-    }
-
-    if (isCustom(source.origin) && Option.isNone(freshRecord(source, cached))) {
-      source.origin.inputs.forEach(visit);
-    }
-  };
-
-  Object.values(sources).forEach(visit);
+  // 3. The references that can need a provider call. Envi evaluates every input of a custom()
+  // value, because the inputs decide whether its entry still fits.
+  const reachable = new Set([...all].filter((source) => isReference(source.origin)));
 
   const leafOf = (source: Source.AnySource): Option.Option<Leaf> => {
     const leaf = leaves.get(source);
@@ -464,20 +492,53 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
 
   const orStale = (
     source: Source.AnySource,
+    record: Option.Option<Cache.CacheRecord>,
     error: VarError | CacheError,
   ): Effect.Effect<Evaluated, VarError | CacheError> =>
     isTransient(error)
-      ? Option.match(staleRecord(source), {
-          onNone: () => Effect.fail(error),
-          onSome: (found) =>
-            Effect.andThen(
-              Effect.logWarning("Envi uses an expired cache entry after a transient failure.").pipe(
-                Effect.annotateLogs({ provider: found.provider, reference: found.reference }),
+      ? Option.match(
+          Option.filter(record, (found) => isUsableStale(source, found)),
+          {
+            onNone: () => Effect.fail(error),
+            onSome: (found) =>
+              Effect.andThen(
+                Effect.logWarning(
+                  "Envi uses an expired cache entry after a transient failure.",
+                ).pipe(
+                  Effect.annotateLogs({ provider: found.provider, reference: found.reference }),
+                ),
+                fromCached(source, found, ValueOrigin.StaleCache),
               ),
-              fromCached(source, found, ValueOrigin.StaleCache),
-            ),
-        })
+          },
+        )
       : Effect.fail(error);
+
+  /** Evaluates and decodes the inputs of a `derive()` or `custom()` value. */
+  const evaluateInputs = (
+    inputs: Readonly<Record<string, Source.AnySource>>,
+    owner: string,
+  ): Effect.Effect<Inputs, VarError | CacheError> =>
+    Effect.map(
+      Effect.forEach(Object.entries(inputs), ([name, input]) =>
+        Effect.flatMap(evaluated(input), (result) =>
+          Effect.map(decodeEvaluated(input, `an input of ${owner}`, result), (decoded) => ({
+            name,
+            result,
+            decoded,
+          })),
+        ),
+      ),
+      (entries) => ({
+        decoded: Object.fromEntries(entries.map((entry) => [entry.name, entry.decoded])),
+        raws: entries
+          .map(
+            (entry) =>
+              [entry.name, Option.getOrNull(Option.map(entry.result.raw, Redacted.value))] as const,
+          )
+          .toSorted(([a], [b]) => (a < b ? -1 : 1)),
+        isStale: entries.some((entry) => entry.result.origin === ValueOrigin.StaleCache),
+      }),
+    );
 
   const evaluated = (source: Source.AnySource): Effect.Effect<Evaluated, VarError | CacheError> =>
     memo.get(source) ?? Effect.die("Envi resolver defect: a descriptor has no memo entry.");
@@ -550,57 +611,103 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
           onFailure: (error) =>
             isNotFound(error)
               ? whenMissing(source, provider.id, description)
-              : orStale(source, error),
+              : orStale(source, recordIn(source, cached), error),
         });
       },
+      Derived: (origin) =>
+        Effect.gen(function* () {
+          const inputs = yield* evaluateInputs(origin.inputs, "derive()");
+          const value = yield* origin.call(inputs.decoded);
+
+          if (Option.isNone(value)) {
+            return yield* whenMissing(source, Source.deriveProviderId, "derive()");
+          }
+
+          return withInputs(
+            {
+              raw: Option.some(Redacted.make(value.value)),
+              origin: ValueOrigin.Derived,
+              provider: Option.none(),
+              reference: Option.none(),
+              resolvedAt: Option.none(),
+            },
+            inputs,
+          );
+        }),
       Custom: (origin) => {
-        const description = Option.match(origin.key, {
-          onNone: () => "custom()",
-          onSome: (key) => `custom(${key})`,
-        });
+        const description = `custom(${origin.id})`;
+        const key = customKeys.get(source);
 
-        return Option.match(freshRecord(source, cached), {
-          onSome: (found) => Effect.succeed(fromRecord(found, ValueOrigin.Cache)),
-          onNone: () =>
-            Effect.gen(function* () {
-              // A value from an expired input is itself expired. Envi never caches it as fresh,
-              // and the origin tells `inspect` and an outer custom() about it.
-              const usedStale = yield* Ref.make(false);
+        if (key === undefined) {
+          return Effect.die("Envi resolver defect: a custom() value has no cache key.");
+        }
 
-              const raw = yield* origin
-                .run((input) =>
-                  Effect.flatMap(
-                    Effect.tap(evaluated(input), (result) =>
-                      result.origin === ValueOrigin.StaleCache
-                        ? Ref.set(usedStale, true)
-                        : Effect.void,
-                    ),
-                    (result) => decodeEvaluated(input, "an input of custom()", result),
-                  ),
-                )
-                .pipe(Timing.measure("custom.resolve", { reference: description }));
+        return Effect.gen(function* () {
+          const inputs = yield* evaluateInputs(origin.inputs, description);
 
-              const isStale = yield* Ref.get(usedStale);
+          const digest = yield* Digest.sha256Hex(JSON.stringify([origin.code, inputs.raws]));
 
-              if (!isStale && !isCacheDisabled(source.cachePolicy) && Option.isSome(origin.key)) {
-                yield* cache.setMany({
-                  [customKeyOf(origin.key.value)]: {
-                    provider: Source.customProviderId,
-                    reference: description,
-                    value: Option.some(Redacted.make(raw)),
-                    resolvedAt: now,
-                  },
-                });
-              }
+          // An entry that other inputs or other code produced does not exist for this run.
+          const record = Option.flatMap(Option.fromUndefinedOr(afterLock[key]), (found) =>
+            found.value.pipe(
+              Option.flatMap((value) => decodeCustomRecord(Redacted.value(value))),
+              Option.filter((decoded) => decoded.digest === digest),
+              Option.map((decoded): Cache.CacheRecord => ({
+                ...found,
+                value: Option.map(Option.fromNullOr(decoded.value), Redacted.make),
+              })),
+            ),
+          );
 
-              return {
-                raw: Option.some(Redacted.make(raw)),
-                origin: isStale ? ValueOrigin.StaleCache : ValueOrigin.Custom,
-                provider: Option.some(Source.customProviderId),
-                reference: Option.some(description),
-                resolvedAt: Option.some(now),
-              };
-            }).pipe(Effect.catch((error) => orStale(source, error))),
+          const fresh = Option.filter(record, (found) => isFresh(source, found));
+
+          if (Option.isSome(fresh)) {
+            return withInputs(yield* fromCached(source, fresh.value, ValueOrigin.Cache), inputs);
+          }
+
+          const outcome = yield* Effect.result(
+            origin
+              .call(inputs.decoded)
+              .pipe(Timing.measure("custom.resolve", { reference: description })),
+          );
+
+          if (Result.isFailure(outcome)) {
+            return yield* orStale(source, record, outcome.failure);
+          }
+
+          const value = outcome.success;
+
+          // A value from an expired input is safe to cache: the digest holds the old input values.
+          if (
+            !isCacheDisabled(source.cachePolicy) &&
+            (Option.isSome(value) || allowsMissing(source))
+          ) {
+            const stored = encodeCustomRecord({ digest, value: Option.getOrNull(value) });
+
+            yield* cache.setMany({
+              [key]: {
+                provider: Source.customProviderId,
+                reference: description,
+                value: Option.some(Redacted.make(stored)),
+                resolvedAt: now,
+              },
+            });
+          }
+
+          if (Option.isNone(value)) {
+            return yield* whenMissing(source, Source.customProviderId, description);
+          }
+
+          return withInputs(
+            {
+              raw: Option.some(Redacted.make(value.value)),
+              origin: ValueOrigin.Custom,
+              provider: Option.some(Source.customProviderId),
+              reference: Option.some(description),
+              resolvedAt: Option.some(now),
+            },
+            inputs,
+          );
         });
       },
     });
@@ -622,7 +729,9 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
         ),
         Effect.map((resolved) => [key, Result.succeed(resolved)] as const),
         Effect.catchTags({
+          CustomError: (error) => Effect.succeed([key, Result.fail(error)] as const),
           DecodeError: (error) => Effect.succeed([key, Result.fail(error)] as const),
+          DeriveError: (error) => Effect.succeed([key, Result.fail(error)] as const),
           ProviderError: (error) => Effect.succeed([key, Result.fail(error)] as const),
           ReferenceError: (error) => Effect.succeed([key, Result.fail(error)] as const),
         }),

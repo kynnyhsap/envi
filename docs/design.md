@@ -36,8 +36,8 @@ export default defineConfig({
 - `vars` is a plain object or a synchronous function of the stage. It returns only literals and
   descriptors. It never resolves a secret and does no I/O. Every config is therefore inspectable
   data: `parse`, `check`, `sync`, and `schemaOf` work without any provider call.
-- `vars` receives one parameter: the stage, the built-in helpers `value`, `custom`, `fromEnv`, and
-  `reference`, and the helpers of each provider in `providers`, such as `op`. A config file then
+- `vars` receives one parameter: the stage, the built-in helpers `value`, `derive`, `custom`,
+  `fromEnv`, and `reference`, and the helpers of each provider in `providers`, such as `op`. A config file then
   needs no helper import. A provider package also exports its helper, because a shared module sits
   outside `vars`. Both forms give the same function.
 - The key for the env vars is `vars`. Do not name it `env` or `envs`.
@@ -58,15 +58,32 @@ export default defineConfig({
   failure stays a failure. A `.default()` value passes through the schema.
 - `.cache(false)` resolves a value on every load. `.cache({ ttl, maxStale })` overrides the cache
   settings for one value.
-- `custom({ key, from, resolve })` takes a value from user code. It is the only primitive for
-  custom and derived values. Do not add `derive`, `map`, `combine`, or `template`.
-  - `from` holds the inputs as descriptors, not as var names. Envi collects every reference,
-    resolves one batch for each provider, and then runs each `resolve` from the inside to the
-    outside. An input can be another `custom()`. A cycle is impossible by construction.
-  - `resolve` receives the decoded inputs. It returns the raw string, a `Promise`, or an `Effect`
-    without requirements. A failure becomes a `ProviderError` for the provider `custom`.
-  - With a `key`, Envi caches the result under that key. Without a `key`, Envi never caches it.
-  - An input does not have to be a var. `envi run` injects only the vars.
+- Two primitives take a value from user code. Do not add `map`, `combine`, or `template`.
+  - Both take their inputs as descriptors, not as var names. Envi collects every reference,
+    resolves one batch for each provider, and then evaluates each value from the inside to the
+    outside. An input can be another `derive()` or `custom()`. A cycle is impossible by
+    construction. An input does not have to be a var. `envi run` injects only the vars.
+  - Both return a raw string or `undefined`. `undefined` counts as `NotFound`, so `.optional()`
+    and `.default()` apply. Both values are redacted by default.
+  - A value that comes from an expired input has the origin `stale-cache`.
+- `derive(input, fn)` is a pure, synchronous function of one descriptor or of a record of
+  descriptors, such as a URL built from its parts. Envi calls it on every load and never caches
+  it, so `.cache()` has no effect. A throw becomes a `DeriveError` with the class name and the
+  location of the throw. The message never appears, because it can hold a secret.
+- `custom({ id, from, scope, resolve })` runs effectful user code, such as a token exchange.
+  - `resolve` receives the decoded inputs. It returns the raw string, `undefined`, a `Promise`, or
+    an `Effect` without requirements.
+  - `id` names the value in the cache and in errors. `scope` names everything outside the inputs
+    that selects the value, such as a host.
+  - Envi keeps one cache entry for each `id`, stage, and `scope`. The entry holds a SHA-256 digest
+    of the source text of `resolve` and of the raw input values, inside the encrypted value. An
+    entry with another digest is a miss. A rotated input or an edit of the code therefore
+    computes a new value, and an entry never serves inputs that did not produce it. Envi
+    evaluates the inputs of a `custom()` value on every load, mostly from the cache.
+  - A throw, a rejection, and a failed `Effect` become a `CustomError` with the reason `Threw`, the
+    class name, and the location. The message never appears. A `CustomFailure({ message,
+transient })` gives the reason `Failed` and shows its message. `transient: true` allows the
+    stale fallback to an entry with the same digest.
 - A reference address or a var name that depends on a resolved value is out of scope for v1.
 - `fromEnv(name)` takes a value from the environment of the Envi process, such as a CI secret. Envi
   never caches it. A missing variable counts as `NotFound`.
@@ -151,8 +168,9 @@ SDK rules:
 
 - The core never imports a provider. A provider package exports a descriptor helper, such as
   `op()`, and a provider factory, such as `onePasswordProvider(settings)`.
-- A provider has five required members: `id`, `Reference`, `describe`, `scope`, and
-  `resolveMany`. The optional `helpers` member holds the descriptor helpers that `vars` receives.
+- A provider has the members `id`, `Reference`, `describe`, `scope`, `resolveMany`, and
+  `helpers`. `helpers` holds the descriptor helpers that `vars` receives. Without `Reference`, a
+  reference is a plain string, and `describe` defaults to `<id>://<reference>`.
   Users can write a custom provider with `Provider.make`, and a descriptor
   helper with `reference(id, ref)`. The provider interface and the cache interface are public and
   **unstable** until a second real provider proves them. Rate limits and retry metadata come later.
@@ -211,8 +229,8 @@ SDK rules:
   lock protocol needs a new lock file name.
 - A cache entry has no single expiry. Each reader applies the `ttl` of its own config to
   `resolvedAt`. `cache list` therefore shows `resolvedAt` and no expiry column.
-- A `custom()` value that comes from an expired input is itself expired. Envi never caches it,
-  and its origin is `stale-cache`.
+- A `custom()` value that comes from an expired input enters the cache with the digest of the
+  expired input values, so the entry serves only those values. Its origin is `stale-cache`.
 - The cache is off by default when `CI=true`. `--cache` or `ENVI_CACHE_ENABLED=true` turns it on.
 - Supported platforms: macOS and Linux. Windows is not supported in v1. On Linux, the cache is off
   by default until a keychain layer exists.
@@ -222,7 +240,8 @@ SDK rules:
 `Resolver.resolve` does one explicit batch for each provider. It does not use `Request` and
 `RequestResolver`, because one resolution has five ordered steps that share state: collect the
 references, read the cache, select the misses, fetch under the lock, and evaluate each
-descriptor. A fresh `custom()` entry hides its inputs from the batch.
+descriptor. The first cache read includes the entry of each `custom()` value, because its cache
+key needs only the `id`, the stage, and the `scope`.
 
 ## Errors and logs
 
@@ -270,7 +289,8 @@ release together. The package names are placeholders until the npm name is decid
 
 - `core` holds the descriptors, `defineConfig`, the config loader, the provider registry, the
   resolver, the cache with its layers, the keychain layer, the `Envi` service with `run`, the
-  reports, the errors, the in-memory provider, and the built-in providers `custom` and `fromEnv`.
+  reports, the errors, the in-memory provider, and the built-in values `derive`, `custom`, and
+  `fromEnv`.
   `core` owns every shared type. `core` never imports a provider package, `@effect/platform-*`,
   `node:`, or `Bun.*`. It requires the platform services and does not provide them.
 - `envi` is the only package that provides the platform layer. It uses `@effect/platform-node` on

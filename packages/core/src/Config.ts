@@ -31,6 +31,7 @@ export type Vars = Readonly<Record<string, string | Source.AnySource>>;
 /** The helpers that every config gets, with or without a provider. */
 export interface BuiltInHelpers {
   readonly value: typeof Source.value;
+  readonly derive: typeof Source.derive;
   readonly custom: typeof Source.custom;
   readonly fromEnv: typeof Source.fromEnv;
   readonly reference: typeof Source.reference;
@@ -135,6 +136,7 @@ export const defineConfig = <
       ...providerHelpers,
       stage,
       value: Source.value,
+      derive: Source.derive,
       custom: Source.custom,
       fromEnv: Source.fromEnv,
       reference: Source.reference,

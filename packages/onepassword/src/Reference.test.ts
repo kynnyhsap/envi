@@ -9,6 +9,7 @@ const decode = (source: Source.AnySource) =>
   Source.Origin.$match(source.origin, {
     Reference: (origin) => Schema.decodeUnknownEffect(Reference)(origin.reference),
     Custom: () => Effect.die("not a reference"),
+    Derived: () => Effect.die("not a reference"),
     Environment: () => Effect.die("not a reference"),
     Literal: () => Effect.die("not a reference"),
   });

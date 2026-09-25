@@ -39,4 +39,4 @@ export {
   type VarsOf,
 } from "./Config.ts";
 
-export { custom, fromEnv, reference, value, type Decoded, type Raw } from "./Source.ts";
+export { custom, derive, fromEnv, reference, value, type Decoded, type Raw } from "./Source.ts";

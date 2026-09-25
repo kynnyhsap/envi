@@ -11,7 +11,11 @@ import * as TestClock from "effect/testing/TestClock";
 
 import * as Cache from "./Cache.ts";
 import {
+  CustomError,
+  CustomFailure,
+  CustomReason,
   DecodeError,
+  DeriveError,
   ProviderError,
   ProviderFailure,
   ReferenceError,
@@ -24,6 +28,7 @@ import * as Resolver from "./Resolver.ts";
 import * as Source from "./Source.ts";
 
 const options: Resolver.Options = {
+  stage: "development",
   refresh: false,
   strict: false,
   interactive: true,
@@ -224,22 +229,23 @@ describe("Resolver", () => {
   );
 
   it.effect(
-    "resolves the inputs of custom in the same batch and runs nested customs in order",
+    "resolves the inputs of custom and derive in the same batch, and nests them in order",
     () => {
       const memory = memoryProvider({ user: "app", password: "pw", port: "5432" });
 
       return Effect.gen(function* () {
         const user = mem("user");
 
-        const authority = Source.custom({
-          from: { user, password: mem("password") },
-          resolve: (inputs) => `${inputs.user}:${inputs.password}`,
-        });
+        const authority = Source.derive(
+          { user, password: mem("password") },
+          (inputs) => `${inputs.user}:${inputs.password}`,
+        );
 
         const resolution = yield* Resolver.resolve(
           {
             DB_USER: user,
             DATABASE_URL: Source.custom({
+              id: "database-url",
               from: { authority, port: mem("port").schema(Schema.FiniteFromString) },
               resolve: (inputs) => `postgres://${inputs.authority}@db:${inputs.port}/app`,
             }),
@@ -255,14 +261,65 @@ describe("Resolver", () => {
     },
   );
 
-  it.effect("caches a custom value with a key and skips its inputs on a hit", () => {
-    const memory = memoryProvider({ secret: "s" });
+  it.effect("derives a value on every run, and applies optional and default to undefined", () => {
+    const secrets = { port: "5432" };
+    const memory = memoryProvider(secrets);
+
+    return Effect.gen(function* () {
+      const port = mem("port").cache(false).schema(Schema.FiniteFromString);
+
+      const sources = {
+        NEXT_PORT: Source.derive(port, (value) => String(value + 1)),
+        NONE: Source.derive(port, () => undefined).optional(),
+        FALLBACK: Source.derive(port, () => undefined).default("fallback"),
+        REQUIRED: Source.derive(port, () => undefined),
+      };
+
+      const first = yield* Resolver.resolve(sources, options);
+
+      secrets.port = "6000";
+
+      const second = yield* Resolver.resolve(sources, options);
+
+      expect(succeeded(first, "NEXT_PORT")).toMatchObject({
+        decoded: "5433",
+        origin: ValueOrigin.Derived,
+      });
+      expect(succeeded(second, "NEXT_PORT").decoded).toBe("6001");
+      expect(succeeded(first, "NONE").origin).toBe(ValueOrigin.Unset);
+      expect(succeeded(first, "FALLBACK").decoded).toBe("fallback");
+      expect(failed(first, "REQUIRED")).toMatchObject({ reason: ReferenceFailure.NotFound });
+
+      const entries = yield* Effect.flatMap(Cache.Cache, (cache) => cache.list());
+
+      expect(entries).toEqual([]);
+    }).pipe(Effect.provide(layerWith(memory)));
+  });
+
+  it.effect("fails a derive that throws with a DeriveError", () =>
+    Effect.gen(function* () {
+      const resolution = yield* Resolver.resolve(
+        {
+          BROKEN: Source.derive(mem("a"), () => {
+            throw new Error("fake-secret-in-message");
+          }),
+        },
+        options,
+      );
+
+      expect(failed(resolution, "BROKEN")).toBeInstanceOf(DeriveError);
+    }).pipe(Effect.provide(layerWith(memoryProvider({ a: "1" })))),
+  );
+
+  it.effect("caches a custom value, and computes it again when an input changes", () => {
+    const secrets = { secret: "s" };
+    const memory = memoryProvider(secrets);
 
     return Effect.gen(function* () {
       const runs = yield* Ref.make(0);
 
       const token = Source.custom({
-        key: "api-token",
+        id: "api-token",
         from: { secret: mem("secret").cache(false) },
         resolve: (inputs) =>
           Effect.as(
@@ -278,21 +335,125 @@ describe("Resolver", () => {
       expect(succeeded(second, "TOKEN").decoded).toBe("t-s");
       expect(succeeded(second, "TOKEN").origin).toBe(ValueOrigin.Cache);
       expect(yield* Ref.get(runs)).toBe(1);
-      expect(memory.calls()).toHaveLength(1);
+
+      secrets.secret = "rotated";
+
+      const third = yield* Resolver.resolve({ TOKEN: token }, options);
+
+      expect(succeeded(third, "TOKEN").decoded).toBe("t-rotated");
+      expect(succeeded(third, "TOKEN").origin).toBe(ValueOrigin.Custom);
+      expect(yield* Ref.get(runs)).toBe(2);
+      expect(memory.calls()).toHaveLength(3);
+
+      const entries = yield* Effect.flatMap(Cache.Cache, (cache) => cache.list());
+
+      expect(entries.map((entry) => entry.reference)).toEqual(["custom(api-token)"]);
     }).pipe(Effect.provide(layerWith(memory)));
   });
+
+  it.effect("keeps one custom entry for each stage, and never for cache(false)", () =>
+    Effect.gen(function* () {
+      const runs = yield* Ref.make(0);
+
+      const counted = Source.custom({
+        id: "build-number",
+        resolve: () =>
+          Effect.as(
+            Ref.update(runs, (count) => count + 1),
+            "42",
+          ),
+      });
+
+      yield* Resolver.resolve({ BUILD: counted }, options);
+      yield* Resolver.resolve({ BUILD: counted }, { ...options, stage: "production" });
+      yield* Resolver.resolve({ BUILD: counted }, options);
+
+      expect(yield* Ref.get(runs)).toBe(2);
+
+      yield* Resolver.resolve({ BUILD: counted.cache(false) }, options);
+      yield* Resolver.resolve({ BUILD: counted }, { ...options, refresh: true });
+
+      expect(yield* Ref.get(runs)).toBe(4);
+    }).pipe(Effect.provide(layerWith())),
+  );
 
   it.effect("fails the var when a custom input fails", () =>
     Effect.gen(function* () {
       const resolution = yield* Resolver.resolve(
         {
-          URL: Source.custom({ from: { user: mem("missing") }, resolve: (inputs) => inputs.user }),
+          URL: Source.custom({
+            id: "url",
+            from: { user: mem("missing") },
+            resolve: (inputs) => inputs.user,
+          }),
         },
         options,
       );
 
       expect(failed(resolution, "URL")).toMatchObject({ reason: ReferenceFailure.NotFound });
     }).pipe(Effect.provide(layerWith(memoryProvider({})))),
+  );
+
+  it.effect("uses an expired custom entry of the same inputs after a transient CustomFailure", () =>
+    Effect.gen(function* () {
+      const down = yield* Ref.make(false);
+
+      const token = (transient: boolean) =>
+        Source.custom({
+          id: "token",
+          resolve: () =>
+            Effect.flatMap(Ref.get(down), (isDown) =>
+              isDown
+                ? Effect.fail(
+                    new CustomFailure({ message: "The token service is down.", transient }),
+                  )
+                : Effect.succeed("t-1"),
+            ),
+        });
+
+      yield* Resolver.resolve({ TOKEN: token(true) }, options);
+      yield* Ref.set(down, true);
+      yield* TestClock.adjust("2 days");
+
+      const stale = yield* Resolver.resolve({ TOKEN: token(true) }, options);
+
+      expect(succeeded(stale, "TOKEN")).toMatchObject({
+        decoded: "t-1",
+        origin: ValueOrigin.StaleCache,
+      });
+      expect(
+        failed(
+          yield* Resolver.resolve({ TOKEN: token(true) }, { ...options, strict: true }),
+          "TOKEN",
+        ),
+      ).toMatchObject({
+        reason: CustomReason.Failed,
+        detail: "The token service is down.",
+      });
+    }).pipe(Effect.provide(layerWith())),
+  );
+
+  it.effect("uses no expired custom entry after a failure that is not transient", () =>
+    Effect.gen(function* () {
+      const down = yield* Ref.make(false);
+
+      const token = Source.custom({
+        id: "token",
+        resolve: () =>
+          Effect.flatMap(Ref.get(down), (isDown) =>
+            isDown ? Effect.fail(new Error("fake-secret")) : Effect.succeed("t-1"),
+          ),
+      });
+
+      yield* Resolver.resolve({ TOKEN: token }, options);
+      yield* Ref.set(down, true);
+      yield* TestClock.adjust("2 days");
+
+      const error = failed(yield* Resolver.resolve({ TOKEN: token }, options), "TOKEN");
+
+      expect(error).toBeInstanceOf(CustomError);
+      expect(error).toMatchObject({ reason: CustomReason.Threw, id: "token" });
+    }).pipe(Effect.provide(layerWith())),
   );
 
   it.effect("uses an expired entry after a transient failure, unless strict or too old", () => {
@@ -326,41 +487,61 @@ describe("Resolver", () => {
     }).pipe(Effect.provide(Cache.layerMemory));
   });
 
-  it.effect("never caches a custom value that comes from an expired input", () => {
-    const memory = memoryProvider({ a: "1" });
+  it.effect(
+    "gives a value from an expired input the stale origin, and caches a custom value safely",
+    () => {
+      const memory = memoryProvider({ a: "1" });
 
-    return Effect.gen(function* () {
-      const down = yield* Ref.make(false);
-      const flaky = flakyProvider(down, memory);
+      return Effect.gen(function* () {
+        const down = yield* Ref.make(false);
+        const runs = yield* Ref.make(0);
+        const flaky = flakyProvider(down, memory);
+        const input = Source.reference("flaky", "a");
 
-      const sources = {
-        DERIVED: Source.custom({
-          key: "derived",
-          from: { a: Source.reference("flaky", "a") },
-          resolve: ({ a }) => `value-${a}`,
-        }),
-      };
+        const sources = {
+          DERIVED: Source.derive(input, (a) => `derived-${a}`),
+          CUSTOM: Source.custom({
+            id: "custom",
+            from: { a: input },
+            resolve: ({ a }) =>
+              Effect.as(
+                Ref.update(runs, (count) => count + 1),
+                `custom-${a}`,
+              ),
+          }),
+        };
 
-      const run = (overrides: Partial<Resolver.Options>) =>
-        Resolver.resolve(sources, { ...options, ...overrides }).pipe(
-          Effect.provide(Provider.layer([flaky])),
-        );
+        const run = (overrides: Partial<Resolver.Options>) =>
+          Resolver.resolve(sources, { ...options, ...overrides }).pipe(
+            Effect.provide(Provider.layer([flaky])),
+          );
 
-      yield* run({});
-      yield* Ref.set(down, true);
-      yield* TestClock.adjust("2 days");
+        yield* run({});
+        yield* Ref.set(down, true);
+        yield* TestClock.adjust("2 days");
 
-      const stale = yield* run({});
+        const stale = yield* run({});
 
-      expect(succeeded(stale, "DERIVED").decoded).toBe("value-1");
-      expect(succeeded(stale, "DERIVED").origin).toBe(ValueOrigin.StaleCache);
+        expect(succeeded(stale, "DERIVED")).toMatchObject({
+          decoded: "derived-1",
+          origin: ValueOrigin.StaleCache,
+        });
+        expect(succeeded(stale, "CUSTOM")).toMatchObject({
+          decoded: "custom-1",
+          origin: ValueOrigin.StaleCache,
+        });
+        expect(yield* Ref.get(runs)).toBe(2);
 
-      // The stale run wrote no fresh entry, so a strict run has nothing to trust.
-      expect(failed(yield* run({ strict: true }), "DERIVED")).toMatchObject({
-        reason: ProviderFailure.Unavailable,
-      });
-    }).pipe(Effect.provide(Cache.layerMemory));
-  });
+        // The entry of the stale run belongs to the input value "1", so a fresh "1" reuses it.
+        yield* Ref.set(down, false);
+
+        const fresh = yield* run({ refresh: false });
+
+        expect(succeeded(fresh, "CUSTOM").origin).toBe(ValueOrigin.Cache);
+        expect(yield* Ref.get(runs)).toBe(2);
+      }).pipe(Effect.provide(Cache.layerMemory));
+    },
+  );
 
   it.effect("rejects a provider response without the requested key", () => {
     const broken = Provider.make({

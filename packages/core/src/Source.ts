@@ -5,7 +5,7 @@ import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
-import { DecodeError, ProviderError, ProviderFailure } from "./Errors.ts";
+import { CustomError, CustomFailure, CustomReason, DecodeError, DeriveError } from "./Errors.ts";
 
 /**
  * The brand of a descriptor. It is a registered symbol, so a descriptor from a second copy of this
@@ -13,19 +13,25 @@ import { DecodeError, ProviderError, ProviderFailure } from "./Errors.ts";
  */
 export const TypeId: unique symbol = Symbol.for("envi/Source");
 
-/** The id of the built-in provider that owns every `custom()` value. */
+/** The id under which `custom()` values appear in the cache, reports, and errors. */
 export const customProviderId = "custom";
 
+/** The id under which `derive()` values appear in reports and errors. */
+export const deriveProviderId = "derive";
+
 /**
- * Gives the decoded value of one input of a `custom()` value. The resolver of Envi implements it.
- *
- * @template E - The failures of the resolver. `custom()` passes them through unchanged.
+ * The decoded inputs of a `derive()` or `custom()` value, keyed by input name. Each value has the
+ * type of its own schema, so only the overloads of `derive` and `InputsOf` can type it.
  */
-export interface InputResolver<E> {
-  <A, Optional extends boolean>(
-    source: Source<A, Optional>,
-  ): Effect.Effect<Decoded<Source<A, Optional>>, E>;
-}
+// oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type
+export type DecodedInputs = Readonly<Record<string, unknown>>;
+
+/**
+ * Calls user code with the decoded inputs. `None` means that the value is missing, so
+ * `.optional()` and `.default()` apply.
+ */
+// oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type
+export type Call<E> = (inputs: DecodedInputs) => Effect.Effect<Option.Option<string>, E>;
 
 /** Where the raw string of a descriptor comes from. */
 export type Origin = Data.TaggedEnum<{
@@ -35,13 +41,20 @@ export type Origin = Data.TaggedEnum<{
   Environment: { readonly name: string };
   /** A reference that a provider resolves. The provider decodes `reference`. */
   Reference: { readonly provider: string; readonly reference: Schema.Json };
-  /** A value from user code. `run` never puts the cause of a failure into its error. */
+  /** A pure function of other values. Envi never caches it. */
+  Derived: {
+    readonly inputs: Readonly<Record<string, AnySource>>;
+    readonly call: Call<DeriveError>;
+  };
+  /** A value from user code. Envi caches it for the inputs that produced it. */
   Custom: {
-    readonly key: Option.Option<string>;
-    /** The inputs. Envi collects their references before it resolves the batch. */
-    readonly inputs: ReadonlyArray<AnySource>;
-    /** Resolves the inputs through `resolveInput`, and then calls the user function. */
-    readonly run: <E>(resolveInput: InputResolver<E>) => Effect.Effect<string, ProviderError | E>;
+    readonly id: string;
+    /** Everything outside the inputs that selects the value, such as a host. */
+    readonly scope: string;
+    /** The source text of `resolve`. An edit of the code invalidates the cache entry. */
+    readonly code: string;
+    readonly inputs: Readonly<Record<string, AnySource>>;
+    readonly call: Call<CustomError>;
   };
 }>;
 
@@ -173,73 +186,164 @@ export const fromEnv = (name: string): Source => fromOrigin(Origin.Environment({
 export const reference = (provider: string, ref: Schema.Json): Source =>
   fromOrigin(Origin.Reference({ provider, reference: ref }), true);
 
-/** The decoded inputs of one `custom()` value, keyed by the names in `from`. */
-export type CustomInputsOf<From extends Readonly<Record<string, AnySource>>> = {
+/** The decoded inputs of a `derive()` or `custom()` value, keyed by input name. */
+export type InputsOf<From extends Readonly<Record<string, AnySource>>> = {
   readonly [K in keyof From]: Decoded<From[K]>;
 };
 
-/** The definition of one `custom()` value. */
-export interface CustomDefinition<From extends Readonly<Record<string, AnySource>>> {
-  /** With a key, Envi caches the result under this key. Without a key, Envi never caches it. */
-  readonly key?: string;
-  /** The inputs. Envi resolves them in the batch and passes the decoded values to `resolve`. */
-  readonly from?: From;
-  readonly resolve: (
-    inputs: CustomInputsOf<From>,
-  ) => string | PromiseLike<string> | Effect.Effect<string, unknown>;
-}
+/** Parses a thrown value at the boundary of user code. Only an `Error` has a name and a stack. */
+const asError = Schema.decodeUnknownOption(Schema.instanceOf(Error));
 
-const customFailure = (key: Option.Option<string>): ProviderError =>
-  new ProviderError({
-    reason: ProviderFailure.Unavailable,
-    provider: customProviderId,
-    detail: Option.match(key, {
-      onNone: () => "A custom() value without a key failed to resolve.",
-      onSome: (known) => `The custom() value with the key "${known}" failed to resolve.`,
+const isCustomFailure = Schema.is(CustomFailure);
+
+/** One frame of a V8 or a JavaScriptCore stack: an absolute path or a file URL, a line, a column. */
+const stackFrame = /((?:file:\/\/)?\/[^\s()]+):(\d+):(\d+)\)?$/u;
+
+/** The first frame of a stack outside `node_modules`: the place in user code that threw. */
+const locationOf = (stack: string): string | undefined =>
+  stack
+    .split("\n")
+    .flatMap((line) => {
+      const match = stackFrame.exec(line.trim());
+
+      if (match === null || match[1] === undefined) {
+        return [];
+      }
+
+      const file = match[1].replace(/^file:\/\//u, "").replace(/\?.*$/u, "");
+
+      return file.includes("/node_modules/") ? [] : [`${file}:${match[2]}:${match[3]}`];
+    })
+    .at(0);
+
+/** The class name and the location of a thrown value. They never hold the message. */
+const describeThrown = (
+  thrown: Option.Option<Error>,
+): { readonly thrown: string; readonly location: string | undefined } =>
+  Option.match(thrown, {
+    onNone: () => ({ thrown: "a value that is not an Error", location: undefined }),
+    onSome: (error) => ({
+      thrown: /^[\w$.]{1,64}$/u.test(error.name) ? error.name : "an Error",
+      location: locationOf(error.stack ?? ""),
     }),
   });
 
+/** The input name of a `derive()` with one input. */
+const singleInput = "value";
+
 /**
- * A value from user code. It is the only primitive for custom and derived values. `resolve` runs
- * after the batch, never inside `vars`. A throw, a rejection, and a failed `Effect` all become a
- * `ProviderError` that holds the key and never the cause, because a cause can hold a secret.
+ * A pure, synchronous function of other values, such as a URL built from its parts. Envi resolves
+ * the inputs in the batch and never caches the result, so `.cache()` has no effect on it.
+ * `undefined` counts as a missing value, so `.optional()` and `.default()` apply. A throw becomes
+ * a `DeriveError` with the class name and the location, never the message.
+ */
+export function derive<const S extends AnySource>(
+  input: S,
+  fn: (value: Decoded<S>) => string | undefined,
+): Source;
+export function derive<const From extends Readonly<Record<string, AnySource>>>(
+  inputs: From,
+  fn: (inputs: InputsOf<From>) => string | undefined,
+): Source;
+export function derive<A>(
+  input: AnySource | Readonly<Record<string, AnySource>>,
+  fn: (value: A) => string | undefined,
+): Source {
+  const isSingle = TypeId in input;
+  const inputs: Readonly<Record<string, AnySource>> = isSingle ? { [singleInput]: input } : input;
+
+  const call: Call<DeriveError> = (decoded) =>
+    Effect.map(
+      Effect.try({
+        try: () => {
+          // SAFETY: TypeScript cannot relate the overloads to one implementation. The resolver
+          // passes the decoded value of each input, which is what the overload of `fn` accepts.
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          const argument = (isSingle ? decoded[singleInput] : decoded) as A;
+
+          return fn(argument);
+        },
+        catch: (thrown) => new DeriveError(describeThrown(asError(thrown))),
+      }),
+      Option.fromUndefinedOr,
+    );
+
+  return fromOrigin(Origin.Derived({ inputs, call }), true);
+}
+
+/** What `resolve` of a `custom()` value returns. `undefined` counts as a missing value. */
+export type CustomResult = string | undefined;
+
+/** The definition of one `custom()` value. */
+export interface CustomDefinition<From extends Readonly<Record<string, AnySource>>> {
+  /** Names the value in the cache and in errors. Use one id for one value in a project. */
+  readonly id: string;
+  /** The inputs. Envi resolves them in the batch and passes the decoded values to `resolve`. */
+  readonly from?: From;
+  /** Everything outside the inputs that selects the value, such as a host. Default: none. */
+  readonly scope?: string;
+  readonly resolve: (
+    inputs: InputsOf<From>,
+  ) => CustomResult | PromiseLike<CustomResult> | Effect.Effect<CustomResult, unknown>;
+}
+
+/**
+ * A value from user code, such as a token exchange. `resolve` runs after the batch, never inside
+ * `vars`. Envi caches the result for the stage, the scope, the code of `resolve`, and the values
+ * of the inputs, so a rotated input computes a new value. A throw, a rejection, and a failed
+ * `Effect` all become a `CustomError` that hides the message, unless the error is a
+ * `CustomFailure`.
  */
 export const custom = <const From extends Readonly<Record<string, AnySource>> = {}>(
   definition: CustomDefinition<From>,
 ): Source => {
-  const key = Option.fromUndefinedOr(definition.key);
+  const { id } = definition;
+  const inputs: Readonly<Record<string, AnySource>> = definition.from ?? {};
 
-  const from: Readonly<Record<string, AnySource>> = definition.from ?? {};
-
-  const callResolve = (inputs: CustomInputsOf<From>): Effect.Effect<string, ProviderError> =>
+  const call: Call<CustomError> = (decoded) =>
     Effect.suspend(() => {
-      const result = definition.resolve(inputs);
+      // SAFETY: TypeScript cannot relate the record to the mapped type. The resolver passes the
+      // decoded value of each input under its name in `from`.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      const result = definition.resolve(decoded as InputsOf<From>);
 
       if (Effect.isEffect(result)) {
         return result;
       }
 
       return Predicate.isPromiseLike(result)
-        ? Effect.tryPromise(() => Promise.resolve(result))
+        ? Effect.tryPromise({ try: () => Promise.resolve(result), catch: (cause) => cause })
         : Effect.succeed(result);
     }).pipe(
-      Effect.catchDefect(() => Effect.fail(customFailure(key))),
-      Effect.mapError(() => customFailure(key)),
-    );
-
-  const run = <E>(resolveInput: InputResolver<E>): Effect.Effect<string, ProviderError | E> =>
-    Effect.forEach(Object.entries(from), ([name, source]) =>
-      Effect.map(resolveInput(source), (decoded) => [name, decoded] as const),
-    ).pipe(
-      Effect.flatMap((entries) =>
-        // SAFETY: TypeScript cannot relate the entries to the mapped type. Each entry comes from
-        // one key of `from`, and `resolveInput` returns the decoded value of that descriptor.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        callResolve(Object.fromEntries(entries) as CustomInputsOf<From>),
+      Effect.catchDefect((cause) => Effect.fail(cause)),
+      Effect.mapError((cause) =>
+        isCustomFailure(cause)
+          ? new CustomError({
+              reason: CustomReason.Failed,
+              id,
+              detail: cause.message,
+              transient: cause.transient ?? false,
+            })
+          : new CustomError({
+              reason: CustomReason.Threw,
+              id,
+              ...describeThrown(asError(cause)),
+              transient: false,
+            }),
       ),
+      Effect.map(Option.fromUndefinedOr),
     );
 
-  return fromOrigin(Origin.Custom({ key, inputs: Object.values(from), run }), true);
+  return fromOrigin(
+    Origin.Custom({
+      id,
+      scope: definition.scope ?? "",
+      code: definition.resolve.toString(),
+      inputs,
+      call,
+    }),
+    true,
+  );
 };
 
 const decodeFailure = (key: string, codec: Schema.Top): DecodeError =>

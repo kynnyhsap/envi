@@ -11,7 +11,7 @@ export default defineConfig({
     encryption: process.env["ENVI_E2E_ENCRYPTION"] === "none" ? "none" : "keychain",
     ttl: process.env["ENVI_E2E_TTL"] === "short" ? "1 second" : "24 hours",
   },
-  vars: ({ stage, file, value, custom, fromEnv }) => ({
+  vars: ({ stage, file, value, derive, custom, fromEnv }) => ({
     NODE_ENV: stage,
     PORT: value("3000").schema(Schema.FiniteFromString),
     API_TOKEN: file(`token-${stage}`),
@@ -19,10 +19,11 @@ export default defineConfig({
     OPTIONAL: file("absent").optional(),
     WITH_DEFAULT: file("absent").default("fallback"),
     PUBLIC_NAME: file("public-name").redact(false),
+    GREETING: derive(file("public-name"), (name) => `hello ${name}`).redact(false),
     UNCACHED: file("uncached").cache(false),
     FROM_PARENT: fromEnv("ENVI_E2E_PARENT").optional(),
     DATABASE_URL: custom({
-      key: "database-url",
+      id: "database-url",
       from: { user: file("db-user"), password: file("db-password") },
       resolve: ({ user, password }) => `postgres://${user}:${password}@db.invalid/app`,
     }),

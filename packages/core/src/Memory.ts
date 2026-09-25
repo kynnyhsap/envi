@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
-import * as Schema from "effect/Schema";
 
 import { ReferenceFailure } from "./Errors.ts";
 import * as Provider from "./Provider.ts";
@@ -28,8 +27,6 @@ export const memoryProvider = (secrets: Readonly<Record<string, string>>): Memor
 
   const provider = Provider.make({
     id: memoryProviderId,
-    Reference: Schema.String,
-    describe: (key) => `memory://${key}`,
     // The secrets live in this instance only, so no other instance shares its cache entries.
     scope: crypto.randomUUID(),
     resolveMany: (requests) =>

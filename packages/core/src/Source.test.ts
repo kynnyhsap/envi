@@ -1,27 +1,36 @@
-import { describe, expect, it } from "@effect/vitest";
+import { assert, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { ProviderFailure } from "./Errors.ts";
+import { CustomError, CustomFailure, CustomReason, DeriveError } from "./Errors.ts";
 import * as Source from "./Source.ts";
 
-/** Resolves each input from a fixed list of decoded values, in the order of the inputs. */
-const run = (source: Source.AnySource, decodedInputs: ReadonlyArray<string | number>) =>
-  Source.Origin.$match(source.origin, {
-    Custom: (origin) => {
-      const byInput = new Map(origin.inputs.map((input, index) => [input, decodedInputs[index]]));
+/** Calls the user code of a `derive()` or `custom()` value with decoded inputs, in input order. */
+const call = (
+  source: Source.AnySource,
+  decodedInputs: ReadonlyArray<unknown>,
+): Effect.Effect<Option.Option<string>, CustomError | DeriveError> => {
+  const withInputs = <E>(origin: {
+    readonly inputs: Readonly<Record<string, Source.AnySource>>;
+    readonly call: Source.Call<E>;
+  }) =>
+    origin.call(
+      Object.fromEntries(
+        Object.keys(origin.inputs).map((name, index) => [name, decodedInputs[index]]),
+      ),
+    );
 
-      return origin.run((input) =>
-        // SAFETY: A test fixture. The test passes a value of the decoded type of each input.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        Effect.succeed(byInput.get(input) as Source.Decoded<typeof input>),
-      );
-    },
-    Environment: () => Effect.die("not a custom source"),
-    Literal: () => Effect.die("not a custom source"),
-    Reference: () => Effect.die("not a custom source"),
-  });
+  const origin = source.origin;
+
+  if (Source.Origin.$is("Custom")(origin)) {
+    return withInputs<CustomError | DeriveError>(origin);
+  }
+
+  return Source.Origin.$is("Derived")(origin)
+    ? withInputs<CustomError | DeriveError>(origin)
+    : Effect.die("not a source with user code");
+};
 
 describe("Source", () => {
   it("builds a literal that Envi does not redact", () => {
@@ -94,22 +103,67 @@ describe("Source", () => {
     }),
   );
 
-  describe("custom", () => {
-    it.effect("accepts a string, a promise, and an effect from resolve", () =>
+  describe("derive", () => {
+    it.effect("passes one decoded input, or a record of decoded inputs", () =>
       Effect.gen(function* () {
-        const plain = Source.custom({ resolve: () => "a" });
-        const promised = Source.custom({ resolve: async () => "b" });
-        const effectful = Source.custom({ resolve: () => Effect.succeed("c") });
+        const port = Source.reference("memory", "port").schema(Schema.NumberFromString);
+        const next = Source.derive(port, (value) => String(value + 1));
 
-        expect(yield* run(plain, [])).toBe("a");
-        expect(yield* run(promised, [])).toBe("b");
-        expect(yield* run(effectful, [])).toBe("c");
+        const url = Source.derive(
+          { user: Source.reference("memory", "user"), port },
+          ({ user, port: value }) => `postgres://${user}@db:${value}`,
+        );
+
+        expect(next.isRedacted).toBe(true);
+        expect(yield* call(next, [5432])).toEqual(Option.some("5433"));
+        expect(yield* call(url, ["app", 5432])).toEqual(Option.some("postgres://app@db:5432"));
+      }),
+    );
+
+    it.effect("treats undefined as a missing value", () =>
+      Effect.gen(function* () {
+        const empty = Source.derive(Source.reference("memory", "a"), () => undefined);
+
+        expect(yield* call(empty, ["a"])).toEqual(Option.none());
+      }),
+    );
+
+    it.effect("turns a throw into a DeriveError with the class name and the location", () =>
+      Effect.gen(function* () {
+        const broken = Source.derive(Source.reference("memory", "a"), () => {
+          throw new TypeError("secret-in-message");
+        });
+
+        const error = yield* Effect.flip(call(broken, ["a"]));
+
+        expect(error).toBeInstanceOf(DeriveError);
+        expect(error.thrown).toBe("TypeError");
+        expect(error.location).toMatch(/Source\.test\.ts:\d+:\d+$/u);
+        expect(error.message).not.toContain("secret-in-message");
+        expect(JSON.stringify(error)).not.toContain("secret-in-message");
+      }),
+    );
+  });
+
+  describe("custom", () => {
+    it.effect("accepts a string, undefined, a promise, and an effect from resolve", () =>
+      Effect.gen(function* () {
+        const plain = Source.custom({ id: "a", resolve: () => "a" });
+        const missing = Source.custom({ id: "b", resolve: () => undefined });
+        const promised = Source.custom({ id: "c", resolve: async () => "c" });
+        const effectful = Source.custom({ id: "d", resolve: () => Effect.succeed("d") });
+
+        expect(yield* call(plain, [])).toEqual(Option.some("a"));
+        expect(yield* call(missing, [])).toEqual(Option.none());
+        expect(yield* call(promised, [])).toEqual(Option.some("c"));
+        expect(yield* call(effectful, [])).toEqual(Option.some("d"));
       }),
     );
 
     it.effect("passes the decoded inputs to resolve", () =>
       Effect.gen(function* () {
         const url = Source.custom({
+          id: "url",
           from: {
             user: Source.reference("memory", "user"),
             port: Source.reference("memory", "port").schema(Schema.NumberFromString),
@@ -117,28 +171,95 @@ describe("Source", () => {
           resolve: ({ user, port }) => `postgres://${user}@db:${port + 1}`,
         });
 
-        expect(yield* run(url, ["app", 5432])).toBe("postgres://app@db:5433");
+        expect(yield* call(url, ["app", 5432])).toEqual(Option.some("postgres://app@db:5433"));
       }),
     );
 
-    it.effect("turns a thrown error, a rejection, and a failure into a provider error", () =>
+    it("keeps the id, the scope, and the source text of resolve for the cache key", () => {
+      const token = Source.custom({
+        id: "token",
+        scope: "https://auth.example.com",
+        resolve: () => "t",
+      });
+
+      const plain = Source.custom({ id: "plain", resolve: () => "p" });
+
+      assert(Source.Origin.$is("Custom")(token.origin));
+      assert(Source.Origin.$is("Custom")(plain.origin));
+      expect(token.origin.id).toBe("token");
+      expect(token.origin.scope).toBe("https://auth.example.com");
+      expect(token.origin.code).toContain('"t"');
+      expect(plain.origin.scope).toBe("");
+    });
+
+    it.effect(
+      "turns a throw, a rejection, and a failure into a CustomError that hides the message",
+      () =>
+        Effect.gen(function* () {
+          const thrown = Source.custom({
+            id: "build",
+            resolve: () => {
+              throw new RangeError("secret-in-message");
+            },
+          });
+
+          const rejected = Source.custom({
+            id: "build",
+            resolve: () => Promise.reject(new Error("secret-in-message")),
+          });
+
+          const failed = Source.custom({
+            id: "build",
+            resolve: () => Effect.fail("secret-in-message"),
+          });
+
+          for (const source of [thrown, rejected, failed]) {
+            const error = yield* Effect.flip(call(source, []));
+
+            expect(error).toBeInstanceOf(CustomError);
+            expect(error).toMatchObject({
+              reason: CustomReason.Threw,
+              id: "build",
+              transient: false,
+            });
+            expect(error.message).not.toContain("secret-in-message");
+            expect(JSON.stringify(error)).not.toContain("secret-in-message");
+          }
+
+          const fromThrow = yield* Effect.flip(call(thrown, []));
+
+          expect(fromThrow.thrown).toBe("RangeError");
+          expect(fromThrow.location).toMatch(/Source\.test\.ts:\d+:\d+$/u);
+        }),
+    );
+
+    it.effect("shows the message of a CustomFailure, and keeps its transient flag", () =>
       Effect.gen(function* () {
-        const thrown = Source.custom({
-          key: "build",
-          resolve: () => {
-            throw new Error("secret-in-message");
-          },
+        const failure = new CustomFailure({
+          message: "The token service is down.",
+          transient: true,
         });
 
-        const rejected = Source.custom({ resolve: () => Promise.reject(new Error("nope")) });
-        const failed = Source.custom({ resolve: () => Effect.fail("nope") });
+        const sources = [
+          Source.custom({ id: "a", resolve: () => Effect.fail(failure) }),
+          Source.custom({ id: "a", resolve: () => Promise.reject(failure) }),
+          Source.custom({
+            id: "a",
+            resolve: () => {
+              throw failure;
+            },
+          }),
+        ];
 
-        for (const source of [thrown, rejected, failed]) {
-          const error = yield* Effect.flip(run(source, []));
+        for (const source of sources) {
+          const error = yield* Effect.flip(call(source, []));
 
-          expect(error.reason).toBe(ProviderFailure.Unavailable);
-          expect(error.provider).toBe(Source.customProviderId);
-          expect(error.message).not.toContain("secret-in-message");
+          expect(error).toMatchObject({
+            reason: CustomReason.Failed,
+            detail: "The token service is down.",
+            transient: true,
+          });
+          expect(error.message).toContain("The token service is down.");
         }
       }),
     );

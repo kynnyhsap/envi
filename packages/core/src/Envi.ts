@@ -19,7 +19,6 @@ import {
   DecodeError,
   ExportError,
   type ProviderError,
-  type ReferenceError,
   RunError,
   RunFailure,
   SettingsError,
@@ -42,13 +41,7 @@ import * as Source from "./Source.ts";
 import * as Timing from "./Timing.ts";
 
 /** The failures of an operation that resolves values. */
-export type EnviError =
-  | ReferenceError
-  | ProviderError
-  | DecodeError
-  | CacheError
-  | UnknownStageError
-  | SettingsError;
+export type EnviError = Resolver.VarError | CacheError | UnknownStageError | SettingsError;
 
 /** The settings of the service. They win over the config and lose against a call option. */
 export interface LayerOptions {
@@ -231,6 +224,18 @@ const failureOf = (key: string, error: Resolver.VarError): VarFailure =>
       error: failure._tag,
       reason: failure.reason,
     }),
+    CustomError: (failure) => ({
+      key,
+      reference: `custom(${failure.id})`,
+      error: failure._tag,
+      reason: failure.reason,
+    }),
+    DeriveError: (failure) => ({
+      key,
+      reference: null,
+      error: failure._tag,
+      reason: "Threw",
+    }),
     ReferenceError: (failure) => ({
       key,
       reference: failure.reference,
@@ -293,6 +298,7 @@ const parseOne = (
 interface Group {
   /** The config of the first member. Its cache settings apply to the group. */
   readonly config: Config.Config;
+  readonly stage: string;
   readonly providers: Map<string, Provider.Provider>;
   readonly sources: Record<string, Source.AnySource>;
 }
@@ -311,6 +317,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
 
   const resolverOptions = Effect.fn("Envi.resolverOptions")(function* (
     config: Config.Config,
+    stage: string,
     options: ResolveOptions | undefined,
   ) {
     const isCi = yield* readCi;
@@ -326,6 +333,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     const settings = Option.filter(config.cache, (value) => value !== false);
 
     return {
+      stage,
       refresh: options?.refresh ?? false,
       // CI is always strict.
       strict: isCi || strict,
@@ -343,11 +351,12 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
 
   const resolveWith = (
     config: Config.Config,
+    stage: string,
     providers: ReadonlyArray<Provider.Provider>,
     sources: Readonly<Record<string, Source.AnySource>>,
     options: ResolveOptions | undefined,
   ) =>
-    Effect.flatMap(resolverOptions(config, options), (settings) =>
+    Effect.flatMap(resolverOptions(config, stage, options), (settings) =>
       Resolver.resolve(sources, settings).pipe(
         Effect.provide(Provider.layer(providers)),
         Option.contains(config.cache, false)
@@ -365,6 +374,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
 
     const resolution = yield* resolveWith(
       config,
+      stage,
       Option.getOrElse(override, () => config.providers),
       sources,
       options,
@@ -432,12 +442,16 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     sources: Readonly<Record<string, Source.AnySource>>,
     options: ResolveOptions | undefined,
   ) =>
-    resolveWith(
-      config,
-      Option.getOrElse(override, () => config.providers),
-      sources,
-      options,
-    ).pipe(
+    stageOf(config, undefined).pipe(
+      Effect.flatMap((stage) =>
+        resolveWith(
+          config,
+          stage,
+          Option.getOrElse(override, () => config.providers),
+          sources,
+          options,
+        ),
+      ),
       Effect.flatMap(allOrFirstFailure),
       Effect.map((entries) =>
         Object.fromEntries(entries.map(([key, resolved]) => [key, resolved.decoded])),
@@ -478,12 +492,17 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
 
       firstStage = Option.orElse(firstStage, () => Option.some(stage));
 
-      // Configs share a group while no two of them bind one provider id to two instances.
-      const fitting = groups.find((group) =>
-        providers.every((provider) => (group.providers.get(provider.id) ?? provider) === provider),
+      // Configs share a group while they share the stage and no two of them bind one provider
+      // id to two instances.
+      const fitting = groups.find(
+        (group) =>
+          group.stage === stage &&
+          providers.every(
+            (provider) => (group.providers.get(provider.id) ?? provider) === provider,
+          ),
       );
 
-      const group: Group = fitting ?? { config, providers: new Map(), sources: {} };
+      const group: Group = fitting ?? { config, stage, providers: new Map(), sources: {} };
 
       if (fitting === undefined) {
         groups.push(group);
@@ -499,7 +518,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     }
 
     const resolutions = yield* Effect.forEach(groups, (group) =>
-      resolveWith(group.config, [...group.providers.values()], group.sources, options),
+      resolveWith(group.config, group.stage, [...group.providers.values()], group.sources, options),
     );
 
     const finishedAt = yield* Clock.currentTimeMillis;

@@ -56,6 +56,17 @@ export interface Definition<Ref, Helpers extends object> {
   readonly helpers: Helpers;
 }
 
+/**
+ * The definition of a provider whose reference is a plain string. `describe` defaults to
+ * `<id>://<reference>`.
+ */
+export type StringDefinition<Helpers extends object> = Omit<
+  Definition<string, Helpers>,
+  "Reference" | "describe"
+> & {
+  readonly describe?: (reference: string) => string;
+};
+
 /** The safe identity of one reference. The core adds the provider id and the scope hash. */
 export interface PreparedReference {
   readonly referenceKey: string;
@@ -91,8 +102,7 @@ const invalidReference = (provider: string): ReferenceError =>
     reference: "a reference that does not match the schema of the provider",
   });
 
-/** Builds a provider from its definition. Every provider, also the built-in ones, uses this. */
-export const make = <Ref, const Helpers extends object>(
+const fromDefinition = <Ref, Helpers extends object>(
   definition: Definition<Ref, Helpers>,
 ): Provider<Helpers> => {
   const decodeReference = (reference: Schema.Json): Effect.Effect<Ref, ReferenceError> =>
@@ -119,6 +129,28 @@ export const make = <Ref, const Helpers extends object>(
       ).pipe(Effect.flatMap((decoded) => definition.resolveMany(decoded, context))),
   };
 };
+
+/**
+ * Builds a provider from its definition. Every provider, also the built-in ones, uses this.
+ * Without `Reference`, a reference is a plain string.
+ */
+export function make<Ref, const Helpers extends object>(
+  definition: Definition<Ref, Helpers>,
+): Provider<Helpers>;
+export function make<const Helpers extends object>(
+  definition: StringDefinition<Helpers>,
+): Provider<Helpers>;
+export function make<Ref, const Helpers extends object>(
+  definition: Definition<Ref, Helpers> | StringDefinition<Helpers>,
+): Provider<Helpers> {
+  return "Reference" in definition
+    ? fromDefinition(definition)
+    : fromDefinition({
+        ...definition,
+        Reference: Schema.String,
+        describe: definition.describe ?? ((reference) => `${definition.id}://${reference}`),
+      });
+}
 
 /** Tells whether a value is a provider, also when another copy of this module built it. */
 export const isProvider = (input: unknown): input is Provider =>

@@ -53,8 +53,10 @@ This repository is public. These rules have no exception.
   isolate agents or stages from the cache.
 - **The config is data.** `vars` returns only literals and descriptors. It never resolves a
   secret and does no I/O. The key is `vars`, not `env` or `envs`. There is one `defineConfig`.
-- **One primitive for code.** `custom({ key, from, resolve })` is the only primitive for custom
-  and derived values. Do not add `derive`, `map`, `combine`, or `template`.
+- **Two primitives for code.** `derive(input, fn)` is a pure synchronous function of other
+  values, and Envi never caches it. `custom({ id, from, scope, resolve })` runs effectful user
+  code, and Envi caches it for the stage, the scope, the code, and the input values. Do not add
+  `map`, `combine`, or `template`.
 - **Batches.** Envi makes one call per provider for each operation. Never resolve references
   one by one in a loop. The resolver uses explicit batches, not `Request` and `RequestResolver`.
 - **One client, one config.** Every SDK operation comes from `createEnvi(config, overrides?)`. No

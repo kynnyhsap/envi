@@ -54,12 +54,10 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
 
         const inspect = yield* runCli(runtime, app, [...args, "inspect", "--json"], sandbox.env);
 
-        const origins = Object.fromEntries(
-          JSON.parse(inspect.stdout).vars.map((entry: { key: string; origin: string }) => [
-            entry.key,
-            entry.origin,
-          ]),
-        );
+        const vars: ReadonlyArray<{ key: string; origin: string; value: string | null }> =
+          JSON.parse(inspect.stdout).vars;
+
+        const origins = Object.fromEntries(vars.map((entry) => [entry.key, entry.origin]));
 
         expect(origins).toEqual({
           NODE_ENV: "literal",
@@ -69,10 +67,14 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
           OPTIONAL: "unset",
           WITH_DEFAULT: "default",
           PUBLIC_NAME: "cache",
+          GREETING: "derived",
           UNCACHED: "provider",
           FROM_PARENT: "unset",
           DATABASE_URL: "cache",
         });
+        expect(vars.find((entry) => entry.key === "GREETING")?.value).toBe(
+          `hello ${secrets["public-name"]}`,
+        );
       }),
     );
 
