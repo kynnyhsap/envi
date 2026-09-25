@@ -6,6 +6,359 @@ injects the values into a runtime. 1Password is the only provider for now.
 
 Envi works as a CLI (`envi`) and as an SDK with a plain TypeScript API and an Effect API.
 
+- Envi resolves secrets once and serves the next runs from an encrypted cache. A dev script does
+  not wait for the secret provider on every start.
+- The config is typed TypeScript, not a text file such as `.env.example`. Application code uses
+  the config and its schemas as types.
+- The CLI and the SDK work on a developer machine, in CI, and for a coding agent.
+
+Envi runs on Node 22.19.0 or later and on Bun, on macOS and Linux. Windows is not supported.
+
+## Contents
+
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Config](#config)
+- [CLI](#cli)
+- [Settings](#settings)
+- [Cache](#cache)
+- [1Password](#1password)
+- [CI](#ci)
+- [SDK](#sdk)
+- [Known limits](#known-limits)
+- [Errors](#errors)
+- [License](#license)
+
+## Install
+
+```sh
+bun add envi @envi/1password effect
+```
+
+`effect` is a peer dependency, so the project has one copy of it. `@envi/1password` installs
+`@1password/sdk`. A global `envi` starts the local `envi` of the project.
+
+## Quick start
+
+Create `envi.config.ts` at the root of the project:
+
+```ts
+import * as Schema from "effect/Schema";
+import { defineConfig } from "envi";
+import { onePasswordProvider } from "@envi/1password";
+
+export default defineConfig({
+  stages: ["development", "production"],
+  providers: [onePasswordProvider({ account: "my-team" })],
+  vars: ({ stage, op, value }) => ({
+    PORT: value("3000").schema(Schema.FiniteFromString),
+    DATABASE_URL: op(`op://app-${stage}/postgres/url`),
+    STRIPE_KEY: op("payments", "stripe", "secret-key"),
+  }),
+});
+```
+
+Run a command with the vars:
+
+```sh
+envi run -- bun dev
+```
+
+The first run resolves every secret in one batch and fills the cache. The next runs read the
+cache. `envi check` validates every var and shows no value.
+
+## Config
+
+`defineConfig` takes one object. Every key is optional.
+
+| Key            | Holds                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------- |
+| `stages`       | The names of the stages. `stage` gets a union type, and Envi rejects any other stage. |
+| `defaultStage` | The stage without `--stage` and `ENVI_STAGE`. Default: `development`.                 |
+| `providers`    | The provider instances, such as `onePasswordProvider()`.                              |
+| `cache`        | `false`, or `{ ttl, maxStale, directory, encryption }`. See [Cache](#cache).          |
+| `strict`       | `true` never uses an expired cache entry.                                             |
+| `vars`         | A plain object, or a synchronous function of the stage.                               |
+
+`vars` returns only literals and descriptors. It never resolves a secret and does no I/O, so
+`check`, `parse`, and `schemaOf` read a config without a provider call. The function receives the
+stage, the built-in helpers, and the helpers of each provider, such as `op`. A config file then
+needs no helper import.
+
+A stage is a named set of env values. Envi selects the stage in this order: `--stage`,
+`ENVI_STAGE`, `defaultStage`, `development`. `NODE_ENV` never selects the stage. `envi run` passes
+`ENVI_STAGE` to the child.
+
+### Sources
+
+| Helper                    | Value                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| a string                  | A literal. It never enters the cache.                                           |
+| `value(text)`             | A literal with the descriptor methods, such as `.schema()`.                     |
+| `fromEnv(name)`           | A variable of the Envi process, such as a CI secret. It never enters the cache. |
+| `op(...)`                 | A 1Password secret. See [1Password](#1password).                                |
+| `reference(id, ref)`      | A reference for the provider with the id `id`. A custom provider uses it.       |
+| `derive(input, fn)`       | A pure synchronous function of other descriptors. Envi never caches it.         |
+| `custom({ id, resolve })` | Effectful user code, such as a token exchange. Envi caches it.                  |
+
+### Descriptor methods
+
+Each method returns a new descriptor.
+
+- `.schema(schema)` decodes the raw string with an Effect `Schema` that encodes to a string, such
+  as `Schema.FiniteFromString`, `Schema.URLFromString`, or `BooleanFromString` from `envi`.
+  Without a schema, the value is a `string`.
+- `.optional()` gives `undefined` when the provider reports `NotFound`.
+- `.default(raw)` gives a raw string when the provider reports `NotFound`. The default passes
+  through the schema. Every other failure stays a failure.
+- `.redact(false)` shows the value in `inspect` and in a redacted export. Secrets are redacted by
+  default.
+- `.cache(false)` resolves the value on every run. `.cache({ ttl, maxStale })` overrides the cache
+  settings for one value.
+
+### derive and custom
+
+Both take their inputs as descriptors. Envi resolves every reference in one batch for each
+provider, and then evaluates each value from the inside to the outside. An input does not have to
+be a var: `envi run` injects only the vars. Both return a raw string or `undefined`, and
+`undefined` counts as `NotFound`.
+
+```ts
+vars: ({ op, derive, custom }) => ({
+  // A pure function. Envi calls it on every run.
+  REPLICA_URL: derive(
+    { user: op("app", "replica", "user"), password: op("app", "replica", "password") },
+    ({ user, password }) => `postgres://${user}:${password}@replica/app`,
+  ),
+  // Effectful code. `resolve` returns a string, `undefined`, a `Promise`, or an `Effect`.
+  API_TOKEN: custom({
+    id: "api-token",
+    from: { clientSecret: op("app", "oauth", "client-secret") },
+    resolve: ({ clientSecret }) => exchangeToken(clientSecret),
+  }).cache({ ttl: "50 minutes" }),
+}),
+```
+
+- `id` names a `custom()` value in the cache and in errors. `scope` names everything outside the
+  inputs that selects the value, such as a host.
+- Envi keeps one entry for each `id`, stage, and `scope`. The entry holds a digest of the code of
+  `resolve` and of the input values. A changed input or a changed `resolve` computes a new value.
+- A throw shows only the class name and the location, never the message, because a message can
+  hold a secret. A `CustomFailure({ message, transient })` shows its message. `transient: true`
+  allows an expired entry of the same inputs.
+
+### Monorepo
+
+Each package that needs env has its own `envi.config.ts`. Packages share pieces through a plain
+TypeScript module, such as `envi.shared.ts` at the repo root. Run `envi sync` once at the root,
+and then `envi run` in each package.
+
+A config file on Node has the limits of type stripping: no enums, no namespaces, no parameter
+properties, explicit `.ts` extensions in relative imports, no tsconfig `paths`, and ESM only.
+
+## CLI
+
+| Command             | Does                                                                |
+| ------------------- | ------------------------------------------------------------------- |
+| `envi run -- <cmd>` | Runs a command with the resolved vars.                              |
+| `envi sync`         | Resolves every var of every config in the repo and fills the cache. |
+| `envi check`        | Resolves and validates every var. Shows no value.                   |
+| `envi inspect`      | Shows where each var comes from. Hides secrets by default.          |
+| `envi export`       | Prints the vars as dotenv or JSON, or writes them to a file.        |
+| `envi cache path`   | Prints the cache directory.                                         |
+| `envi cache list`   | Lists the cache entries. Shows no value.                            |
+| `envi cache clear`  | Removes every cache entry.                                          |
+
+A flag follows its command: `envi check --stage production`.
+
+| Flag                                | Commands                          | Does                                                        |
+| ----------------------------------- | --------------------------------- | ----------------------------------------------------------- |
+| `--config <file>`                   | run, sync, check, inspect, export | Selects a config file. Repeat it for several files.         |
+| `--config-search <direction>`       | run, sync, check, inspect, export | `up`, `down`, or `repo`. See below.                         |
+| `--stage <name>`                    | run, sync, check, inspect, export | Selects the stage.                                          |
+| `--refresh`                         | run, sync, check, inspect, export | Ignores fresh cache entries.                                |
+| `--strict`                          | run, sync, check, inspect, export | Never uses an expired cache entry.                          |
+| `--interactive`, `--no-interactive` | run, sync, check, inspect, export | Allows or forbids a prompt, such as a desktop app approval. |
+| `--cache`, `--no-cache`             | run, sync, check, inspect, export | Turns the cache on or off.                                  |
+| `--cache-dir <dir>`                 | every command except `--version`  | Selects the cache directory.                                |
+| `--json`                            | every command except run          | Prints the report, or the error, as JSON on stdout.         |
+| `--redact`, `--no-redact`           | inspect, export                   | Hides or shows the secret values.                           |
+| `--format dotenv\|json`             | export                            | Selects the output format.                                  |
+| `--output <file>`                   | export                            | Writes a file with the mode `0600`.                         |
+| `--debug`                           | every command                     | Shows debug logs, with the duration of each step.           |
+| `--log-format pretty\|json`         | every command                     | Selects the format of the logs on stderr.                   |
+
+All logs go to stderr, so stdout stays clean for `export` and `--json`. A log never holds a secret
+value.
+
+### Config search
+
+Without `--config` and `ENVI_CONFIG`, Envi searches for `envi.config.ts`, `.mts`, `.js`, or `.mjs`.
+The project root is the nearest folder with `.git`.
+
+- `up`: the nearest config in the working directory or an ancestor, up to the project root. Outside
+  a repo, the search stops at the home folder. `run`, `check`, `inspect`, and `export` search `up`.
+- `down`: every config in the working directory and below it. In a repo, git decides which files
+  count, so an ignored folder is left out. Outside a repo, Envi skips `node_modules` and dot
+  folders.
+- `repo`: every config of the project, from the project root down. `sync` searches `repo`.
+
+A command that uses one config fails with [`ManyConfigs`](#error-config-load-many-configs) when the
+search or the flags give several.
+
+### envi run
+
+- The child gets the environment of Envi plus the resolved vars. A resolved var wins.
+- Envi removes the credential variables of each provider from the child, such as
+  `OP_SERVICE_ACCOUNT_TOKEN`, and every `ENVI_PROVIDER_*` variable.
+- Envi resolves and validates every var before it starts the child. A failure starts no child.
+- Envi forwards `SIGTERM` and `SIGHUP` to the child, and `SIGINT` when no terminal is attached. A
+  terminal sends `SIGINT` to the child on its own. Envi exits with the exit code of the child.
+- The arguments after `--` belong to the child. `envi run -- node app.js --json` passes `--json` to
+  the child.
+
+## Settings
+
+Every setting follows one order: a CLI flag or a call option, a client option, an environment
+variable, a config key, a default.
+
+| Variable                                          | Setting                                                          |
+| ------------------------------------------------- | ---------------------------------------------------------------- |
+| `ENVI_STAGE`                                      | The stage.                                                       |
+| `ENVI_CONFIG`                                     | A comma-separated list of config files.                          |
+| `ENVI_CONFIG_SEARCH`                              | `up`, `down`, or `repo`.                                         |
+| `ENVI_STRICT`                                     | `true` never uses an expired cache entry.                        |
+| `ENVI_INTERACTIVE`                                | `true` or `false`. Default: `false` in CI, `true` elsewhere.     |
+| `ENVI_CACHE_ENABLED`                              | `true` or `false`. Default: `false` in CI, `true` elsewhere.     |
+| `ENVI_CACHE_DIR`                                  | The cache directory. Default: `~/.cache/envi`.                   |
+| `ENVI_CACHE_KEY`                                  | The key of the encrypted cache, for a system without a keychain. |
+| `CI`                                              | Any value except empty, `false`, and `0` means CI.               |
+| `ENVI_PROVIDER_ONEPASSWORD_ACCOUNT`               | The 1Password account.                                           |
+| `ENVI_PROVIDER_ONEPASSWORD_SERVICE_ACCOUNT_TOKEN` | A 1Password service account token.                               |
+| `OP_SERVICE_ACCOUNT_TOKEN`                        | A 1Password service account token, with a lower priority.        |
+
+## Cache
+
+The cache holds one entry for each secret, in `~/.cache/envi` by default. Parallel worktrees share
+the entries. `--cache-dir`, `ENVI_CACHE_DIR`, or `cache.directory` selects another directory.
+
+- An entry expires after `ttl`, 24 hours by default. When the refresh of an expired entry fails
+  because the provider is unavailable, Envi uses the expired value up to `maxStale`, 7 days by
+  default, and logs a warning. `NotFound`, `AccessDenied`, and `Invalid` never allow the expired
+  value. `--strict` and CI turn the fallback off.
+- Envi encrypts each entry with AES-256-GCM. The key comes from `ENVI_CACHE_KEY`, or from the
+  keychain: the macOS Keychain, or the Secret Service on Linux through `secret-tool`, such as GNOME
+  Keyring. Envi creates the key on the first use.
+- Without a key, Envi logs one warning and runs without a cache. With `--cache` or
+  `ENVI_CACHE_ENABLED=true`, a missing key fails with
+  [`KeyUnavailable`](#error-cache-key-unavailable).
+- Envi never falls back from encryption to plaintext. `encryption: "none"` writes plaintext files
+  with the mode `0600`, as an explicit opt-in.
+- A lock serializes the resolution of several processes on an empty cache, so a provider gets one
+  call. Envi recovers the lock of a crashed process.
+- The cache serves the trust level of a `.env` file. Any process of the OS user can use it, a coding
+  agent too. The encryption protects the files against file reads, searches, and backups.
+- The cache is off in CI by default. `cache path`, `cache list`, and `cache clear` always use the
+  cache directory, also in CI.
+
+## 1Password
+
+```ts
+import { onePasswordProvider } from "@envi/1password";
+
+onePasswordProvider({ account: "my-team" }); // desktop app authentication
+onePasswordProvider({ serviceAccountToken: process.env["CI_OP_TOKEN"] }); // a service account
+```
+
+`op()` takes one of three forms. All three give the same cache entry.
+
+```ts
+op("op://app/postgres/url");
+op("app", "postgres", "url"); // vault, item, field
+op({ account: "partner-team", vault: "app", item: "postgres", section: "prod", field: "url" });
+```
+
+- A name with `/` or `?` needs its ID, because the reference syntax cannot escape them.
+- With a token, Envi uses the service account. Without a token, Envi asks the 1Password app for an
+  approval, but only when the run is interactive. Enable the SDK integration in the app under
+  Settings > Developer.
+- Envi imports `@1password/sdk` and creates a client only on a cache miss, because a client takes
+  2 to 5 seconds.
+- A rate limit, a network failure, and a timeout give
+  [`Unavailable`](#error-provider-unavailable), so an expired entry can serve the run. A call with
+  a token times out after 30 seconds. A desktop call waits 90 seconds for the approval.
+
+## CI
+
+- Set a service account token, such as `OP_SERVICE_ACCOUNT_TOKEN`. CI runs are not interactive,
+  so the 1Password provider fails at once without a token.
+- The cache is off, and every run is strict. `envi sync` says that the cache is off.
+- To keep a cache between jobs, set `ENVI_CACHE_KEY` from a CI secret and `--cache` or
+  `ENVI_CACHE_ENABLED=true`, and cache the directory of `ENVI_CACHE_DIR`.
+
+## SDK
+
+Every operation comes from a client of one config. The client mirrors the CLI.
+
+```ts
+import { createEnvi } from "envi";
+import config from "./envi.config.ts";
+
+const envi = createEnvi(config);
+
+const env = await envi.load({ stage: "production" }); // typed values
+const raw = await envi.loadRaw(); // raw strings
+const parsed = await envi.parse(process.env); // decodes existing strings, resolves nothing
+const key = await envi.resolve(op("payments", "stripe", "secret-key")); // one secret
+```
+
+The client also has `run`, `sync`, `check`, `inspect`, `export`, and `cache.path`, `cache.list`,
+and `cache.clear`. Each returns the report that `--json` prints. `syncAll(clients)` syncs several
+clients with one call for each shared provider. `createEnvi(config, overrides)` takes
+`providers`, `cache`, `strict`, and `interactive`, which win over the config.
+
+- Envi never changes `process.env`. The caller assigns the result of `loadRaw`.
+- `Env<typeof config>`, `RawEnv<typeof config>`, and `StageOf<typeof config>` are the types of a
+  config. `schemaOf(config, stage)` returns its `Schema`.
+- A method rejects with a tagged error. Each error has `summary`, `hint`, and `docs`.
+
+### Effect
+
+Every operation is an Effect on the `Envi` service. The plain client runs these Effects.
+
+```ts
+import * as Effect from "effect/Effect";
+import { Envi, layer } from "envi";
+
+const program = Effect.gen(function* () {
+  const envi = yield* Envi.Envi;
+
+  return yield* envi.load(config, { stage: "production" });
+});
+
+program.pipe(Effect.provide(layer({ strict: true })));
+```
+
+`layer(options)` provides the default cache, the environment and the signals of the process, and
+the platform services of Node or Bun.
+
+### Custom providers and caches
+
+`Provider.make({ id, Reference, describe, scope, resolveMany, helpers })` builds a provider.
+`resolveMany` resolves a whole batch in one call. `reference(id, ref)` builds a descriptor for it.
+A custom cache is a layer of the `Cache.Cache` service. Both interfaces are public and unstable
+until a second real provider proves them. `examples/sdk-custom-provider.ts` shows a provider.
+
+`envi/testing` exports `memoryProvider` and `mem` for tests.
+
+## Known limits
+
+- The 1Password app rejects parallel desktop connections from several processes. The resolve lock
+  of the cache serializes them. With the cache off and desktop authentication, parallel `envi`
+  processes can fail with `Unavailable`. A service account token has no such limit.
+- If a folder of `PATH` is not readable, Node reports `EACCES` for a missing command. `envi run`
+  then fails with `CommandNotExecutable` in place of `CommandNotFound`.
+
 ## Errors
 
 Every Envi error has a summary, a hint, and a docs link to its section below. The summary says what
@@ -308,6 +661,10 @@ Next action: Run Envi on Node 22.19.0 or later, or on Bun.
 
 ### ConfigLoadError InvalidConfig
 
-The file is not a config: a wrong extension, a default export that is not from `defineConfig`, or a command that got several configs.
+The file is not a config: a wrong extension, or a default export that is not from `defineConfig`.
 
 Next action: Fix the config file or the config list that the detail names.
+
+## License
+
+[MIT](LICENSE)

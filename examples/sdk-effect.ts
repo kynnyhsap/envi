@@ -33,8 +33,8 @@ const program = Effect.gen(function* () {
   return { env, token, report, dotenv };
 });
 
-// The default composition on Node or Bun: the encrypted file cache with its key in the OS
-// keychain, the environment and the signals of the process. `createEnvi` runs on the same layer.
+// The default composition on Node or Bun: the encrypted file cache with its key from
+// `ENVI_CACHE_KEY` or the OS keychain, the environment and the signals of the process. `createEnvi` runs on the same layer.
 // The service serves any config, so the layer takes the cache settings as an option.
 export const live = program.pipe(Effect.provide(layer({ strict: true })));
 

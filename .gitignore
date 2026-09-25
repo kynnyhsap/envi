@@ -16,3 +16,7 @@ bun-error.log
 # macOS
 .DS_Store
 
+
+# Copies that `prepack` puts into each package.
+packages/*/LICENSE
+packages/*/README.md

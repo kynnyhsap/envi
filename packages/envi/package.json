@@ -1,11 +1,15 @@
 {
   "name": "envi",
   "version": "0.0.0",
+  "license": "MIT",
   "bin": {
     "envi": "./dist/bin.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/core/fixtures"
   ],
   "type": "module",
   "exports": {
@@ -21,7 +25,8 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "cp ../../LICENSE ../../README.md ."
   },
   "dependencies": {
     "@effect/platform-node": "catalog:"
@@ -30,7 +35,7 @@
     "effect": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:"
+    "effect": "^4.0.0-rc.116"
   },
   "engines": {
     "node": ">=22.19.0"

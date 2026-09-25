@@ -31,7 +31,7 @@ export const secrets = {
  * Envi repo, so the search goes up only: `repo` would find every fixture. A test of the search
  * sets its own value.
  */
-const cleared = {
+export const cleared = {
   CI: undefined,
   ENVI_STAGE: undefined,
   ENVI_CONFIG: undefined,

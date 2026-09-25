@@ -1,8 +1,11 @@
 {
   "name": "@envi/1password",
   "version": "0.0.0",
+  "license": "MIT",
   "files": [
-    "dist"
+    "dist",
+    "src",
+    "!src/**/*.test.ts"
   ],
   "type": "module",
   "exports": {
@@ -13,7 +16,8 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json"
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "cp ../../LICENSE ../../README.md ."
   },
   "dependencies": {
     "@1password/sdk": "catalog:"
@@ -23,7 +27,7 @@
     "envi": "workspace:*"
   },
   "peerDependencies": {
-    "effect": "catalog:",
+    "effect": "^4.0.0-rc.116",
     "envi": "workspace:*"
   },
   "engines": {

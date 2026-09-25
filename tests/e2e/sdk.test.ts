@@ -21,7 +21,14 @@ import {
 } from "envi";
 
 import { fileProvider } from "./fixtures/file-provider.ts";
-import { cacheFiles, makeSandbox, providerCalls, type Sandbox, secrets } from "./helpers.ts";
+import {
+  cacheFiles,
+  cleared,
+  makeSandbox,
+  providerCalls,
+  type Sandbox,
+  secrets,
+} from "./helpers.ts";
 
 const config = defineConfig({
   providers: [fileProvider],
@@ -31,9 +38,20 @@ const config = defineConfig({
   }),
 });
 
-/** The file provider reads its paths from the environment of this process. */
+/**
+ * The file provider reads its paths from the environment of this process. The SDK runs in this
+ * process, so the variables of the machine, such as `CI`, are removed first.
+ */
 const useSandbox = (sandbox: Sandbox) =>
   Effect.sync(() => {
+    for (const [name, value] of Object.entries(cleared)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
+
     Object.assign(process.env, sandbox.env);
   });
 
@@ -227,13 +245,13 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi SDK on real files
         const env = yield* Effect.promise(() => envi.load());
         const raw = yield* Effect.promise(() => envi.loadRaw());
         const path = yield* Effect.promise(() => envi.cache.path());
-        const cleared = yield* Effect.promise(() => envi.cache.clear());
+        const clearReport = yield* Effect.promise(() => envi.cache.clear());
 
         expect(env.API_TOKEN).toBe(secrets["token-development"]);
         expect(raw).toEqual(env);
         expect(path).toBe(sandbox.cacheDirectory);
         expect((yield* providerCalls(sandbox)).length).toBe(1);
-        expect(cleared.removed).toBe(2);
+        expect(clearReport.removed).toBe(2);
         expect(yield* cacheFiles(sandbox.cacheDirectory)).toEqual([]);
       }),
     );

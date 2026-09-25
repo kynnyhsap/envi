@@ -13,9 +13,10 @@ Reasons for Envi:
 - Resolving secrets on every dev script run is slow and wasteful.
 - Text env files such as `.env.example` are unsafe and untyped.
 
-`docs/design.md` holds the detailed design: the config format, each command, the provider
-interface, the resolver, the cache, and the test suites. Read it before you change behavior.
-Change it in the same change as the behavior. Keep implementation details out of this file.
+`README.md` holds the user docs: the config, each command, the settings, the cache, the
+provider, the SDK, and one section for each error. It is the source of truth for the behavior.
+Read it before you change behavior. Change it in the same change as the behavior. This file holds
+the decisions and the rules for contributors.
 
 ## Use cases
 
@@ -74,6 +75,25 @@ This repository is public. These rules have no exception.
 - **Stage.** A named set of env values is a stage. Use "stage" in code, flags, and docs. Do not
   use "env" or "environment" for this concept. `NODE_ENV` never selects the stage.
 - **Platforms.** macOS and Linux. Windows is not supported in v1.
+- **Flags follow the command.** `envi check --stage production`. Only `--debug` and
+  `--log-format` are shared flags of the root. A command gets only the flags that it uses.
+- **No transpiler.** Envi loads a config with a plain dynamic `import()` of the file URL, the way
+  oxlint and oxfmt do. Node strips the types. The Node floor is `>=22.19.0`.
+- **The core owns the cache key:** `<provider id>:<scope hash>:<reference key>`. `scope` holds
+  everything outside a reference that selects its value, such as the account or the token. The
+  core hashes it. The encryption binds an entry to its cache key.
+- **The lock file format is frozen.** The lock file holds one integer, the time in milliseconds.
+  Two worktrees can run different Envi versions against one cache. More lock data goes into a
+  second file. A new lock protocol needs a new lock file name.
+- **Explicit batches in the resolver.** One resolution has five ordered steps that share state:
+  collect the references, read the cache, select the misses, fetch under the lock, and evaluate
+  each descriptor.
+- **Error docs.** Each error has `summary`, `hint`, and `docs`. The hint catalog lives in
+  `Errors.ts`. `docs` links to `https://github.com/kynnyhsap/envi#error-<tag>-<reason>`. A unit
+  test checks that the README has a section and the hint for each catalog entry. Update the
+  README section in the same change as the catalog.
+- **A throw in user code hides its message.** `derive()`, `custom()`, and `vars` show only the
+  class name and the location of the throw. `CustomFailure` carries a safe message.
 
 ## Code rules
 
@@ -111,8 +131,16 @@ from `workspaces.catalog` in the root `package.json`.
 
 - `envi` exports a small public API from `src/index.ts`, and the test helpers from
   `envi/testing`. Every other module of `src/core` is internal.
-
-- `tests/e2e/` holds the end-to-end tests of the CLI and the SDK.
+- A published package holds `dist`, `src` for the declaration maps, and the root `README.md` and
+  `LICENSE`, which `prepack` copies. The peer range of `effect` is `^4.0.0-rc.116`.
+- `.github/workflows/ci.yml` runs `bun run verify` on macOS and on Linux, and the Linux images.
+- `tests/e2e/` holds the end-to-end tests of the CLI and the SDK. They run the built CLI on Node
+  and on Bun on real files in scoped temp folders. `fixtures/file-provider.ts` logs each batch
+  to a file, so a test counts the provider calls of several processes.
+- `tests/linux/` holds two Docker images: `linux-secret-service` with GNOME Keyring, and
+  `linux-bare` without a keychain. Each runs the unit tests and the end-to-end tests.
+- `packages/onepassword/e2e/` holds the tests against real 1Password, with fake public vaults.
+  The files run one after another, because the 1Password app rejects parallel connections.
 - `examples/` holds config and SDK examples with compile-time type assertions. Change an example
   in the same change as the API.
 - In the workspace, a package resolves to its source through the export condition
@@ -127,4 +155,6 @@ from `workspaces.catalog` in the root `package.json`.
 - `bun run test:onepassword` runs the tests against real 1Password. It needs
   `ENVI_TEST_ONEPASSWORD_TOKEN` in `.env.local`. `bun fixture:onepassword <status|setup|teardown>`
   manages the fake vaults.
+- `bun run test:linux` builds and runs the Linux images. It needs Docker. `bun run verify` does
+  not run it. CI runs it.
 - Use `bun run build` and `bun run test`. Bare `bun build` and `bun test` start Bun built-ins.

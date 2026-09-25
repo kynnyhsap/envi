@@ -34,8 +34,8 @@ export type Services = Envi.Envi | Envi.ParentEnvironment | NodeServices.NodeSer
 
 /**
  * The `Envi` service on Node or Bun: the default cache with its key from `ENVI_CACHE_KEY` or
- * the OS keychain, the
- * environment of the process, the signals of the process, and the platform services.
+ * the OS keychain, the environment of the process, the signals of the process, and the platform
+ * services.
  * `createEnvi` runs on the same layer. The service serves any config, so the cache settings come
  * from `options.cache`, not from the `cache` key of a config.
  *
