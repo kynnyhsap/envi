@@ -1,8 +1,0 @@
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["import", "typescript"],
-  "categories": {
-    "correctness": "warn"
-  },
-  "ignorePatterns": ["**/node_modules", "**/dist", "**/build", "**/bun.lock", "**/*.tsbuildinfo"]
-}

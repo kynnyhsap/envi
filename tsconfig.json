@@ -1,39 +1,38 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
+  "$schema": "http://json.schemastore.org/tsconfig",
   "compilerOptions": {
-    // Target & Module
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-
-    // Strict Type Checking
     "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noPropertyAccessFromIndexSignature": true,
     "exactOptionalPropertyTypes": true,
-
-    // Additional Safety
-    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
     "noImplicitReturns": true,
+    "noImplicitOverride": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "allowUnusedLabels": false,
-    "allowUnreachableCode": false,
-
-    // Module & Interop
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-
-    // Output
-    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noErrorTruncation": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "allowJs": false,
+    "checkJs": false,
     "skipLibCheck": true,
-
-    // Environment
-    "types": ["bun"]
+    "resolveJsonModule": true,
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "customConditions": ["@envi/source"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "packages/*/src",
+    "packages/*/e2e",
+    "packages/*/scripts",
+    "scripts",
+    "tests",
+    "*.config.ts"
+  ]
 }

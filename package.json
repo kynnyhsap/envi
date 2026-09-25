@@ -1,59 +1,60 @@
 {
-  "name": "envi-cli",
-  "version": "0.6.1",
-  "description": "Envi syncs your .env files from 1Password — so you never copy secrets by hand again.",
-  "bin": {
-    "envi": "dist/cli.js"
+  "name": "envi-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "catalog": {
+      "@1password/sdk": "0.5.0",
+      "@effect/platform-node": "4.0.0-rc.116",
+      "@effect/vitest": "4.0.0-rc.116",
+      "@types/node": "26.6.2",
+      "effect": "4.0.0-rc.116",
+      "typescript": "7.0.2",
+      "vitest": "5.0.1"
+    }
   },
-  "files": [
-    "dist",
-    "README.md"
-  ],
   "type": "module",
-  "exports": {
-    "./sdk": {
-      "types": "./dist/sdk/index.d.ts",
-      "default": "./dist/sdk/index.js"
-    },
-    "./package.json": "./package.json"
-  },
   "scripts": {
-    "build": "bun run build.ts && tsc -p tsconfig.build.json",
-    "cli": "bun run src/cli.ts",
-    "bench:e2e": "bun run examples/1password-e2e-bench/bench.ts",
-    "envi": "bun run src/cli.ts",
-    "examples:cleanup": "bun run examples/cleanup.ts",
-    "examples:setup": "bun run examples/setup.ts",
-    "verify:publish": "bun run typecheck && bun run lint && bun test",
-    "verify:live": "bun run test:e2e:1password:preflight && bun run test:e2e:1password",
-    "test:all": "bun test && bun run verify:live",
-    "test": "bun test",
-    "test:e2e:1password": "bun run test:e2e:1password:run; code=$?; bun run test:e2e:1password:cleanup; exit $code",
-    "test:e2e:1password:run": "bun test --timeout 600000 ./src/cli/cli.1password.live.e2e.ts",
-    "test:e2e:1password:cleanup": "bun run src/testing/onepassword-e2e-cleanup.ts --include-shared",
-    "test:e2e:1password:preflight": "bun run src/testing/onepassword-ratelimit-preflight.ts",
-    "typecheck": "tsgo --noEmit",
-    "fmt": "oxfmt --write .",
-    "lint": "oxlint .",
-    "build:cli": "bun run build",
-    "build:sdk": "bun run build",
-    "prepublishOnly": "bun run verify:publish",
-    "prepack": "rm -rf dist && bun run build",
-    "compile": "bun build --compile --minify src/cli.ts --outfile dist/envi"
-  },
-  "dependencies": {
-    "@1password/sdk": "0.4.0",
-    "@modelcontextprotocol/sdk": "^1.27.1",
-    "cac": "7.0.0",
-    "console-table-printer": "^2.15.0",
-    "picocolors": "^1.1.1",
-    "zod": "^4.3.6"
+    "dev": "bun --conditions=@envi/source packages/envi/src/bin.ts",
+    "dev:node": "node --conditions=@envi/source packages/envi/src/bin.ts",
+    "build": "bun run --filter '*' build",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p examples/tsconfig.json",
+    "check": "bun run --parallel fmt:check lint typecheck",
+    "test:unit": "vitest run --project unit",
+    "test:e2e": "bun run build && vitest run --project e2e",
+    "test:onepassword": "bun run build && node --env-file-if-exists=.env.local node_modules/vitest/vitest.mjs run --project onepassword --no-file-parallelism",
+    "test:linux": "sh tests/linux/run.sh",
+    "test:unit:bun": "bun --bun vitest run --project unit",
+    "test": "bun run --parallel test:unit test:unit:bun test:e2e",
+    "verify": "bun run --parallel check test",
+    "fixture:onepassword": "bun packages/onepassword/scripts/fixture.ts"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.10",
-    "@typescript/native-preview": "^7.0.0-dev.20260310.1",
-    "oxfmt": "^0.27.0",
-    "oxlint": "^1.42.0",
-    "typescript": "^5.0.0"
-  }
+    "@1password/sdk": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@envi/1password": "workspace:*",
+    "@oxlint/plugins": "1.83.0",
+    "@types/node": "catalog:",
+    "effect": "catalog:",
+    "envi": "workspace:*",
+    "oxfmt": "0.68.0",
+    "oxlint": "1.83.0",
+    "oxlint-tsgolint": "7.0.2002",
+    "poof": "3.1.1",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "bun": ">=1.3",
+    "node": ">=22.19.0"
+  },
+  "packageManager": "bun@1.4.2"
 }

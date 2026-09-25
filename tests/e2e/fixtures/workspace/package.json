@@ -1,0 +1,7 @@
+{
+  "name": "envi-e2e-workspace",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ]
+}

@@ -1,0 +1,6 @@
+# The Linux test images copy the repo. Local secrets and build output stay out.
+**/node_modules
+**/dist
+.git
+.env
+.env*.local

@@ -1,9 +1,0 @@
-{
-  "provider": "1password",
-  "vars": {
-    "PROFILE": "local"
-  },
-  "templateFile": ".env.example",
-  "outputFile": ".env",
-  "backupDir": ".env-backup"
-}

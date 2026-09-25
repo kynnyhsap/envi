@@ -1,85 +1,166 @@
-# AGENTS.md
+# Envi
 
-Envi is a CLI + SDK for syncing and running with `.env` secrets (no manual copy/paste).
+Envi is an env manager for TypeScript projects. A project defines its env in a typed
+`envi.config.ts`. Envi resolves the config once from a secret provider, caches the result, and
+injects the values into a runtime. 1Password is the only provider for now. The architecture stays
+provider agnostic.
 
-**Package manager:** Bun
-**Runtimes:** CLI (Bun), SDK (Bun + Node)
+Envi works as a CLI (`envi`) and as an SDK with a plain TypeScript API and an Effect API. The npm
+package name is not decided, so code must not depend on the package name.
 
-**Type check:** `bun run typecheck`
-**Test:** `bun test`
-**Live E2E:** `bun run test:e2e:1password` (uses repo-root `.env.test` or `.env.local`)
-**Benchmark:** `bun run bench:e2e` (requires local `.env.local` token)
-**Seed example vaults:** `bun run examples:setup` (requires local `.env.local` token)
-**Cleanup example vaults:** `bun run examples:cleanup` (requires local `.env.local` token)
-**Run CLI:** `bun run src/cli.ts <command>`
-**Build (publish):** `bun run build`
+Reasons for Envi:
 
-**Config:** load `envi.json` by default if present; override with `--config <path>`.
+- Resolving secrets on every dev script run is slow and wasteful.
+- Text env files such as `.env.example` are unsafe and untyped.
 
-**Dynamic vars:** use repeatable `--var NAME=value` flags or `vars` in config for `${NAME}` substitution inside secret references. Metadata is written to generated `.env` files when vars are provided.
+`README.md` holds the user docs: the config, each command, the settings, the cache, the
+provider, the SDK, and one section for each error. It is the source of truth for the behavior.
+Read it before you change behavior. Change it in the same change as the behavior. This file holds
+the decisions and the rules for contributors.
 
-## Testing
+## Use cases
 
-- Local/unit/integration coverage runs with `bun test`
-- CLI local E2E lives in `src/cli/cli.e2e.test.ts`
-- Live 1Password E2E lives in `src/cli/cli.1password.live.e2e.ts`
-- Live E2E loads repo-root `.env.test` first, then `.env.local`
-- Prefer E2E for CLI/SDK behavior: put command-level behavior in `cli.e2e` or `cli.1password.live.e2e`, not mocked provider/unit tests.
-- Keep mocks limited to pure/singular logic (parsers, formatters, small helpers). Do not add mock-heavy tests for end-user command flows.
-- Keep skipped tests at zero; if a case requires provider auth, move it to live E2E instead of `describe.skip`.
-- Treat maintained `examples/` as test targets; keep their core flows covered in live E2E.
-- For provider wiring changes, add or update live E2E coverage, not only provider mocks.
-- When making code changes, run the smallest relevant test slice first, then run the broader suite before calling the work done
-- When doing a refactor or touching CLI/SDK/runtime/provider wiring, always run at least `bun run typecheck`, `bun test`, and `bun run lint`
-- When changing critical 1Password flows (`status`, `diff`, `sync`, `validate`, `resolve`, `run`, `backup`, `restore`) or shared CLI parsing/config behavior, also run `bun run test:e2e:1password` unless the user explicitly asks not to or required credentials are unavailable
+Every design decision must serve at least one of these use cases.
 
-## Config and Precedence
+1. A user copies a monorepo to a new worktree, sets up env once, and runs the whole stack.
+2. A user refreshes env on demand. Envi also refreshes env after the cache expires.
+3. A program loads env through the SDK.
+4. A program resolves one secret through the SDK.
+5. Application code uses the config and its schemas as types.
+6. The CLI and the SDK work in CI, not only on a local machine.
 
-- Default config filename: `envi.json` (auto-loaded when present)
-- Override: `--config <path>` (JSON)
-- Merge order: defaults <- config file <- CLI flags
-- Dynamic reference vars flow through repeatable `--var NAME=value` flags and config `vars: Record<string, string>`
-- `--only <paths>` scopes discovery/processing to specific directories (comma-separated)
+## Privacy
 
-## Architecture
+This repository is public. These rules have no exception.
 
-- Core commands (`status`, `diff`, `sync`, `validate`, `resolve`, `run`) are SDK-backed; keep `src/cli/commands/*.ts` as presenters.
-- Envi is 1Password-only today. Keep the provider boundary intact, but assume a single `OnePasswordProvider` behind it.
-- Process/platform boundaries shared across CLI/SDK/providers live in `src/shared/process/*` and `src/sdk/runtime/*` (avoid provider -> SDK imports to prevent cycles).
-- Canonical machine output is the SDK JSON envelope (`src/sdk/json.ts`); CLI `--json` prints it directly (no reshaping).
-- SDK results are safe by default (redacted); operations that surface values support `includeSecrets` as an explicit escape hatch.
-- CLI flows are non-interactive by default. Prefer `--dry-run` for previewing changes; do not add confirmation prompts back unless explicitly requested.
+- Never write a real private project into this repository: not its name, its files, its config,
+  its vault names, its item names, its field names, its URLs, or its identifiers. This covers
+  code, examples, tests, docs, review reports, and commit messages.
+- Never write a real account name, such as a 1Password account, an email address, or a team name.
+- Every example uses generic names: the account `my-team`, vaults such as `app` and `payments`,
+  items such as `postgres` and `stripe`.
+- A test against a real service reads every real value from an environment variable, such as
+  `ENVI_TEST_ONEPASSWORD_TOKEN`. The test skips itself when the variable is missing. No real
+  value has a default in the code. Local values live in the ignored file `.env.local`.
+- A study of a real project stays in the chat. Do not save it to a file in this repository.
+- Never read or print a resolved secret value of the user.
+- Before each commit, read the staged diff and check it against these rules.
 
-## Bundling Policy
+## Design decisions
 
-- Use `build.ts` (Bun build API) as the single source of truth for publish builds.
-- CLI build shape: `splitting + minify + packages: external`.
-- SDK build shape: `packages: external` (do not inline large third-party deps into published SDK JS).
-- Keep `mcp` command lazy-loaded from `src/cli/index.ts` so MCP-heavy deps stay out of the primary CLI startup path.
-- If changing bundle shape, capture a Bun metafile (`--metafile`) and compare chunk contributors before/after.
-- Treat `dist-analyze/` outputs as local analysis artifacts unless explicitly requested for commit.
+- **Trust model.** The cache serves the same trust level as a `.env` file. Any process of the OS
+  user, including a coding agent, can use it. Encryption protects the cache files against file
+  reads, searches, and backups. Do not add features, warnings, or special cases that try to
+  isolate agents or stages from the cache.
+- **The config is data.** `vars` returns only literals and descriptors. It never resolves a
+  secret and does no I/O. The key is `vars`, not `env` or `envs`. There is one `defineConfig`.
+- **Two primitives for code.** `derive(input, fn)` is a pure synchronous function of other
+  values, and Envi never caches it. `custom({ id, from, scope, resolve })` runs effectful user
+  code, and Envi caches it for the stage, the scope, the code, and the input values. Do not add
+  `map`, `combine`, or `template`.
+- **Batches.** Envi makes one call per provider for each operation. Never resolve references
+  one by one in a loop. The resolver uses explicit batches, not `Request` and `RequestResolver`.
+- **One client, one config.** Every SDK operation comes from `createEnvi(config, overrides?)`. No
+  top-level `load` and no default instance exist. The client mirrors the CLI.
+- **Envi never changes `process.env`.** Do not add a helper that only saves the user one line.
+- **Provider agnostic core.** The core never imports a provider. The provider interface and the
+  cache interface are public and unstable until a second real provider proves them.
+- **No secret in an error or a log.** An error holds the var key or the safe `describe()` text,
+  never a value or a rejected input.
+- **Never fall back from encryption to plaintext.** Plaintext is an explicit opt-in.
+- **One precedence order for every setting:** CLI flag or call option, client option,
+  environment variable, config key, default.
+- **One copy of `effect`.** `effect` is a required peer dependency. The build never bundles. A
+  global `envi` starts the local `envi` of the project.
+- **Stage.** A named set of env values is a stage. Use "stage" in code, flags, and docs. Do not
+  use "env" or "environment" for this concept. `NODE_ENV` never selects the stage.
+- **Platforms.** macOS and Linux. Windows is not supported in v1.
+- **Flags follow the command.** `envi check --stage production`. Only `--debug` and
+  `--log-format` are shared flags of the root. A command gets only the flags that it uses.
+- **No transpiler.** Envi loads a config with a plain dynamic `import()` of the file URL, the way
+  oxlint and oxfmt do. Node strips the types. The Node floor is `>=22.19.0`.
+- **The core owns the cache key:** `<provider id>:<scope hash>:<reference key>`. `scope` holds
+  everything outside a reference that selects its value, such as the account or the token. The
+  core hashes it. The encryption binds an entry to its cache key.
+- **The lock file format is frozen.** The lock file holds one integer, the time in milliseconds.
+  Two worktrees can run different Envi versions against one cache. More lock data goes into a
+  second file. A new lock protocol needs a new lock file name.
+- **Explicit batches in the resolver.** One resolution has five ordered steps that share state:
+  collect the references, read the cache, select the misses, fetch under the lock, and evaluate
+  each descriptor.
+- **Error docs.** Each error has `summary`, `hint`, and `docs`. The hint catalog lives in
+  `Errors.ts`. `docs` links to `https://github.com/kynnyhsap/envi#error-<tag>-<reason>`. A unit
+  test checks that the README has a section and the hint for each catalog entry. Update the
+  README section in the same change as the catalog.
+- **A throw in user code hides its message.** `derive()`, `custom()`, and `vars` show only the
+  class name and the location of the throw. `CustomFailure` carries a safe message.
 
-## 1Password Scope
+## Code rules
 
-- Supported secret reference format: `op://vault/item[/section]/field`
-- Authentication modes: 1Password JS SDK service account token or desktop app integration
-- `references/` may contain old provider research; treat it as archive material unless the code says otherwise.
+- Envi is Effect native and Effect first. All source code uses Effect v4. Every operation exists
+  first as an Effect on a service. The plain TypeScript API is a thin wrapper that runs those
+  Effects. It holds no logic of its own, and it rejects with the same tagged errors.
+- Use the Effect building blocks instead of custom code: `Context.Service` and `Layer` for every
+  dependency, `Schema` for every data structure, `Schema.TaggedError` for every error, `Config`
+  for every `ENVI_*` variable, `Redacted` for every secret value in memory, `Duration` for time,
+  the Effect logger, `effect/unstable/cli`, and the platform services. Do not use `async`
+  functions, `try`/`catch`, or `throw` in `src`.
+- Design data first. Define each data structure as an Effect `Schema`. Derive every type from its
+  schema.
+- Do not use magic strings. Define each closed set of values once, as a constant object plus a
+  `Schema`, such as `ExportFormat.Dotenv`.
+- Prefer a small set of strong primitives. Do not add a custom helper when plain TypeScript or a
+  built-in Effect function does the job. Do not add a special case without a real use case.
+- All code runs on both Node and Bun. The core (`packages/envi/src/core`) depends only on Effect
+  platform services. It never imports `@effect/platform-*` or `node:`, and it never reads `Bun` or
+  `process`. A lint rule enforces this. Only the entry points of `envi` outside `core` provide the
+  platform layer and read `process`.
+- Write the test first. Tests use Effect through `@effect/vitest`. Unit tests use the in-memory
+  provider. End-to-end tests work on real files and run the built CLI on Node and on Bun.
+- Run `bun run verify` before you report work as done.
 
-## Runtime and Filesystem Patterns
+## Repository
 
-- Prefer async filesystem APIs; avoid sync node:fs calls.
-- Avoid TOCTOU patterns like `existsSync(path)` then `statSync(path)`; use one operation and handle `ENOENT` via `try/catch`.
-- Avoid `readFileSync(path).slice(0, max)`; it reads the full file into memory.
-- For deletions, prefer `rm(path, { recursive: true, force: true })` over manual unlink loops.
-- A conventions test (`src/conventions/fs-usage.test.ts`) enforces that sync fs anti-patterns are not introduced.
+One Bun workspace with two packages. Both share one version, `1.0.0`, which is not published
+yet. Shared dependency versions come from `workspaces.catalog` in the root `package.json`.
 
-## Style
+- Every change goes through a pull request against `main`. Do not commit to `main` directly.
+  CI must pass before a merge.
 
-- Format: `bun run fmt` (oxfmt)
-- Lint: `bun run lint` (oxlint)
+| Package           | Folder                 | Holds                                                         |
+| ----------------- | ---------------------- | ------------------------------------------------------------- |
+| `envi`            | `packages/envi`        | the core in `src/core`, the plain client, the layer, the CLI  |
+| `@envi/1password` | `packages/onepassword` | `op()`, `onePasswordProvider`, and its e2e tests; peer `envi` |
 
-## Notes
+- `envi` exports a small public API from `src/index.ts`, and the test helpers from
+  `envi/testing`. Every other module of `src/core` is internal.
+- A published package holds `dist`, and `src` for the declaration maps. `@envi/1password` has its
+  own `README.md`. `scripts/prepack.ts` copies the root `LICENSE` into each package, and the root
+  `README.md` into `envi`. The peer range of `effect` is `^4.0.0-rc.116`.
+- `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/build.ts`
+  builds one package: `poof` removes `dist`, then `tsc` compiles `src`.
+- `.github/workflows/ci.yml` runs `bun run verify` on macOS and on Linux, and the Linux images.
+- `tests/e2e/` holds the end-to-end tests of the CLI and the SDK. They run the built CLI on Node
+  and on Bun on real files in scoped temp folders. `fixtures/file-provider.ts` logs each batch
+  to a file, so a test counts the provider calls of several processes.
+- `tests/linux/` holds two Docker images: `linux-secret-service` with GNOME Keyring, and
+  `linux-bare` without a keychain. Each runs the unit tests and the end-to-end tests.
+- `packages/onepassword/e2e/` holds the tests against real 1Password, with fake public vaults.
+  The files run one after another, because the 1Password app rejects parallel connections.
+- `examples/` holds config and SDK examples with compile-time type assertions. Change an example
+  in the same change as the API.
+- In the workspace, a package resolves to its source through the export condition
+  `@envi/source`. A published package resolves to `dist`. The end-to-end tests run `dist`.
 
-- Code-adjacent `AGENTS.md` files under `src/**/` contain module-specific quirks and are loaded automatically when working in those areas.
-- `examples/` should stay small, 1Password-only, and limited to real supported workflows.
-- Local-only service account tokens live in repo-root `.env.test` or `.env.local` (both gitignored).
+## Commands
+
+- `bun dev <args>` runs the CLI from source on Bun. `bun dev:node <args>` runs it on Node.
+- `bun run build` builds every package into its `dist` folder.
+- `bun run verify` runs format check, lint, typecheck, the unit tests on Node and on Bun, and the
+  end-to-end tests, all in parallel.
+- `bun run test:onepassword` runs the tests against real 1Password. It needs
+  `ENVI_TEST_ONEPASSWORD_TOKEN` in `.env.local`. `bun fixture:onepassword <status|setup|teardown>`
+  manages the fake vaults.
+- `bun run test:linux [target]` builds and runs the Linux images. It needs Docker. `bun run
+verify` does not run it. CI runs each image in its own job.
+- Use `bun run build` and `bun run test`. Bare `bun build` and `bun test` start Bun built-ins.
