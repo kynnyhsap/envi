@@ -45,8 +45,8 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
 
           expect(result.exitCode).toBe(0);
           expect(result.stdout).toContain("Synced the stage development from 1 config");
-          expect(result.stdout).toContain("file: 7 secrets, 0 cached, 6 resolved");
-          expect((yield* cacheFiles(sandbox.cacheDirectory)).length).toBe(6);
+          expect(result.stdout).toContain("file: 7 secrets, 0 cached, 7 resolved");
+          expect((yield* cacheFiles(sandbox.cacheDirectory)).length).toBe(7);
 
           for (const secret of hidden) {
             expect(result.stdout + result.stderr).not.toContain(secret);
@@ -315,13 +315,13 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           expect(list.stdout).toContain(`Directory: ${sandbox.cacheDirectory}`);
           expect(list.stdout).toContain("file://token-development");
           expect(list.stdout).toContain("custom(database-url)");
-          expect(JSON.parse(json.stdout).entries.length).toBe(6);
+          expect(JSON.parse(json.stdout).entries.length).toBe(7);
 
           for (const secret of [...hidden, secrets["public-name"]]) {
             expect(list.stdout + json.stdout).not.toContain(secret);
           }
 
-          expect(JSON.parse(cleared.stdout)).toMatchObject({ removed: 6 });
+          expect(JSON.parse(cleared.stdout)).toMatchObject({ removed: 7 });
           expect(JSON.parse(after.stdout).entries).toEqual([]);
           expect(yield* cacheFiles(sandbox.cacheDirectory)).toEqual([]);
         }),

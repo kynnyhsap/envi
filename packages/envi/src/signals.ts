@@ -18,7 +18,9 @@ export const processSignals: Stream.Stream<Signals.Received> = Stream.callback((
       names.map((name) => {
         const handler = () => {
           // A terminal sends SIGINT to the whole foreground process group, the child included.
-          const forward = name !== "SIGINT" || !process.stdin.isTTY;
+          // A pipe on stdin, such as `cmd | envi run -- srv`, still leaves the terminal on stdout.
+          const hasTerminal = process.stdin.isTTY || process.stdout.isTTY || process.stderr.isTTY;
+          const forward = name !== "SIGINT" || !hasTerminal;
 
           Queue.offerUnsafe(queue, { name, forward });
         };
@@ -58,8 +60,9 @@ export const runMain = Runtime.makeRunMain(({ fiber, teardown }) => {
   };
 
   fiber.addObserver((exit) => {
-    process.removeListener("SIGINT", onSignal);
-    process.removeListener("SIGTERM", onSignal);
+    for (const name of names) {
+      process.removeListener(name, onSignal);
+    }
 
     teardown(exit, (code) => {
       if (receivedSignal || code !== 0) {
@@ -68,6 +71,8 @@ export const runMain = Runtime.makeRunMain(({ fiber, teardown }) => {
     });
   });
 
-  process.on("SIGINT", onSignal);
-  process.on("SIGTERM", onSignal);
+  // SIGHUP interrupts too, so a closed terminal releases the resolve lock of the cache.
+  for (const name of names) {
+    process.on(name, onSignal);
+  }
 });

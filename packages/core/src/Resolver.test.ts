@@ -59,7 +59,7 @@ const flakyProvider = (down: Ref.Ref<boolean>, memory: MemoryProvider) =>
     id: "flaky",
     Reference: Schema.String,
     describe: (key) => `flaky://${key}`,
-    cacheKey: (key) => key,
+    scope: "test",
     resolveMany: (requests, context) =>
       Effect.flatMap(Ref.get(down), (isDown) =>
         isDown
@@ -367,7 +367,7 @@ describe("Resolver", () => {
       id: "broken",
       Reference: Schema.String,
       describe: (key) => `broken://${key}`,
-      cacheKey: (key) => key,
+      scope: "test",
       resolveMany: () => Effect.succeed({}),
       helpers: {},
     });
@@ -377,5 +377,91 @@ describe("Resolver", () => {
 
       expect(failed(resolution, "A")).toMatchObject({ reason: ProviderFailure.InvalidResponse });
     }).pipe(Effect.provide(layerWith(broken)));
+  });
+
+  it.effect("keeps the entries of two provider instances with one id apart", () => {
+    const web = memoryProvider({ "api-key": "fake-web-key" });
+    const api = memoryProvider({ "api-key": "fake-api-key" });
+    const sources = { API_KEY: mem("api-key") };
+
+    return Effect.gen(function* () {
+      const first = yield* Resolver.resolve(sources, options).pipe(
+        Effect.provide(Provider.layer([web])),
+      );
+
+      const second = yield* Resolver.resolve(sources, options).pipe(
+        Effect.provide(Provider.layer([api])),
+      );
+
+      expect(succeeded(first, "API_KEY").decoded).toBe("fake-web-key");
+      expect(succeeded(second, "API_KEY").decoded).toBe("fake-api-key");
+    }).pipe(Effect.provide(Cache.layerMemory));
+  });
+
+  it.effect("puts only a hash of the scope into a cache key", () => {
+    const scoped = Provider.make({
+      id: "scoped",
+      Reference: Schema.String,
+      describe: (key) => `scoped://${key}`,
+      scope: "fake-credential-in-scope",
+      resolveMany: (requests) =>
+        Effect.succeed(
+          Object.fromEntries(requests.map((request) => [request.key, Result.succeed("value")])),
+        ),
+      helpers: {},
+    });
+
+    return Effect.gen(function* () {
+      yield* Resolver.resolve({ A: Source.reference("scoped", "a") }, options);
+
+      const entries = yield* Effect.flatMap(Cache.Cache, (cache) => cache.list());
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.key).not.toContain("fake-credential-in-scope");
+      expect(entries[0]?.key).toMatch(/^scoped:[0-9a-f]{16}:scoped:\/\/a$/u);
+    }).pipe(Effect.provide(layerWith(scoped)));
+  });
+
+  it.effect("caches a missing value of an optional var, so a warm run calls no provider", () => {
+    const memory = memoryProvider({});
+    const sources = { SENTRY_DSN: mem("sentry").optional(), LOG_LEVEL: mem("log").default("info") };
+
+    return Effect.gen(function* () {
+      yield* Resolver.resolve(sources, options);
+
+      const warm = yield* Resolver.resolve(sources, options);
+
+      expect(memory.calls()).toHaveLength(1);
+      expect(succeeded(warm, "SENTRY_DSN").origin).toBe(ValueOrigin.Unset);
+      expect(succeeded(warm, "LOG_LEVEL")).toMatchObject({
+        decoded: "info",
+        origin: ValueOrigin.Default,
+      });
+    }).pipe(Effect.provide(layerWith(memory)));
+  });
+
+  it.effect("never trusts a cached missing value for a required var", () => {
+    const memory = memoryProvider({});
+
+    return Effect.gen(function* () {
+      yield* Resolver.resolve({ OPTIONAL: mem("token").optional() }, options);
+
+      const required = yield* Resolver.resolve({ REQUIRED: mem("token") }, options);
+
+      expect(memory.calls()).toHaveLength(2);
+      expect(failed(required, "REQUIRED")).toMatchObject({ reason: ReferenceFailure.NotFound });
+    }).pipe(Effect.provide(layerWith(memory)));
+  });
+
+  it.effect("asks the provider again for a cached missing value on refresh", () => {
+    const memory = memoryProvider({});
+    const sources = { OPTIONAL: mem("token").optional() };
+
+    return Effect.gen(function* () {
+      yield* Resolver.resolve(sources, options);
+      yield* Resolver.resolve(sources, { ...options, refresh: true });
+
+      expect(memory.calls()).toHaveLength(2);
+    }).pipe(Effect.provide(layerWith(memory)));
   });
 });

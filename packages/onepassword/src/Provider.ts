@@ -194,16 +194,18 @@ export const makeProvider = <DesktopAuth>(
     id: providerId,
     Reference,
     describe: describeReference,
-    cacheKey: (reference) =>
-      Effect.gen(function* () {
-        const kind = Option.isSome(yield* readToken)
-          ? CredentialKind.ServiceAccount
-          : CredentialKind.Desktop;
+    // The token itself selects the vaults, so two tokens never share an entry. The core hashes it.
+    scope: Effect.gen(function* () {
+      const token = yield* readToken;
 
-        const account = Option.getOrElse(accountOf(reference, yield* readAccount), () => "");
+      if (Option.isSome(token)) {
+        return `${CredentialKind.ServiceAccount}:${Redacted.value(token.value)}`;
+      }
 
-        return [kind, account, describeReference(reference)].join("|");
-      }),
+      return `${CredentialKind.Desktop}:${Option.getOrElse(yield* readAccount, () => "")}`;
+    }),
+    // `describe` never holds the account, but the account of a reference selects its value.
+    referenceKey: (reference) => `${reference.account ?? ""}|${describeReference(reference)}`,
     resolveMany: (requests, context) =>
       Effect.gen(function* () {
         const token = yield* readToken;

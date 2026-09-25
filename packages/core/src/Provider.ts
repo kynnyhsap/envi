@@ -38,10 +38,16 @@ export interface Definition<Ref, Helpers extends object> {
   /** Safe text for reports, errors, and logs. It never holds a secret. */
   readonly describe: (reference: Ref) => string;
   /**
-   * Every part that decides where the value comes from: account, credential kind, reference.
-   * It returns an `Effect` when a part comes from the environment, such as the credential kind.
+   * Everything outside a reference that decides where its value comes from: the account, the
+   * host, the credential. Two instances with different scopes never share a cache entry. The core
+   * hashes the scope and never stores, shows, or logs it, so it may hold a credential.
    */
-  readonly cacheKey: (reference: Ref) => string | Effect.Effect<string, ProviderError>;
+  readonly scope: string | Effect.Effect<string, ProviderError>;
+  /**
+   * The part of the cache key for one reference. Default: `describe`. Override it when
+   * `describe` leaves out a part that selects the value.
+   */
+  readonly referenceKey?: (reference: Ref) => string;
   /** The only resolve method. Envi rejects a result with a missing or an unknown key. */
   readonly resolveMany: (
     requests: ReadonlyArray<ProviderRequest<Ref>>,
@@ -50,9 +56,9 @@ export interface Definition<Ref, Helpers extends object> {
   readonly helpers: Helpers;
 }
 
-/** The safe identity of one reference. */
+/** The safe identity of one reference. The core adds the provider id and the scope hash. */
 export interface PreparedReference {
-  readonly cacheKey: string;
+  readonly referenceKey: string;
   readonly description: string;
 }
 
@@ -66,6 +72,8 @@ export interface Provider<out Helpers extends object = object> {
   readonly [TypeId]: typeof TypeId;
   readonly id: string;
   readonly helpers: Helpers;
+  /** The scope of `Definition`. It can hold a credential, so only a hash of it leaves the core. */
+  readonly scope: Effect.Effect<string, ProviderError>;
   /** Decodes one reference. Fails with `Invalid` when the reference does not fit the provider. */
   readonly prepare: (
     reference: Schema.Json,
@@ -96,15 +104,12 @@ export const make = <Ref, const Helpers extends object>(
     [TypeId]: TypeId,
     id: definition.id,
     helpers: definition.helpers,
+    scope: Effect.isEffect(definition.scope) ? definition.scope : Effect.succeed(definition.scope),
     prepare: (reference) =>
-      Effect.flatMap(decodeReference(reference), (decoded) => {
-        const cacheKey = definition.cacheKey(decoded);
-
-        return Effect.map(
-          Effect.isEffect(cacheKey) ? cacheKey : Effect.succeed(cacheKey),
-          (key) => ({ cacheKey: key, description: definition.describe(decoded) }),
-        );
-      }),
+      Effect.map(decodeReference(reference), (decoded) => ({
+        referenceKey: (definition.referenceKey ?? definition.describe)(decoded),
+        description: definition.describe(decoded),
+      })),
     resolveMany: (requests, context) =>
       Effect.forEach(requests, (request) =>
         Effect.map(decodeReference(request.reference), (decoded) => ({

@@ -18,7 +18,7 @@ import {
 
 const app = fixture("cached");
 
-const uncachedBatch = ["absent", "uncached"];
+const uncachedBatch = ["uncached"];
 
 const tokenReference = "file://token-development";
 
@@ -51,7 +51,7 @@ describe.skipIf(process.platform !== "darwin")("envi encrypted cache", () => {
           const { files } = yield* fillCache(runtime, sandbox);
           const everything = files.map((entry) => entry.text).join("\n");
 
-          expect(files.length).toBe(6);
+          expect(files.length).toBe(7);
           expect(files.every((entry) => entry.encryption === "aes-256-gcm")).toBe(true);
           expect(files.every((entry) => entry.mode === 0o600)).toBe(true);
 
@@ -100,11 +100,7 @@ describe.skipIf(process.platform !== "darwin")("envi encrypted cache", () => {
 
           expect(result.exitCode).toBe(0);
           expect(JSON.parse(result.stdout).API_TOKEN).toBe(secrets["token-development"]);
-          expect((yield* providerCalls(sandbox))[1]).toEqual([
-            "absent",
-            "token-development",
-            "uncached",
-          ]);
+          expect((yield* providerCalls(sandbox))[1]).toEqual(["token-development", "uncached"]);
         }),
       );
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 
 import * as Cache from "./Cache.ts";
@@ -7,7 +8,7 @@ import * as Cache from "./Cache.ts";
 const record = (secret: string): Cache.CacheRecord => ({
   provider: "memory",
   reference: "memory://a",
-  value: Redacted.make(secret),
+  value: Option.some(Redacted.make(secret)),
   resolvedAt: 1000,
 });
 
@@ -21,7 +22,9 @@ describe("Cache.layerMemory", () => {
       const found = yield* cache.getMany(["a", "missing"]);
 
       expect(Object.keys(found)).toEqual(["a"]);
-      expect(Redacted.value(found["a"]?.value ?? Redacted.make(""))).toBe("1");
+      expect(Option.map(found["a"]?.value ?? Option.none(), Redacted.value)).toEqual(
+        Option.some("1"),
+      );
     }).pipe(Effect.provide(Cache.layerMemory)),
   );
 

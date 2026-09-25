@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
+import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
@@ -19,8 +20,14 @@ const endsItself = "process.kill(process.pid, 'SIGTERM'); setInterval(() => {}, 
 
 const handlesSigterm = "process.on('SIGTERM', () => process.exit(7)); setInterval(() => {}, 1000);";
 
+const ignoresSighup =
+  "process.on('SIGHUP', () => {}); process.on('SIGTERM', () => process.exit(7)); setInterval(() => {}, 1000);";
+
 const withSignals = (signals: Stream.Stream<Signals.Received>) =>
   Effect.provideService(Signals.Signals, signals);
+
+const after = (delay: Duration.Input, name: Signals.SignalName) =>
+  Stream.fromEffect(Effect.as(Effect.sleep(delay), { name, forward: true }));
 
 layer(NodeServices.layer, { excludeTestServices: true })("Signals.supervise", (it) => {
   describe("with real child processes", () => {
@@ -54,6 +61,19 @@ layer(NodeServices.layer, { excludeTestServices: true })("Signals.supervise", (i
         );
 
         const code = yield* Signals.supervise(node(handlesSigterm)).pipe(withSignals(delayed));
+
+        expect(code).toEqual(Option.some(7));
+      }),
+    );
+
+    it.effect("forwards a second signal while the child still runs after the first", () =>
+      Effect.gen(function* () {
+        const signals = Stream.concat(
+          after("700 millis", "SIGHUP"),
+          after("300 millis", "SIGTERM"),
+        );
+
+        const code = yield* Signals.supervise(node(ignoresSighup)).pipe(withSignals(signals));
 
         expect(code).toEqual(Option.some(7));
       }),

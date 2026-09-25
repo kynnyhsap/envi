@@ -30,7 +30,8 @@ export const memoryProvider = (secrets: Readonly<Record<string, string>>): Memor
     id: memoryProviderId,
     Reference: Schema.String,
     describe: (key) => `memory://${key}`,
-    cacheKey: (key) => key,
+    // The secrets live in this instance only, so no other instance shares its cache entries.
+    scope: crypto.randomUUID(),
     resolveMany: (requests) =>
       Effect.sync(() => {
         calls.push(requests.map((request) => request.reference));

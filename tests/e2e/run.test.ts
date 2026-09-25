@@ -296,7 +296,8 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
         yield* runCli(runtime, app, args, sandbox.env);
         yield* runCli(runtime, app, args, sandbox.env);
 
-        expect((yield* providerCalls(sandbox))[1]).toEqual(["absent", "uncached"]);
+        // A cached `NotFound` serves the optional vars, so only the uncached var calls again.
+        expect((yield* providerCalls(sandbox))[1]).toEqual(["uncached"]);
       }),
     );
 

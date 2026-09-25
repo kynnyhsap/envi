@@ -12,7 +12,11 @@ export interface CacheRecord {
   readonly provider: string;
   /** The `describe()` text of the reference. `cache list` shows it. */
   readonly reference: string;
-  readonly value: Redacted.Redacted;
+  /**
+   * The value, or nothing when the provider reported `NotFound`. Envi serves a record without a
+   * value only to a var that allows a missing value, with `.optional()` or `.default()`.
+   */
+  readonly value: Option.Option<Redacted.Redacted>;
   /** Epoch milliseconds. */
   readonly resolvedAt: number;
 }

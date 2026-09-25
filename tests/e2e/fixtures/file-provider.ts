@@ -30,7 +30,8 @@ export const fileProvider = Provider.make({
   id: fileProviderId,
   Reference: Schema.String,
   describe: (key) => `file://${key}`,
-  cacheKey: (key) => key,
+  // Each secrets file is its own source of values.
+  scope: Effect.sync(() => process.env[secretsVariable] ?? ""),
   resolveMany: (requests) =>
     Effect.gen(function* () {
       const text = yield* Effect.try({

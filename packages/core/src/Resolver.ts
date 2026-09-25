@@ -11,6 +11,7 @@ import * as Result from "effect/Result";
 import type * as Schema from "effect/Schema";
 
 import * as Cache from "./Cache.ts";
+import * as Digest from "./Digest.ts";
 import {
   type CacheError,
   type DecodeError,
@@ -88,6 +89,9 @@ const isReference = Source.Origin.$is("Reference");
 
 const isCacheDisabled = Source.CachePolicy.$is("Disabled");
 
+/** The hex digits of the scope hash in a cache key. 64 bits keep two scopes apart. */
+const scopeHashLength = 16;
+
 const customKeyOf = (key: string): string => `${Source.customProviderId}:${key}`;
 
 const isTransient = (error: VarError | CacheError): error is ProviderError =>
@@ -97,7 +101,7 @@ const invalidResponse = (provider: string, detail: string): ProviderError =>
   new ProviderError({ reason: ProviderFailure.InvalidResponse, provider, detail });
 
 const fromRecord = (found: Cache.CacheRecord, origin: ValueOrigin): Evaluated => ({
-  raw: Option.some(found.value),
+  raw: found.value,
   origin,
   provider: Option.some(found.provider),
   reference: Option.some(found.reference),
@@ -127,6 +131,23 @@ const whenMissing = (
     ? Effect.succeed({ ...base, raw: Option.none(), origin: ValueOrigin.Unset })
     : Effect.fail(new ReferenceError({ reason: ReferenceFailure.NotFound, provider, reference }));
 };
+
+/** A var with `.optional()` or `.default()` accepts a reference without a value. */
+const allowsMissing = (source: Source.AnySource): boolean =>
+  source.isOptional || Option.isSome(source.fallback);
+
+const isNotFound = (error: VarError): boolean =>
+  Predicate.isTagged(error, "ReferenceError") && error.reason === ReferenceFailure.NotFound;
+
+/** A cached `NotFound` serves only a var that accepts a missing value. */
+const fromCached = (
+  source: Source.AnySource,
+  found: Cache.CacheRecord,
+  origin: ValueOrigin,
+): Effect.Effect<Evaluated, VarError> =>
+  Option.isSome(found.value)
+    ? Effect.succeed(fromRecord(found, origin))
+    : whenMissing(source, found.provider, found.reference);
 
 /**
  * Resolves a record of descriptors: one cache read, one call for each provider, then the
@@ -160,6 +181,16 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
 
   Object.values(sources).forEach(collect);
 
+  // The scope can hold a credential. Only its hash enters a cache key.
+  const scopeHashes = new Map(
+    yield* Effect.forEach(providers.all, (provider) =>
+      Effect.map(
+        Effect.result(Effect.flatMap(provider.scope, Digest.sha256Hex)),
+        (hash) => [provider.id, hash] as const,
+      ),
+    ),
+  );
+
   for (const source of all) {
     if (isReference(source.origin)) {
       const { provider: providerId, reference } = source.origin;
@@ -170,9 +201,16 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
           Effect.gen(function* () {
             const provider = yield* providers.get(providerId);
             const prepared = yield* provider.prepare(reference);
+            const scopeHash = scopeHashes.get(provider.id);
+
+            if (scopeHash === undefined) {
+              return yield* Effect.die("Envi resolver defect: a provider has no scope hash.");
+            }
+
+            const scope = (yield* Effect.fromResult(scopeHash)).slice(0, scopeHashLength);
 
             return {
-              fullKey: `${provider.id}:${prepared.cacheKey}`,
+              fullKey: `${provider.id}:${scope}:${prepared.referenceKey}`,
               provider,
               reference,
               description: prepared.description,
@@ -224,7 +262,9 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
       : cacheKeyOf(source).pipe(
           Option.flatMap((key) => Option.fromUndefinedOr(records[key])),
           Option.filter(
-            (found) => now - found.resolvedAt < Duration.toMillis(durations(source).ttl),
+            (found) =>
+              now - found.resolvedAt < Duration.toMillis(durations(source).ttl) &&
+              (Option.isSome(found.value) || allowsMissing(source)),
           ),
         );
 
@@ -233,7 +273,9 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
       ? Option.none()
       : Option.filter(
           recordOf(source),
-          (found) => now - found.resolvedAt < Duration.toMillis(durations(source).maxStale),
+          (found) =>
+            now - found.resolvedAt < Duration.toMillis(durations(source).maxStale) &&
+            (Option.isSome(found.value) || allowsMissing(source)),
         );
 
   // 3. The references that need a provider call. A fresh custom() hides its inputs.
@@ -370,23 +412,42 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
               .map((leaf) => leaf.fullKey),
           );
 
+          // A `NotFound` serves only a var that accepts it, so only such a var caches it.
+          const acceptsMissing = new Set(
+            [...reachable]
+              .filter(allowsMissing)
+              .flatMap((source) => Option.toArray(leafOf(source)))
+              .map((leaf) => leaf.fullKey),
+          );
+
+          // A value and an accepted `NotFound` enter the cache. Any other failure never does.
           const written = Object.fromEntries(
             wanted.flatMap((leaf) => {
               const result = fetched.get(leaf.fullKey);
 
-              return result !== undefined && Result.isSuccess(result) && cacheable.has(leaf.fullKey)
-                ? [
-                    [
-                      leaf.fullKey,
-                      {
-                        provider: leaf.provider.id,
-                        reference: leaf.description,
-                        value: Redacted.make(result.success),
-                        resolvedAt: now,
-                      },
-                    ],
-                  ]
-                : [];
+              if (result === undefined || !cacheable.has(leaf.fullKey)) {
+                return [];
+              }
+
+              const value = Result.isSuccess(result)
+                ? Option.some(Option.some(Redacted.make(result.success)))
+                : Option.some(Option.none<Redacted.Redacted>()).pipe(
+                    Option.filter(
+                      () => isNotFound(result.failure) && acceptsMissing.has(leaf.fullKey),
+                    ),
+                  );
+
+              return Option.toArray(
+                Option.map(value, (found) => [
+                  leaf.fullKey,
+                  {
+                    provider: leaf.provider.id,
+                    reference: leaf.description,
+                    value: found,
+                    resolvedAt: now,
+                  },
+                ]),
+              );
             }),
           );
 
@@ -409,11 +470,11 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
       ? Option.match(staleRecord(source), {
           onNone: () => Effect.fail(error),
           onSome: (found) =>
-            Effect.as(
+            Effect.andThen(
               Effect.logWarning("Envi uses an expired cache entry after a transient failure.").pipe(
                 Effect.annotateLogs({ provider: found.provider, reference: found.reference }),
               ),
-              fromRecord(found, ValueOrigin.StaleCache),
+              fromCached(source, found, ValueOrigin.StaleCache),
             ),
         })
       : Effect.fail(error);
@@ -473,7 +534,7 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
           return Option.match(freshRecord(source, afterLock), {
             onNone: () =>
               Effect.die("Envi resolver defect: a reference is neither fresh nor fetched."),
-            onSome: (found) => Effect.succeed(fromRecord(found, ValueOrigin.Cache)),
+            onSome: (found) => fromCached(source, found, ValueOrigin.Cache),
           });
         }
 
@@ -487,8 +548,7 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
               resolvedAt: Option.some(now),
             }),
           onFailure: (error) =>
-            Predicate.isTagged(error, "ReferenceError") &&
-            error.reason === ReferenceFailure.NotFound
+            isNotFound(error)
               ? whenMissing(source, provider.id, description)
               : orStale(source, error),
         });
@@ -527,7 +587,7 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
                   [customKeyOf(origin.key.value)]: {
                     provider: Source.customProviderId,
                     reference: description,
-                    value: Redacted.make(raw),
+                    value: Option.some(Redacted.make(raw)),
                     resolvedAt: now,
                   },
                 });
@@ -578,10 +638,11 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
     ([provider, group]) => {
       const keys = new Map(group.map(({ leaf, source }) => [leaf.fullKey, source] as const));
 
+      // A `NotFound` counts as resolved: the provider answered, and the cache holds the answer.
       const resolved = [...keys.keys()].filter((key) => {
         const result = fetched.get(key);
 
-        return result !== undefined && Result.isSuccess(result);
+        return result !== undefined && (Result.isSuccess(result) || isNotFound(result.failure));
       }).length;
 
       return {

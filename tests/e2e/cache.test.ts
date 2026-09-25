@@ -28,8 +28,8 @@ const fullBatch = [
   "uncached",
 ];
 
-/** The batch of a run on a full cache: a `NotFound` result and a `.cache(false)` var stay out. */
-const uncachedBatch = ["absent", "uncached"];
+/** The batch of a run on a full cache: only the `.cache(false)` var calls the provider again. */
+const uncachedBatch = ["uncached"];
 
 const failedKeys = (stdout: string): ReadonlyArray<string> =>
   JSON.parse(stdout).failures.map((failure: { key: string }) => failure.key);
@@ -44,7 +44,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
 
         expect(first.exitCode).toBe(0);
         expect(JSON.parse(first.stdout).providers).toEqual([
-          { provider: "file", secrets: 7, cached: 0, resolved: 6 },
+          { provider: "file", secrets: 7, cached: 0, resolved: 7 },
         ]);
 
         const second = yield* runCli(runtime, app, [...args, "check"], sandbox.env);
@@ -124,7 +124,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
 
         yield* runCli(runtime, app, [...args, "--cache", "check"], env);
 
-        expect((yield* cacheFiles(sandbox.cacheDirectory)).length).toBe(6);
+        expect((yield* cacheFiles(sandbox.cacheDirectory)).length).toBe(7);
       }),
     );
 
@@ -140,6 +140,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
 
         expect(files.map((entry) => entry.reference).toSorted()).toEqual([
           "custom(database-url)",
+          "file://absent",
           "file://db-password",
           "file://db-user",
           "file://private-key",
@@ -168,8 +169,9 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
         const strict = yield* runCli(runtime, app, [...args, "--strict"], env);
         const viaVariable = yield* runCli(runtime, app, args, { ...env, ENVI_STRICT: "true" });
 
-        // A var without an entry has no fallback. `.optional()` covers only `NotFound`.
-        expect(failedKeys(stale.stdout)).toEqual(["OPTIONAL", "WITH_DEFAULT", "UNCACHED"]);
+        // A var without an entry has no fallback. A cached `NotFound` serves `.optional()` and
+        // `.default()` as a stale entry too.
+        expect(failedKeys(stale.stdout)).toEqual(["UNCACHED"]);
         expect(stale.stderr).toContain("expired cache entry");
         expect(stale.stderr).toContain("file://token-development");
         expect(failedKeys(strict.stdout)).toContain("API_TOKEN");

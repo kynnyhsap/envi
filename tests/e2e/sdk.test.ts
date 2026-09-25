@@ -43,7 +43,7 @@ const StoredRecords = Schema.fromJsonString(
     Schema.Struct({
       provider: Schema.String,
       reference: Schema.String,
-      value: Schema.String,
+      value: Schema.NullOr(Schema.String),
       resolvedAt: Schema.Number,
     }),
   ),
@@ -82,7 +82,17 @@ const singleFileCache = (file: string): Layer.Layer<Cache.Cache, never, FileSyst
 
                 return found === undefined
                   ? []
-                  : [[key, { ...found, value: Redacted.make(found.value) }]];
+                  : [
+                      [
+                        key,
+                        {
+                          ...found,
+                          value: Option.map(Option.fromNullOr(found.value), (value) =>
+                            Redacted.make(value),
+                          ),
+                        },
+                      ],
+                    ];
               }),
             ),
           ),
@@ -93,7 +103,7 @@ const singleFileCache = (file: string): Layer.Layer<Cache.Cache, never, FileSyst
               ...Object.fromEntries(
                 Object.entries(records).map(([key, record]) => [
                   key,
-                  { ...record, value: Redacted.value(record.value) },
+                  { ...record, value: Option.getOrNull(Option.map(record.value, Redacted.value)) },
                 ]),
               ),
             }),

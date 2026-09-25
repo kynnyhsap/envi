@@ -14,12 +14,13 @@ const providerId = "team-vault";
 /** The descriptor helper. It builds a descriptor and resolves nothing. */
 const vault = (path: string) => reference(providerId, { path });
 
-/** The five required members, plus the helpers that `vars` receives. */
+/** The required members, plus the helpers that `vars` receives. */
 export const teamVaultProvider = Provider.make({
   id: providerId,
   Reference: Schema.Struct({ path: Schema.String }),
   describe: (ref) => `team-vault://${ref.path}`,
-  cacheKey: (ref) => ref.path,
+  // Everything outside a reference that selects its value. Envi hashes it into the cache key.
+  scope: "https://vault.example.com",
   // The only resolve method: one call for the whole batch. Results are matched by request key.
   resolveMany: (requests) =>
     Effect.forEach(requests, (request) =>

@@ -139,7 +139,9 @@ SDK rules:
 - Envi forwards signals to the child and returns the exit code of the child. The child stays in
   the process group of Envi (`detached: false`), so it keeps the terminal. Envi forwards
   `SIGTERM` and `SIGHUP`. It forwards `SIGINT` only without a terminal, because a terminal sends
-  `SIGINT` to the whole process group. A child that a received signal ends gives `128 + number`.
+  `SIGINT` to the whole process group. A terminal on stdin, stdout, or stderr counts. Each
+  forward runs in its own fiber, so a second signal reaches a child that ignored the first. A
+  child that a received signal ends gives `128 + number`.
 - `Signals.supervise` in the core holds this logic. The delegation from a global `envi` uses it
   too. The `envi` package provides the real signals. It installs a handler only while a child
   runs.
@@ -149,16 +151,18 @@ SDK rules:
 
 - The core never imports a provider. A provider package exports a descriptor helper, such as
   `op()`, and a provider factory, such as `onePasswordProvider(settings)`.
-- A provider has five required members: `id`, `Reference`, `describe`, `cacheKey`, and
+- A provider has five required members: `id`, `Reference`, `describe`, `scope`, and
   `resolveMany`. The optional `helpers` member holds the descriptor helpers that `vars` receives.
   Users can write a custom provider with `Provider.make`, and a descriptor
   helper with `reference(id, ref)`. The provider interface and the cache interface are public and
   **unstable** until a second real provider proves them. Rate limits and retry metadata come later.
 - `resolveMany` is the only resolve method. Results are matched by request key, not by position.
   Envi rejects a missing key and an unknown key.
-- `cacheKey` belongs to the provider. It contains every part that decides where a value comes
-  from. For 1Password: the account, the credential kind, and the normalized reference. All three
-  `op()` forms give the same key.
+- The core owns the cache key: `<provider id>:<scope hash>:<reference key>`. `scope` holds
+  everything outside a reference that decides where its value comes from, such as the account or
+  the credential. The core hashes it, so it may hold a token. `referenceKey` defaults to
+  `describe`. For 1Password, the scope is the token, or the account for desktop auth, and the
+  reference key adds the account of the reference. All three `op()` forms give the same key.
 - `describe` returns safe text for a reference, such as `op://app/postgres/url`. Envi shows it in
   `inspect`, `check`, `sync`, `cache list`, error values, and debug logs. It never holds a secret.
 - The provider registry rejects a duplicate provider id.
@@ -179,8 +183,9 @@ SDK rules:
 
 - Resolve in batches: one call per provider for each `load`, `sync`, or `resolve` record. Never
   resolve references one by one in a loop.
-- The cache is global, in `~/.cache/envi/`, with one entry per secret. It stores only resolved
-  secrets. Literal values never enter the cache. Parallel worktrees with different configs share
+- The cache is global, in `~/.cache/envi/`, with one entry per secret. It stores resolved
+  secrets, and a `NotFound` for a reference that an `.optional()` or `.default()` var uses. A
+  required var never trusts a cached `NotFound`. Literal values never enter the cache. Parallel worktrees with different configs share
   entries. The directory is configurable: `--cache-dir`, `ENVI_CACHE_DIR`, or `cache.directory`.
 - The cache is a service with a file layer, a memory layer, a disabled layer, and support for a
   custom cache. The logical cache record holds the value plus freshness metadata. Encryption is

@@ -154,7 +154,7 @@ describe("onePasswordProvider", () => {
     ),
   );
 
-  it.effect("binds the cache key to the credential kind, the account, and the reference", () =>
+  it.effect("gives all three forms one reference key, and keeps the account apart", () =>
     Effect.gen(function* () {
       const provider = makeProvider({ account: "my-team" }, Effect.succeed(fakeSdk(secrets)));
       const fromUri = yield* provider.prepare({ uri: "op://app/postgres/url" });
@@ -167,17 +167,26 @@ describe("onePasswordProvider", () => {
         field: "url",
       });
 
-      const withToken = yield* provider
-        .prepare({ uri: "op://app/postgres/url" })
-        .pipe(withEnv({ OP_SERVICE_ACCOUNT_TOKEN: "ops_secret" }));
-
       expect(fromUri.description).toBe("op://app/postgres/url");
-      expect(fromUri.cacheKey).toBe(fromParts.cacheKey);
-      expect(fromUri.cacheKey).toContain("my-team");
-      expect(other.cacheKey).not.toBe(fromUri.cacheKey);
-      expect(withToken.cacheKey).not.toBe(fromUri.cacheKey);
-      expect(withToken.cacheKey).not.toContain("ops_secret");
+      expect(fromUri.referenceKey).toBe(fromParts.referenceKey);
+      expect(other.referenceKey).not.toBe(fromUri.referenceKey);
     }).pipe(withEnv({})),
+  );
+
+  it.effect("binds the scope to the credential: the account, or the token itself", () =>
+    Effect.gen(function* () {
+      const provider = makeProvider({ account: "my-team" }, Effect.succeed(fakeSdk(secrets)));
+      const desktop = yield* provider.scope.pipe(withEnv({}));
+
+      const otherAccount = yield* provider.scope.pipe(
+        withEnv({ ENVI_PROVIDER_ONEPASSWORD_ACCOUNT: "partner-team" }),
+      );
+
+      const teamA = yield* provider.scope.pipe(withEnv({ OP_SERVICE_ACCOUNT_TOKEN: "ops_team_a" }));
+      const teamB = yield* provider.scope.pipe(withEnv({ OP_SERVICE_ACCOUNT_TOKEN: "ops_team_b" }));
+
+      expect(new Set([desktop, otherAccount, teamA, teamB]).size).toBe(4);
+    }),
   );
 
   it.effect("reads the account from the environment before the settings", () =>

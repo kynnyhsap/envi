@@ -189,7 +189,7 @@ describe("Envi", () => {
 
       expect(first.stage).toBe("development");
       expect(first.configs).toBe(1);
-      expect(first.providers).toEqual([{ provider: "memory", secrets: 3, cached: 0, resolved: 2 }]);
+      expect(first.providers).toEqual([{ provider: "memory", secrets: 3, cached: 0, resolved: 3 }]);
       expect(first.failures).toEqual([
         { key: "BAD", reference: null, error: "DecodeError", reason: expect.any(String) },
         {
@@ -200,7 +200,8 @@ describe("Envi", () => {
         },
       ]);
       expect(JSON.stringify(first)).not.toContain("not-a-number");
-      expect(second.providers[0]).toMatchObject({ cached: 2, resolved: 0 });
+      // A required var never trusts a cached `NotFound`, so Envi asks again for MISSING.
+      expect(second.providers[0]).toMatchObject({ cached: 2, resolved: 1 });
     }).pipe(Effect.provide(layer)),
   );
 
@@ -337,10 +338,11 @@ describe("Envi", () => {
       expect(list.directory).toBeNull();
       expect(list.entries.map((entry) => entry.reference)).toEqual([
         "memory://db/development",
+        "memory://sentry",
         "memory://token",
       ]);
       expect(list.entries[0]?.resolvedAt).toBe("1970-01-01T00:00:00.000Z");
-      expect(yield* envi.cache.clear).toEqual({ removed: 2 });
+      expect(yield* envi.cache.clear).toEqual({ removed: 3 });
       expect((yield* envi.cache.list).entries).toEqual([]);
     }).pipe(Effect.provide(layer)),
   );

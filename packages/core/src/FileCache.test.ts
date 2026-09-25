@@ -24,7 +24,7 @@ const keyB = Redacted.make(new Uint8Array(32).fill(2));
 const record = (value: string, resolvedAt = 1000): Cache.CacheRecord => ({
   provider: "memory",
   reference: "memory://token",
-  value: Redacted.make(value),
+  value: Option.some(Redacted.make(value)),
   resolvedAt,
 });
 
@@ -52,7 +52,9 @@ const joinWithClock = <A, E>(fiber: Fiber.Fiber<A, E>) =>
 
 const valueOf = (records: Cache.CacheRecords, key: string): string | undefined =>
   Option.getOrUndefined(
-    Option.map(Option.fromUndefinedOr(records[key]), (found) => Redacted.value(found.value)),
+    Option.flatMap(Option.fromUndefinedOr(records[key]), (found) =>
+      Option.map(found.value, Redacted.value),
+    ),
   );
 
 const tempDirectory = Effect.flatMap(FileSystem.FileSystem, (fs) =>
@@ -147,6 +149,41 @@ describe("FileCache", () => {
       const found = yield* read();
 
       expect(Object.keys(found)).toEqual(["memory:a"]);
+    }).pipe(Effect.provide(platform)),
+  );
+
+  it.effect("keeps a record without a value, and binds the missing value to the entry", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const directory = yield* tempDirectory;
+      const missing: Cache.CacheRecord = { ...record(""), value: Option.none() };
+
+      const read = withCache(
+        directory,
+        Effect.flatMap(Cache.Cache, (cache) => cache.getMany(["memory:a"])),
+      );
+
+      yield* withCache(
+        directory,
+        Effect.flatMap(Cache.Cache, (cache) => cache.setMany({ "memory:a": missing })),
+      );
+
+      expect((yield* read)["memory:a"]?.value).toEqual(Option.none());
+
+      // Flipping the flag would turn a missing value into an empty string. The check fails.
+      const [file] = yield* entryFiles(directory);
+      const original = yield* fs.readFileString(file ?? "");
+
+      yield* fs.writeFileString(file ?? "", original.replace('"found":false', '"found":true'));
+      expect(Object.keys(yield* read)).toEqual([]);
+
+      const plain = FileCache.layerPlaintext({ directory });
+
+      const fromPlain = yield* Effect.flatMap(Cache.Cache, (cache) =>
+        Effect.andThen(cache.setMany({ "memory:a": missing }), cache.getMany(["memory:a"])),
+      ).pipe(Effect.provide(plain));
+
+      expect(fromPlain["memory:a"]?.value).toEqual(Option.none());
     }).pipe(Effect.provide(platform)),
   );
 

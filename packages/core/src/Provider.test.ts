@@ -10,12 +10,15 @@ import * as Source from "./Source.ts";
 const interactive: Provider.ResolveContext = { interactive: true };
 
 describe("Provider", () => {
-  it.effect("describes a reference and gives its cache key", () =>
+  it.effect("describes a reference and gives its reference key", () =>
     Effect.gen(function* () {
       const provider = memoryProvider({ "db/url": "postgres://localhost/app" });
       const prepared = yield* provider.prepare("db/url");
 
-      expect(prepared).toEqual({ cacheKey: "db/url", description: "memory://db/url" });
+      expect(prepared).toEqual({
+        referenceKey: "memory://db/url",
+        description: "memory://db/url",
+      });
     }),
   );
 

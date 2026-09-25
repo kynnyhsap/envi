@@ -49,11 +49,15 @@ export const supervise = Effect.fn("Signals.supervise")(function* (command: Chil
     Effect.gen(function* () {
       const handle = yield* spawner.spawn(command);
 
+      // `kill` waits for the child to exit. Each forward runs in its own fiber, so the next signal
+      // reaches the child while it still runs.
       yield* Effect.forkScoped(
         Stream.runForEach(signals, (signal) =>
           Effect.andThen(
             Ref.set(received, Option.some(signal.name)),
-            signal.forward ? Effect.ignore(handle.kill({ killSignal: signal.name })) : Effect.void,
+            signal.forward
+              ? Effect.forkScoped(Effect.ignore(handle.kill({ killSignal: signal.name })))
+              : Effect.void,
           ),
         ),
       );

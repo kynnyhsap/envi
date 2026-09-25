@@ -13,19 +13,20 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
 import * as Cache from "./Cache.ts";
+import * as Digest from "./Digest.ts";
 import { CacheError, CacheFailure } from "./Errors.ts";
 
 /**
  * The version of the entry format. An entry with another version is a miss, so a format change
  * needs no migration.
  */
-export const formatVersion = 1;
+export const formatVersion = 2;
 
 /**
  * The name of the lock file inside the cache directory.
  *
  * The lock file holds one integer, the epoch milliseconds, and nothing else. This content is
- * frozen as part of cache format 1: an older Envi treats any other content as a crashed lock and
+ * frozen since cache format 1: an older Envi treats any other content as a crashed lock and
  * takes it. Put future data in a second file. A new lock protocol needs a new file name.
  */
 export const lockFileName = "resolve.lock";
@@ -69,6 +70,8 @@ const Metadata = Schema.Struct({
   provider: Schema.String,
   reference: Schema.String,
   resolvedAt: Schema.Number,
+  /** `false` when the provider reported `NotFound`. The encryption binds it. */
+  found: Schema.Boolean,
 });
 
 const EncryptedEntry = Schema.Struct({
@@ -81,7 +84,7 @@ const EncryptedEntry = Schema.Struct({
 const PlainEntry = Schema.Struct({
   ...Metadata.fields,
   encryption: Schema.Literal(Encryption.None),
-  value: Schema.String,
+  value: Schema.NullOr(Schema.String),
 });
 
 const Entry = Schema.fromJsonString(Schema.Union([EncryptedEntry, PlainEntry]));
@@ -101,7 +104,14 @@ const unwritable = (detail: string): CacheError =>
 /** The bytes that the encryption binds to an entry. An edit of any part fails the decryption. */
 const boundData = (entry: typeof Metadata.Type): Uint8Array<ArrayBuffer> =>
   new TextEncoder().encode(
-    JSON.stringify([entry.version, entry.key, entry.provider, entry.reference, entry.resolvedAt]),
+    JSON.stringify([
+      entry.version,
+      entry.key,
+      entry.provider,
+      entry.reference,
+      entry.resolvedAt,
+      entry.found,
+    ]),
   );
 
 const importKey = (key: Redacted.Redacted<Uint8Array>) =>
@@ -119,10 +129,7 @@ const importKey = (key: Redacted.Redacted<Uint8Array>) =>
   });
 
 const fileNameOf = (key: string): Effect.Effect<string> =>
-  Effect.map(
-    Effect.promise(() => crypto.subtle.digest("SHA-256", new TextEncoder().encode(key))),
-    (digest) => `${Encoding.encodeHex(new Uint8Array(digest))}${entrySuffix}`,
-  );
+  Effect.map(Digest.sha256Hex(key), (digest) => `${digest}${entrySuffix}`);
 
 const make = Effect.fn("FileCache.make")(function* (
   options: Options,
@@ -166,7 +173,10 @@ const make = Effect.fn("FileCache.make")(function* (
 
       if (entry.encryption === Encryption.None) {
         return Option.isNone(cryptoKey)
-          ? Option.some({ ...metadata, value: Redacted.make(entry.value) })
+          ? Option.some({
+              ...metadata,
+              value: Option.map(Option.fromNullOr(entry.value), (value) => Redacted.make(value)),
+            })
           : Option.none();
       }
 
@@ -188,7 +198,9 @@ const make = Effect.fn("FileCache.make")(function* (
 
       return Option.map(plaintext, (bytes) => ({
         ...metadata,
-        value: Redacted.make(new TextDecoder().decode(bytes)),
+        value: entry.found
+          ? Option.some(Redacted.make(new TextDecoder().decode(bytes)))
+          : Option.none(),
       }));
     });
 
@@ -200,10 +212,17 @@ const make = Effect.fn("FileCache.make")(function* (
         provider: record.provider,
         reference: record.reference,
         resolvedAt: record.resolvedAt,
+        found: Option.isSome(record.value),
       } as const;
 
+      const plaintext = Option.getOrElse(Option.map(record.value, Redacted.value), () => "");
+
       if (Option.isNone(cryptoKey)) {
-        return { ...metadata, encryption: Encryption.None, value: Redacted.value(record.value) };
+        return {
+          ...metadata,
+          encryption: Encryption.None,
+          value: Option.getOrNull(Option.map(record.value, Redacted.value)),
+        };
       }
 
       const secretKey = yield* cryptoKey.value;
@@ -214,7 +233,7 @@ const make = Effect.fn("FileCache.make")(function* (
           crypto.subtle.encrypt(
             { name: algorithm, iv, additionalData: boundData(metadata) },
             secretKey,
-            new TextEncoder().encode(Redacted.value(record.value)),
+            new TextEncoder().encode(plaintext),
           ),
         catch: () => unwritable("Envi cannot encrypt a cache entry."),
       });
