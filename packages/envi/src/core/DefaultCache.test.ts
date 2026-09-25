@@ -5,12 +5,14 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 
 import * as Cache from "./Cache.ts";
 import * as DefaultCache from "./DefaultCache.ts";
-import { layerEncryptionKey } from "./FileCache.ts";
+import { CacheError, CacheFailure } from "./Errors.ts";
+import { EncryptionKey, layerEncryptionKey } from "./FileCache.ts";
 
 const platform = Layer.mergeAll(
   NodeFileSystem.layer,
@@ -26,9 +28,15 @@ const directoryOf = (options: DefaultCache.Options, env: Readonly<Record<string,
 
 const base: DefaultCache.Options = {
   settings: Option.none(),
-  keychainAvailable: true,
   enabled: Option.none(),
   directory: Option.none(),
+};
+
+const record: Cache.CacheRecord = {
+  provider: "memory",
+  reference: "a",
+  value: Option.some(Redacted.make("value")),
+  resolvedAt: 0,
 };
 
 describe("DefaultCache", () => {
@@ -82,17 +90,78 @@ describe("DefaultCache", () => {
     }).pipe(Effect.provide(platform)),
   );
 
-  it.effect("is off without a keychain, unless the config opts in to plaintext", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "envi-default-cache-" });
-      const env = { HOME: "/home/dev" };
-      const plaintext = Option.some({ directory, encryption: "none" as const });
+  describe("without an encryption key", () => {
+    const noKey = Layer.mergeAll(
+      NodeFileSystem.layer,
+      NodePath.layer,
+      Layer.succeed(
+        EncryptionKey,
+        Effect.fail(new CacheError({ reason: CacheFailure.KeyUnavailable, detail: "No key." })),
+      ),
+    );
 
-      expect(yield* directoryOf({ ...base, keychainAvailable: false }, env)).toEqual(Option.none());
-      expect(
-        yield* directoryOf({ ...base, keychainAvailable: false, settings: plaintext }, env),
-      ).toEqual(Option.some(directory));
-    }).pipe(Effect.provide(platform)),
-  );
+    /** Writes and reads one record twice, and returns the warnings of the run. */
+    const roundTrip = (options: DefaultCache.Options, directory: string) =>
+      Effect.gen(function* () {
+        const warnings: Array<string> = [];
+
+        const logger = Logger.make(({ logLevel, message }) => {
+          if (logLevel === "Warn") {
+            warnings.push(String(message));
+          }
+        });
+
+        const found = yield* Effect.gen(function* () {
+          const cache = yield* Cache.Cache;
+
+          yield* cache.setMany({ a: record });
+          yield* cache.setMany({ a: record });
+
+          return yield* cache.getMany(["a"]);
+        }).pipe(
+          Effect.provide(DefaultCache.layer(options)),
+          Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ HOME: directory }))),
+          Effect.provide(Logger.layer([logger])),
+        );
+
+        return { found, warnings };
+      });
+
+    it.effect("runs without a cache and warns once", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: "envi-default-cache-" });
+        const { found, warnings } = yield* roundTrip(base, directory);
+
+        expect(found).toEqual({});
+        expect(warnings.length).toBe(1);
+        expect(warnings[0]).toContain("ENVI_CACHE_KEY");
+      }).pipe(Effect.provide(noKey)),
+    );
+
+    it.effect("fails when --cache asks for the cache", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: "envi-default-cache-" });
+
+        const error = yield* Effect.flip(
+          roundTrip({ ...base, enabled: Option.some(true) }, directory),
+        );
+
+        expect(error.reason).toBe(CacheFailure.KeyUnavailable);
+      }).pipe(Effect.provide(noKey)),
+    );
+
+    it.effect("uses the plaintext cache after the opt-in, which needs no key", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const directory = yield* fs.makeTempDirectoryScoped({ prefix: "envi-default-cache-" });
+        const settings = Option.some({ directory, encryption: "none" as const });
+        const { found, warnings } = yield* roundTrip({ ...base, settings }, directory);
+
+        expect(Object.keys(found)).toEqual(["a"]);
+        expect(warnings).toEqual([]);
+      }).pipe(Effect.provide(noKey)),
+    );
+  });
 });

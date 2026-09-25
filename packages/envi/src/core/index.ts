@@ -18,6 +18,8 @@ export * as Provider from "./Provider.ts";
 
 export * as Resolver from "./Resolver.ts";
 
+export * as Settings from "./Settings.ts";
+
 export * as Signals from "./Signals.ts";
 
 export * as Source from "./Source.ts";

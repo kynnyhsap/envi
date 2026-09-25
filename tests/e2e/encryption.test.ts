@@ -1,5 +1,6 @@
-// The encrypted file cache across CLI processes. The key lives in the real macOS Keychain, so
-// these tests run on macOS only. Each test edits real entry files the way an attacker could.
+// The encrypted file cache across CLI processes. The key lives in the real keychain: the macOS
+// Keychain, or the Secret Service in the Linux image that sets `ENVI_E2E_SECRET_SERVICE`. Each
+// test edits real entry files the way an attacker could.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -26,7 +27,7 @@ const exportJson = (runtime: string, sandbox: Sandbox) =>
   runCli(
     runtime,
     app,
-    ["--cache-dir", sandbox.cacheDirectory, "export", "--format", "json"],
+    ["export", "--cache-dir", sandbox.cacheDirectory, "--format", "json"],
     sandbox.env,
   );
 
@@ -42,7 +43,10 @@ const fillCache = Effect.fn("fillCache")(function* (runtime: string, sandbox: Sa
   return { files, token: yield* Effect.fromNullishOr(token) };
 });
 
-describe.skipIf(process.platform !== "darwin")("envi encrypted cache", () => {
+const hasKeychain =
+  process.platform === "darwin" || process.env["ENVI_E2E_SECRET_SERVICE"] !== undefined;
+
+describe.skipIf(!hasKeychain)("envi encrypted cache", () => {
   layer(NodeServices.layer, { excludeTestServices: true })((it) => {
     describe.each(runtimes)("on %s", (runtime) => {
       it.effect("writes no secret to disk, and a second process decrypts the entries", () =>
@@ -79,7 +83,7 @@ describe.skipIf(process.platform !== "darwin")("envi encrypted cache", () => {
           const result = yield* runCli(
             runtime,
             app,
-            ["--cache-dir", sandbox.cacheDirectory, "--debug", "check"],
+            ["check", "--cache-dir", sandbox.cacheDirectory, "--debug"],
             sandbox.env,
           );
 

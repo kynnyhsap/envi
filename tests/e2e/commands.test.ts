@@ -25,8 +25,17 @@ const workspace = fixture("workspace");
 /** The secret values that a redacted output must not hold. `public-name` is not redacted. */
 const hidden = [secrets["token-development"], secrets["db-password"], "line-one", "postgres://"];
 
-const cli = (runtime: string, sandbox: Sandbox, args: ReadonlyArray<string>, cwd = app) =>
-  runCli(runtime, cwd, ["--cache-dir", sandbox.cacheDirectory, ...args], sandbox.env);
+/** Runs a command on the cache of the sandbox. A flag follows the name of its command. */
+const cli = (runtime: string, sandbox: Sandbox, args: ReadonlyArray<string>, cwd = app) => {
+  const name = args[0] === "cache" ? 2 : 1;
+
+  return runCli(
+    runtime,
+    cwd,
+    [...args.slice(0, name), "--cache-dir", sandbox.cacheDirectory, ...args.slice(name)],
+    sandbox.env,
+  );
+};
 
 const git = (cwd: string, args: ReadonlyArray<string>) =>
   Effect.flatMap(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
@@ -54,14 +63,22 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
         }),
       );
 
-      it.effect("finds every config of the workspace and calls a shared provider once", () =>
+      it.effect("finds every config below the folder and calls a shared provider once", () =>
         Effect.gen(function* () {
           const sandbox = yield* makeSandbox("none");
-          const result = yield* cli(runtime, sandbox, ["sync", "--json"], workspace);
+
+          const result = yield* cli(
+            runtime,
+            sandbox,
+            ["sync", "--config-search", "down", "--json"],
+            workspace,
+          );
+
           const report = JSON.parse(result.stdout);
 
           expect(result.exitCode).toBe(0);
           expect(report.configs).toBe(2);
+          expect(report.cache).toBe(true);
           expect(report.providers).toEqual([
             { provider: "file", secrets: 3, cached: 0, resolved: 3 },
           ]);
@@ -71,10 +88,23 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
         }),
       );
 
+      it.effect("says that the cache is off in CI", () =>
+        Effect.gen(function* () {
+          const sandbox = yield* makeSandbox("none");
+          const inCi = { ...sandbox, env: { ...sandbox.env, CI: "true" } };
+          const text = yield* cli(runtime, inCi, ["sync"]);
+          const json = yield* cli(runtime, inCi, ["sync", "--json"]);
+
+          expect(text.stdout).toContain("The cache is off");
+          expect(JSON.parse(json.stdout).cache).toBe(false);
+          expect(yield* cacheFiles(sandbox.cacheDirectory)).toEqual([]);
+        }),
+      );
+
       it.effect("syncs another stage with --stage", () =>
         Effect.gen(function* () {
           const sandbox = yield* makeSandbox("none");
-          const result = yield* cli(runtime, sandbox, ["--stage", "production", "sync", "--json"]);
+          const result = yield* cli(runtime, sandbox, ["sync", "--stage", "production", "--json"]);
 
           expect(JSON.parse(result.stdout).stage).toBe("production");
           expect((yield* providerCalls(sandbox))[0]).toContain("token-production");
@@ -133,7 +163,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const result = yield* runCli(
             runtime,
             fixture("schema"),
-            ["--no-cache", "check", "--json"],
+            ["check", "--no-cache", "--json"],
             sandbox.env,
           );
 
@@ -242,7 +272,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
         }),
       );
 
-      it.effect("writes a private file with --output when git ignores the file", () =>
+      it.effect("writes a private file with --output, also a file that git tracks", () =>
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
@@ -251,22 +281,16 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
 
           yield* fs.makeDirectory(project);
           yield* git(project, ["init", "--quiet"]);
-          yield* fs.writeFileString(path.join(project, ".gitignore"), ".env.local\n");
 
-          const ignored = path.join(project, ".env.local");
           const tracked = path.join(project, ".env.production");
-          const written = yield* cli(runtime, sandbox, ["export", "--output", ignored]);
-          const refused = yield* cli(runtime, sandbox, ["export", "--output", tracked]);
+          const written = yield* cli(runtime, sandbox, ["export", "--output", tracked]);
 
           expect(written.exitCode).toBe(0);
           expect(written.stdout).toBe("");
-          expect(yield* fs.readFileString(ignored)).toContain(
+          expect(yield* fs.readFileString(tracked)).toContain(
             `API_TOKEN=${secrets["token-development"]}\n`,
           );
-          expect((yield* fs.stat(ignored)).mode & 0o777).toBe(0o600);
-          expect(refused.exitCode).toBe(1);
-          expect(refused.stderr).toContain("git does not ignore");
-          expect(yield* fs.exists(tracked)).toBe(false);
+          expect((yield* fs.stat(tracked)).mode & 0o777).toBe(0o600);
         }),
       );
 
@@ -285,7 +309,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
     });
 
     describe("cache", () => {
-      it.effect("prints the directory from --cache-dir and from ENVI_CACHE_DIR", () =>
+      it.effect("prints the directory from --cache-dir and ENVI_CACHE_DIR, also in CI", () =>
         Effect.gen(function* () {
           const sandbox = yield* makeSandbox("none");
           const byFlag = yield* cli(runtime, sandbox, ["cache", "path"]);
@@ -294,13 +318,15 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
             ENVI_CACHE_DIR: sandbox.cacheDirectory,
           });
 
-          const disabled = yield* runCli(runtime, app, ["cache", "path"], {
+          const inCi = yield* runCli(runtime, app, ["cache", "path"], {
+            ENVI_CACHE_DIR: sandbox.cacheDirectory,
             ENVI_CACHE_ENABLED: "false",
+            CI: "true",
           });
 
           expect(byFlag.stdout.trim()).toBe(sandbox.cacheDirectory);
           expect(JSON.parse(byVariable.stdout)).toEqual({ directory: sandbox.cacheDirectory });
-          expect(disabled.stdout).toContain("The cache is off.");
+          expect(inCi.stdout.trim()).toBe(sandbox.cacheDirectory);
         }),
       );
 

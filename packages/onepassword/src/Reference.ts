@@ -10,7 +10,15 @@ export const providerId = "onepassword";
 
 const scheme = "op://";
 
-const Part = Schema.NonEmptyString;
+/**
+ * One part of a reference. The reference syntax has no escape, so `op://app/api/prod/key` names
+ * the item `api` and the section `prod`. A name with `/` or `?` needs its ID instead.
+ */
+const Part = Schema.NonEmptyString.check(
+  Schema.isPattern(/^[^/?]+$/u, {
+    message: "A 1Password name with / or ? needs its ID. Use the item ID or the vault ID instead",
+  }),
+);
 
 /** The normalized reference. All three forms of `op()` decode to it. */
 export const OpReference = Schema.Struct({

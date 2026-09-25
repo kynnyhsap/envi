@@ -1,5 +1,6 @@
 import * as Arr from "effect/Array";
 import * as Config from "effect/Config";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
@@ -49,6 +50,9 @@ export interface SdkClient {
 /** The part of `@1password/sdk` that Envi uses. Tests pass an in-memory implementation. */
 export interface Sdk<DesktopAuth> {
   readonly DesktopAuth: new (accountName: string) => DesktopAuth;
+  readonly AuthExpiredError: new (message: string) => Error;
+  readonly DesktopSessionExpiredError: new (message: string) => Error;
+  readonly RateLimitExceededError: new (message: string) => Error;
   readonly createClient: (config: {
     readonly auth: string | DesktopAuth;
     readonly integrationName: string;
@@ -67,6 +71,20 @@ export const tokenVariables: ReadonlyArray<string> = [
 
 const CredentialKind = { Desktop: "desktop", ServiceAccount: "service-account" } as const;
 
+type CredentialKind = (typeof CredentialKind)[keyof typeof CredentialKind];
+
+/**
+ * The time that one SDK call can take. A desktop call waits for the approval of the user. Both
+ * stay below the wait for the resolve lock of the cache.
+ */
+const timeouts: Readonly<Record<CredentialKind, Duration.Duration>> = {
+  [CredentialKind.Desktop]: Duration.seconds(90),
+  [CredentialKind.ServiceAccount]: Duration.seconds(30),
+};
+
+/** The words of an SDK message about a rejected token. The SDK has no class for this case. */
+const rejectedToken = /invalid|unauthori[sz]ed|forbidden|revoked|expired|\b40[13]\b/iu;
+
 const integrationName = "envi";
 
 const integrationVersion = "1.0.0";
@@ -84,10 +102,72 @@ type BatchEntry = readonly [key: string, result: Result.Result<string, Reference
 const failure = (reason: ProviderFailure, detail: string): ProviderError =>
   new ProviderError({ reason, provider: providerId, detail });
 
+/**
+ * Maps a rejected SDK call to a failure. The message of the SDK stays out of the failure, because
+ * it can hold an input. Unavailable allows an expired cache entry, AuthenticationFailed does not.
+ */
+const classify =
+  <DesktopAuth>(sdk: Sdk<DesktopAuth>, kind: CredentialKind, unavailable: string) =>
+  (cause: unknown): ProviderError => {
+    if (cause instanceof sdk.RateLimitExceededError) {
+      return failure(ProviderFailure.Unavailable, "1Password limits the rate of requests now.");
+    }
+
+    if (cause instanceof sdk.AuthExpiredError) {
+      return failure(
+        ProviderFailure.AuthenticationFailed,
+        "The 1Password credential expired. Create a new service account token.",
+      );
+    }
+
+    if (cause instanceof sdk.DesktopSessionExpiredError) {
+      return failure(
+        ProviderFailure.AuthenticationFailed,
+        "The session of the 1Password app expired. Unlock the app and run the command again.",
+      );
+    }
+
+    if (
+      kind === CredentialKind.ServiceAccount &&
+      cause instanceof Error &&
+      rejectedToken.test(cause.message)
+    ) {
+      return failure(
+        ProviderFailure.AuthenticationFailed,
+        "1Password rejected the service account token.",
+      );
+    }
+
+    return failure(ProviderFailure.Unavailable, unavailable);
+  };
+
+/** Runs one SDK call with the timeout of its credential. */
+const callSdk = <A, DesktopAuth>(
+  sdk: Sdk<DesktopAuth>,
+  kind: CredentialKind,
+  unavailable: string,
+  call: () => Promise<A>,
+) =>
+  Effect.tryPromise({ try: call, catch: classify(sdk, kind, unavailable) }).pipe(
+    Effect.timeoutOrElse({
+      duration: timeouts[kind],
+      orElse: () =>
+        Effect.fail(
+          failure(
+            ProviderFailure.Unavailable,
+            `1Password did not answer within ${Duration.format(timeouts[kind])}.`,
+          ),
+        ),
+    }),
+  );
+
 const readOptional = <A>(setting: Config.Config<A>, name: string) =>
   Effect.mapError(Config.option(setting), () =>
     failure(ProviderFailure.Misconfigured, `Envi cannot read the variable ${name}.`),
   );
+
+/** An empty or a blank value counts as absent, as an unset variable does. */
+const isPresent = (value: string): boolean => value.trim() !== "";
 
 /** The account of one reference, as far as one is known. The reference wins. */
 const accountOf = (reference: OpReference, account: Option.Option<string>) =>
@@ -106,37 +186,38 @@ export const makeProvider = <DesktopAuth>(
 
   const readToken = Effect.gen(function* () {
     for (const name of tokenVariables) {
-      const found = yield* readOptional(Config.Redacted(name), name);
+      const found = Option.filter(yield* readOptional(Config.Redacted(name), name), (token) =>
+        isPresent(Redacted.value(token)),
+      );
 
       if (Option.isSome(found)) {
         return found;
       }
     }
 
-    return Option.map(Option.fromUndefinedOr(settings.serviceAccountToken), (token) =>
-      Predicate.isString(token) ? Redacted.make(token) : token,
+    return Option.fromUndefinedOr(settings.serviceAccountToken).pipe(
+      Option.map((token) => (Predicate.isString(token) ? Redacted.make(token) : token)),
+      Option.filter((token) => isPresent(Redacted.value(token))),
     );
   });
 
   const readAccount = Effect.map(
     readOptional(Config.String(accountVariable), accountVariable),
-    Option.orElse(() => Option.fromUndefinedOr(settings.account)),
+    (fromVariable) =>
+      Option.filter(fromVariable, isPresent).pipe(
+        Option.orElse(() => Option.filter(Option.fromUndefinedOr(settings.account), isPresent)),
+      ),
   );
 
-  const connect = (auth: string | DesktopAuth, sdk: Sdk<DesktopAuth>, kind: string) =>
-    Effect.tryPromise({
-      try: () => sdk.createClient({ auth, integrationName, integrationVersion }),
-      catch: () =>
-        kind === CredentialKind.ServiceAccount
-          ? failure(
-              ProviderFailure.AuthenticationFailed,
-              "1Password rejected the service account token.",
-            )
-          : failure(
-              ProviderFailure.Unavailable,
-              "The 1Password app did not authorize Envi. Unlock the app, approve the prompt, and enable the SDK integration in Settings > Developer.",
-            ),
-    }).pipe(Timing.measure("onepassword.client", { credential: kind }));
+  const connect = (auth: string | DesktopAuth, sdk: Sdk<DesktopAuth>, kind: CredentialKind) =>
+    callSdk(
+      sdk,
+      kind,
+      kind === CredentialKind.ServiceAccount
+        ? "Envi cannot reach 1Password."
+        : "The 1Password app did not authorize Envi. Unlock the app, approve the prompt, and enable the SDK integration in Settings > Developer.",
+      () => sdk.createClient({ auth, integrationName, integrationVersion }),
+    ).pipe(Timing.measure("onepassword.client", { credential: kind }));
 
   /** One client for each account in one process. A failed connection is not kept. */
   const clientFor = (key: string, create: Effect.Effect<SdkClient, ProviderError>) =>
@@ -153,15 +234,14 @@ export const makeProvider = <DesktopAuth>(
     });
 
   const resolveWith = (
+    sdk: Sdk<DesktopAuth>,
+    kind: CredentialKind,
     client: SdkClient,
     requests: ReadonlyArray<Provider.ProviderRequest<OpReference>>,
   ) =>
-    Effect.tryPromise({
-      try: () =>
-        client.secrets.resolveAll(requests.map((request) => describeReference(request.reference))),
-      catch: () =>
-        failure(ProviderFailure.Unavailable, "The request to 1Password failed or timed out."),
-    }).pipe(
+    callSdk(sdk, kind, "The request to 1Password failed.", () =>
+      client.secrets.resolveAll(requests.map((request) => describeReference(request.reference))),
+    ).pipe(
       Timing.measure("onepassword.resolveAll", { references: requests.length }),
       Effect.flatMap(({ individualResponses }) =>
         Effect.forEach(requests, (request): Effect.Effect<BatchEntry, ProviderError> => {
@@ -227,7 +307,9 @@ export const makeProvider = <DesktopAuth>(
             connect(Redacted.value(token.value), sdk, CredentialKind.ServiceAccount),
           );
 
-          return Object.fromEntries(yield* resolveWith(client, requests));
+          return Object.fromEntries(
+            yield* resolveWith(sdk, CredentialKind.ServiceAccount, client, requests),
+          );
         }
 
         const byAccount = Arr.groupBy(requests, (request) =>
@@ -244,7 +326,7 @@ export const makeProvider = <DesktopAuth>(
         const entries = yield* Effect.forEach(Object.entries(byAccount), ([name, group]) =>
           Effect.flatMap(
             clientFor(name, connect(new sdk.DesktopAuth(name), sdk, CredentialKind.Desktop)),
-            (client) => resolveWith(client, group),
+            (client) => resolveWith(sdk, CredentialKind.Desktop, client, group),
           ),
         );
 

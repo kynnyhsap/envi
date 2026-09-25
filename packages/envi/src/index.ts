@@ -22,6 +22,8 @@ export {
   type Raw,
 } from "./core/Source.ts";
 
+export { BooleanFromString } from "./core/Codecs.ts";
+
 // The plain client.
 export { createEnvi, syncAll, type AnyEnvi, type EnviClient } from "./client.ts";
 

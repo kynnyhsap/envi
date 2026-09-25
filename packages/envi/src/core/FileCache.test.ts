@@ -2,6 +2,7 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
+import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -33,11 +34,10 @@ const withCache = <A, E>(
   directory: string,
   effect: Effect.Effect<A, E, Cache.Cache>,
   key: Redacted.Redacted<Uint8Array> = keyA,
+  lockStaleAfter: Duration.Input = "1 minute",
 ) =>
   effect.pipe(
-    Effect.provide(
-      FileCache.layer({ directory, lockWait: "5 seconds", lockStaleAfter: "1 minute" }),
-    ),
+    Effect.provide(FileCache.layer({ directory, lockWait: "5 seconds", lockStaleAfter })),
     Effect.provide(FileCache.layerEncryptionKey(key)),
   );
 
@@ -346,6 +346,99 @@ describe("FileCache", () => {
 
       expect(result).toBe("ran");
       expect(yield* fs.exists(`${directory}/${FileCache.lockFileName}`)).toBe(false);
+    }).pipe(Effect.provide(platform)),
+  );
+
+  it.live("removes its lock after an effect that ends at once", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const directory = yield* tempDirectory;
+
+      for (let run = 0; run < 20; run += 1) {
+        yield* withCache(
+          directory,
+          Effect.flatMap(Cache.Cache, (cache) => cache.withResolveLock(Effect.void)),
+        );
+
+        expect(yield* fs.exists(`${directory}/${FileCache.lockFileName}`)).toBe(false);
+      }
+    }).pipe(Effect.provide(platform)),
+  );
+
+  it.effect("leaves the lock of another owner at release", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const directory = yield* tempDirectory;
+      const lockFile = `${directory}/${FileCache.lockFileName}`;
+
+      // Another process stole the lock while this one ran, and wrote its own time.
+      yield* withCache(
+        directory,
+        Effect.flatMap(Cache.Cache, (cache) =>
+          cache.withResolveLock(fs.writeFileString(lockFile, "424242")),
+        ),
+      );
+
+      expect(yield* fs.readFileString(lockFile)).toBe("424242");
+    }).pipe(Effect.provide(platform)),
+  );
+
+  it.effect("renews only a lock that still holds its own time", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const directory = yield* tempDirectory;
+      const lockFile = `${directory}/${FileCache.lockFileName}`;
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+
+      const owner = yield* Effect.forkChild(
+        withCache(
+          directory,
+          Effect.flatMap(Cache.Cache, (cache) =>
+            cache.withResolveLock(
+              Effect.andThen(Deferred.succeed(entered, undefined), Deferred.await(release)),
+            ),
+          ),
+          keyA,
+          "3 seconds",
+        ),
+      );
+
+      yield* Deferred.await(entered);
+      yield* fs.writeFileString(lockFile, "424242");
+
+      for (let tick = 0; tick < 5; tick++) {
+        yield* TestClock.adjust("1 second");
+        yield* TestClock.withLive(Effect.sleep("20 millis"));
+      }
+
+      expect(yield* fs.readFileString(lockFile)).toBe("424242");
+
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(owner);
+    }).pipe(Effect.provide(platform)),
+  );
+
+  it.effect("removes leftover temp files on clear and counts only entries", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const directory = yield* tempDirectory;
+      const temp = `${directory}/0123.json.abcdef.tmp`;
+
+      const removed = yield* withCache(
+        directory,
+        Effect.gen(function* () {
+          const cache = yield* Cache.Cache;
+
+          yield* cache.setMany({ "memory:a": record("a") });
+          yield* fs.writeFileString(temp, "partial");
+
+          return yield* cache.clear();
+        }),
+      );
+
+      expect(removed).toBe(1);
+      expect(yield* fs.exists(temp)).toBe(false);
     }).pipe(Effect.provide(platform)),
   );
 });

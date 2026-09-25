@@ -10,7 +10,10 @@ const cliPath = fileURLToPath(new URL("../../packages/envi/dist/bin.js", import.
 const fixture = (name: string): string =>
   fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 
-/** Runs the built CLI. `CI` is unset, so the run behaves like a run on a developer machine. */
+/**
+ * Runs the built CLI. `CI` is unset, so the run behaves like a run on a developer machine. The
+ * fixtures live in the Envi repo, so the search goes up only: `repo` would find every fixture.
+ */
 const runCli = Effect.fn("runCli")(function* (
   runtime: string,
   cwd: string,
@@ -18,7 +21,7 @@ const runCli = Effect.fn("runCli")(function* (
 ) {
   const handle = yield* ChildProcess.make(runtime, [cliPath, ...args], {
     cwd,
-    env: { CI: undefined, ENVI_STAGE: undefined, ENVI_CONFIG: undefined },
+    env: { CI: undefined, ENVI_STAGE: undefined, ENVI_CONFIG: undefined, ENVI_CONFIG_SEARCH: "up" },
     extendEnv: true,
   });
 
@@ -169,12 +172,19 @@ layer(NodeServices.layer)("envi CLI", (it) => {
       }),
     );
 
-    it.effect("reports that the cache is off", () =>
+    it.effect("rejects --json for run, because the child owns stdout", () =>
       Effect.gen(function* () {
-        const result = yield* runCli(runtime, fixture("app"), ["cache", "path", "--no-cache"]);
+        const result = yield* runCli(runtime, fixture("app"), [
+          "run",
+          "--json",
+          "--",
+          "node",
+          "-e",
+          "",
+        ]);
 
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toBe("The cache is off.\n");
+        expect(result.exitCode).not.toBe(0);
+        expect(result.stdout).not.toContain("{");
       }),
     );
   });

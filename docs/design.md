@@ -20,7 +20,7 @@ export default defineConfig({
   cache: { ttl: "24 hours", maxStale: "7 days" },
   vars: ({ stage, op, value }) => ({
     NODE_ENV: stage === "production" ? "production" : "development",
-    PORT: value("3000").schema(Schema.NumberFromString),
+    PORT: value("3000").schema(Schema.FiniteFromString),
     DATABASE_URL: op(`op://app-${stage}/postgres/url`),
     STRIPE_KEY: op("payments", "stripe", "secret-key"),
     SENTRY_DSN: op({
@@ -99,9 +99,21 @@ transient })` gives the reason `Failed` and shows its message. `transient: true`
 ## Config loading
 
 - The CLI accepts `--config` several times. A path can have any file name with a `.ts`, `.mts`,
-  `.js`, or `.mjs` extension. `ENVI_CONFIG` holds a comma-separated list. Without both, `envi run`
-  uses the nearest `envi.config.ts`, and `envi sync` finds configs through `workspaces` in the root
-  `package.json`.
+  `.js`, or `.mjs` extension. `ENVI_CONFIG` holds a comma-separated list. Without both, Envi
+  searches for `envi.config.*` files.
+- The project root is the nearest folder with `.git`, a folder in a repo or a file in a worktree.
+  `--config-search` and `ENVI_CONFIG_SEARCH` select the direction of the search:
+  - `up`: the nearest config in the working directory or an ancestor. The search stops at the
+    project root, or at the home folder outside a repo. `run`, `check`, `inspect`, and `export`
+    search `up` by default.
+  - `down`: every config in the working directory and below it. In a repo, Envi lists the files
+    with `git ls-files --cached --others --exclude-standard`, so git decides which files count.
+    Outside a repo, or when git fails, Envi walks the folders and skips `node_modules` and dot
+    folders. One folder gives one config: the first extension in the order `.ts`, `.mts`, `.js`,
+    `.mjs`.
+  - `repo`: a search `down` from the project root. `sync` searches `repo` by default.
+- A command that uses one config fails with `ManyConfigs` when the search or the flags give
+  several. It never picks one.
 - Envi loads a config file the way oxlint and oxfmt do: a plain dynamic `import()` of the file URL,
   with a `?cache=<key>` query. Envi ships no transpiler. On Node, TypeScript configs require Node
   `>=22.18.0`, and a dependency of `@effect/platform-node` requires `>=22.19.0`. The floor of Envi
@@ -119,6 +131,11 @@ Envi works in two ways. Both share one core.
   wins over it. No top-level `load` and no default instance exist.
 - **CLI.** The v1 commands are `run`, `sync`, `inspect`, `check`, `export`, and `cache` with the
   subcommands `path`, `list`, and `clear`.
+- A flag belongs to the commands that use it, and it follows the command name: `envi check
+--stage production`. `--debug` and `--log-format` are global. The resolve flags are `--config`,
+  `--config-search`, `--stage`, `--refresh`, `--strict`, `--interactive`, `--cache`, and
+  `--cache-dir`. The cache commands take `--cache-dir` and `--json`. The CLI reads `--json` and
+  the log flags only before `--`, because the arguments after `--` belong to the child of `run`.
 - The client mirrors the CLI. It has `run`, `sync`, `check`, `inspect`, `export`, and
   `cache.path/list/clear`, plus the SDK-only `load`, `loadRaw`, `parse`, and `resolve`. `syncAll`
   takes a list of clients and makes one batch for each provider.
@@ -144,8 +161,7 @@ SDK rules:
   redacts by default.
 - The v1 export formats are `dotenv` and `json`. A format that cannot represent a value fails.
   `envi export` writes to stdout by default. `--output <file>` writes a file with mode `0600`.
-  Envi asks `git check-ignore` first and refuses a file that git does not ignore. A folder
-  outside a git repository passes. `ExportFile.write` in the core holds this logic.
+  Envi does not check whether git ignores the file.
 
 `envi run` rules:
 
@@ -188,9 +204,16 @@ SDK rules:
 - `describe` returns safe text for a reference, such as `op://app/postgres/url`. Envi shows it in
   `inspect`, `check`, `sync`, `cache list`, error values, and debug logs. It never holds a secret.
 - The provider registry rejects a duplicate provider id.
-- A provider receives `interactive: false` in CI. Provider-specific CI logic lives in the
-  provider. The 1Password provider never uses desktop authentication in CI, and it fails at once
-  without a token.
+- A provider receives `interactive`: the `interactive` option or `--interactive`, then
+  `ENVI_INTERACTIVE`, then `false` in CI and `true` elsewhere. `CI` counts when it holds any value
+  other than empty, `false`, or `0`. Provider-specific CI logic lives in the provider. The
+  1Password provider never uses desktop authentication without `interactive`, and it fails at
+  once without a token. An empty token counts as absent.
+- The 1Password provider classifies the errors of the SDK. `RateLimitExceededError`, a network
+  failure, and a timeout give `Unavailable`, which allows the stale fallback. `AuthExpiredError`,
+  `DesktopSessionExpiredError`, and a message about a rejected token give
+  `AuthenticationFailed`. A call with a token times out after 30 seconds. A desktop call waits 90
+  seconds for the approval of the user, which stays below the lock wait of the cache.
 - The 1Password provider uses `@1password/sdk` and does not depend on the `op` CLI. It imports the
   SDK lazily and creates the client only on a cache miss, because client creation takes 2 to 5
   seconds. `serviceAccountToken` is a plain string. Desktop auth and `secrets.resolveAll` are
@@ -212,12 +235,19 @@ SDK rules:
 - The cache is a service with a file layer, a memory layer, a disabled layer, and support for a
   custom cache. The logical cache record holds the value plus freshness metadata. Encryption is
   private to the file layer.
-- The file layer encrypts each entry with AES-256-GCM through WebCrypto. The key lives in the
-  macOS Keychain. The encryption binds the entry to its cache key, so an entry that someone moved,
-  edited, or replaced fails to decrypt. Envi never falls back from encryption to plaintext on its
-  own. `encryption: "none"` is an explicit opt-in and writes files with mode `0600`.
+- The file layer encrypts each entry with AES-256-GCM through WebCrypto. The key comes from
+  `ENVI_CACHE_KEY` first: the SHA-256 digest of its text gives the 32 bytes. Without the variable,
+  the key lives in the keychain of the platform: the macOS Keychain through `security`, or the
+  Secret Service on Linux through `secret-tool`. Envi creates the key on the first use and writes
+  it through stdin. The encryption binds the entry to its cache key, so an entry that someone
+  moved, edited, or replaced fails to decrypt. Envi never falls back from encryption to plaintext
+  on its own. `encryption: "none"` is an explicit opt-in and writes files with mode `0600`.
+- Without a key, Envi logs one warning and runs without a cache. With `--cache` or
+  `ENVI_CACHE_ENABLED=true`, a missing key fails with `KeyUnavailable`. Envi reads the key on the
+  first use only, so a run without a cached reference never reads it.
 - Envi creates the cache directory with mode `0700` and writes entries with a temp file and a
-  rename.
+  rename. Envi always removes the temp file, and `cache clear` removes a temp file that a crash
+  left.
 - An entry expires after `ttl`, 24 hours by default. If the refresh of an expired entry fails with
   a transient failure, Envi uses the expired value, up to `maxStale`, 7 days by default, and logs a
   warning. Transient means offline, a timeout, or a prompt that nobody approved. `NotFound`,
@@ -228,6 +258,10 @@ SDK rules:
   owner. The lock file always holds a complete time: Envi writes a temp file, and then links it
   to take the lock or renames it to renew the lock. A reader that sees an empty lock file would
   treat the lock as crashed and steal it.
+- A process steals a stale lock with a rename to a unique name, so only one process moves it. If
+  the moved file holds another time, another process took the lock after the read, and the link
+  puts it back. The owner renews and releases the lock only while the lock file holds its own
+  time. One renewal is uninterruptible, so the release always knows the last time.
 - The content of the lock file is frozen: one integer, the time in milliseconds. Two worktrees can
   run different Envi versions against one cache. More lock data goes into a second file. A new
   lock protocol needs a new lock file name.
@@ -235,9 +269,11 @@ SDK rules:
   `resolvedAt`. `cache list` therefore shows `resolvedAt` and no expiry column.
 - A `custom()` value that comes from an expired input enters the cache with the digest of the
   expired input values, so the entry serves only those values. Its origin is `stale-cache`.
-- The cache is off by default when `CI=true`. `--cache` or `ENVI_CACHE_ENABLED=true` turns it on.
-- Supported platforms: macOS and Linux. Windows is not supported in v1. On Linux, the cache is off
-  by default until a keychain layer exists.
+- The cache is off by default in CI. `--cache` or `ENVI_CACHE_ENABLED=true` turns it on. `sync`
+  reports `cache: false` and says that the cache is off.
+- The cache commands always use the cache directory, also in CI and with the cache off. They need
+  no key.
+- Supported platforms: macOS and Linux. Windows is not supported in v1.
 
 ## Resolver
 
@@ -284,7 +320,7 @@ key needs only the `id`, the stage, and the `scope`.
   | `startup`                | the start of the runtime and the imports, before the command |
   | `command`                | one whole CLI command, with its name                         |
   | `config.import`          | the `import()` of one config file                            |
-  | `keychain.key`           | the read, or the creation, of the key in the macOS Keychain  |
+  | `keychain.key`           | the read of the key from `ENVI_CACHE_KEY` or the keychain    |
   | `cache.read`             | the first cache read                                         |
   | `resolve.lock`           | the locked section, including the wait for the lock          |
   | `provider.resolve`       | one batch of one provider                                    |
@@ -366,8 +402,14 @@ them on Bun.
 - `commands.test.ts`: `sync`, `check`, `inspect`, `export` with `--output`, and `cache`.
 - `cache.test.ts`: cache hits across processes, `--refresh`, `--no-cache`, CI, the stale
   fallback, file modes, and four parallel processes on an empty cache.
-- `encryption.test.ts`: the real macOS Keychain. An edited entry, a moved entry, and a plaintext
-  entry in place of an encrypted entry all count as a miss. It runs on macOS only.
+- `encryption.test.ts`: the real keychain. An edited entry, a moved entry, and a plaintext entry in
+  place of an encrypted entry all count as a miss. It runs on macOS, and in the Linux image with
+  the Secret Service.
+- `keys.test.ts`: `ENVI_CACHE_KEY`, and a system without a keychain.
+- `bun run test:linux` builds and runs two Docker images from `tests/linux/Dockerfile`:
+  `linux-secret-service` with GNOME Keyring, and `linux-bare` without a keychain. Each runs the
+  unit tests and the end-to-end tests. `bun run verify` does not run them, because they need
+  Docker.
 - `sdk.test.ts`: a custom provider, a custom `Cache` layer in one JSON file, the encrypted cache
   with a fixed key, and the plain client.
 

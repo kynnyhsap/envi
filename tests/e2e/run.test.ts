@@ -66,9 +66,9 @@ const runAndSignal = Effect.fn("runAndSignal")(function* (
     runtime,
     [
       cliPath,
+      "run",
       "--cache-dir",
       sandbox.cacheDirectory,
-      "run",
       "--",
       "node",
       "-e",
@@ -121,9 +121,9 @@ const runAndPressControlC = Effect.fn("runAndPressControlC")(function* (runtime:
       "sh",
       runtime,
       cliPath,
+      "run",
       "--cache-dir",
       sandbox.cacheDirectory,
-      "run",
       "--",
       "node",
       "-e",
@@ -170,11 +170,11 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
           runtime,
           app,
           [
+            "run",
             "--cache-dir",
             sandbox.cacheDirectory,
             "--stage",
             "production",
-            "run",
             "--",
             "node",
             "-e",
@@ -215,7 +215,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
         const result = yield* runCli(
           runtime,
           app,
-          ["--cache-dir", sandbox.cacheDirectory, "run", "--", "node", "-e", "process.exit(42)"],
+          ["run", "--cache-dir", sandbox.cacheDirectory, "--", "node", "-e", "process.exit(42)"],
           sandbox.env,
         );
 
@@ -231,9 +231,9 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
           runtime,
           app,
           [
+            "run",
             "--cache-dir",
             sandbox.cacheDirectory,
-            "run",
             "--",
             "node",
             "-e",
@@ -259,7 +259,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
         const result = yield* runCli(
           runtime,
           app,
-          ["--no-cache", "run", "--", "node", "-e", "console.log('child-started')"],
+          ["run", "--no-cache", "--", "node", "-e", "console.log('child-started')"],
           sandbox.env,
         );
 
@@ -277,7 +277,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
         const result = yield* runCli(
           runtime,
           app,
-          ["--cache-dir", sandbox.cacheDirectory, "run", "--", "envi-e2e-no-such-command"],
+          ["run", "--cache-dir", sandbox.cacheDirectory, "--", "envi-e2e-no-such-command"],
           sandbox.env,
         );
 
@@ -291,7 +291,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
     it.effect("reads the cache on the second run", () =>
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
-        const args = ["--cache-dir", sandbox.cacheDirectory, "run", "--", "node", "-e", ""];
+        const args = ["run", "--cache-dir", sandbox.cacheDirectory, "--", "node", "-e", ""];
 
         yield* runCli(runtime, app, args, sandbox.env);
         yield* runCli(runtime, app, args, sandbox.env);

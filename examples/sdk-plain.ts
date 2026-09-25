@@ -24,6 +24,7 @@ assertType<Equal<AppEnv["PORT"], number>>();
 assertType<Equal<AppEnv["DATABASE_URL"], URL>>();
 assertType<Equal<AppEnv["SENTRY_DSN"], string | undefined>>();
 assertType<Equal<AppEnv["LOG_LEVEL"], "debug" | "info">>();
+assertType<Equal<AppEnv["FEATURE_SEARCH"], boolean>>();
 assertType<Equal<RawEnv<typeof config>["PORT"], string>>();
 assertType<Equal<StageOf<typeof config>, "development" | "staging" | "production">>();
 

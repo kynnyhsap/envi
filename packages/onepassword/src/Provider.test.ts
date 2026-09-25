@@ -1,7 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
+import * as TestClock from "effect/testing/TestClock";
 import { Provider, ProviderFailure, ReferenceFailure } from "envi";
 
 import { makeProvider, type Sdk, tokenVariables } from "./Provider.ts";
@@ -14,13 +16,25 @@ class FakeDesktopAuth {
   }
 }
 
+class FakeAuthExpiredError extends Error {}
+
+class FakeDesktopSessionExpiredError extends Error {}
+
+class FakeRateLimitExceededError extends Error {}
+
 interface FakeSdk extends Sdk<FakeDesktopAuth> {
   readonly connections: Array<string | FakeDesktopAuth>;
   readonly batches: Array<ReadonlyArray<string>>;
 }
 
-/** A faithful SDK: one client for each `createClient`, and one response for each reference. */
-const fakeSdk = (secrets: Readonly<Record<string, string>>, failConnect = false): FakeSdk => {
+/**
+ * A faithful SDK: one client for each `createClient`, and one response for each reference.
+ * `connectFailure` replaces the client with a rejected or a pending promise.
+ */
+const fakeSdk = (
+  secrets: Readonly<Record<string, string>>,
+  connectFailure?: () => Promise<never>,
+): FakeSdk => {
   const connections: Array<string | FakeDesktopAuth> = [];
   const batches: Array<ReadonlyArray<string>> = [];
 
@@ -28,9 +42,12 @@ const fakeSdk = (secrets: Readonly<Record<string, string>>, failConnect = false)
     connections,
     batches,
     DesktopAuth: FakeDesktopAuth,
+    AuthExpiredError: FakeAuthExpiredError,
+    DesktopSessionExpiredError: FakeDesktopSessionExpiredError,
+    RateLimitExceededError: FakeRateLimitExceededError,
     createClient: (config) => {
-      if (failConnect) {
-        return Promise.reject(new Error("the desktop app is locked"));
+      if (connectFailure !== undefined) {
+        return connectFailure();
       }
 
       connections.push(config.auth);
@@ -161,6 +178,22 @@ describe("onePasswordProvider", () => {
     ),
   );
 
+  it.effect("treats an empty token as absent and falls back to the next source", () =>
+    Effect.gen(function* () {
+      const sdk = fakeSdk(secrets);
+      const provider = makeProvider({ account: "my-team" }, Effect.succeed(sdk));
+
+      yield* provider.resolveMany(requests, { interactive: true });
+
+      expect(sdk.connections[0]).toBeInstanceOf(FakeDesktopAuth);
+    }).pipe(
+      withEnv({
+        ENVI_PROVIDER_ONEPASSWORD_SERVICE_ACCOUNT_TOKEN: "",
+        OP_SERVICE_ACCOUNT_TOKEN: " ",
+      }),
+    ),
+  );
+
   it.effect("gives all three forms one reference key, and keeps the account apart", () =>
     Effect.gen(function* () {
       const provider = makeProvider({ account: "my-team" }, Effect.succeed(fakeSdk(secrets)));
@@ -229,10 +262,57 @@ describe("onePasswordProvider", () => {
 
   it.effect("reports a failed desktop connection as Unavailable", () =>
     Effect.gen(function* () {
-      const provider = makeProvider({ account: "my-team" }, Effect.succeed(fakeSdk(secrets, true)));
+      const provider = makeProvider(
+        { account: "my-team" },
+        Effect.succeed(fakeSdk(secrets, () => Promise.reject(new Error("the app is locked")))),
+      );
+
       const error = yield* Effect.flip(provider.resolveMany(requests, { interactive: true }));
 
       expect(error).toMatchObject({ reason: ProviderFailure.Unavailable });
     }).pipe(withEnv({})),
   );
+
+  describe("with a token that the SDK cannot use", () => {
+    const failureOf = (rejection: Error) =>
+      Effect.gen(function* () {
+        const sdk = fakeSdk(secrets, () => Promise.reject(rejection));
+        const provider = makeProvider({ serviceAccountToken: "ops_fake" }, Effect.succeed(sdk));
+
+        return yield* Effect.flip(provider.resolveMany(requests, { interactive: false }));
+      }).pipe(withEnv({}));
+
+    it.effect("classifies the SDK errors, so an outage allows an expired cache entry", () =>
+      Effect.gen(function* () {
+        const limited = yield* failureOf(new FakeRateLimitExceededError("slow down"));
+        const expired = yield* failureOf(new FakeAuthExpiredError("expired"));
+        const rejected = yield* failureOf(new Error("invalid service account token"));
+        const offline = yield* failureOf(new Error("error sending request"));
+
+        expect(limited).toMatchObject({ reason: ProviderFailure.Unavailable });
+        expect(expired).toMatchObject({ reason: ProviderFailure.AuthenticationFailed });
+        expect(rejected).toMatchObject({ reason: ProviderFailure.AuthenticationFailed });
+        expect(offline).toMatchObject({ reason: ProviderFailure.Unavailable });
+        expect(JSON.stringify([limited, expired, rejected, offline])).not.toContain("ops_fake");
+      }),
+    );
+
+    it.effect("fails with Unavailable when the SDK does not answer in time", () =>
+      Effect.gen(function* () {
+        const sdk = fakeSdk(secrets, () => new Promise<never>(() => {}));
+        const provider = makeProvider({ serviceAccountToken: "ops_fake" }, Effect.succeed(sdk));
+
+        const fiber = yield* Effect.forkChild(
+          Effect.flip(provider.resolveMany(requests, { interactive: false })),
+        );
+
+        yield* TestClock.adjust("31 seconds");
+
+        const error = yield* Fiber.join(fiber);
+
+        expect(error).toMatchObject({ reason: ProviderFailure.Unavailable });
+        expect(error.message).toContain("did not answer");
+      }).pipe(withEnv({})),
+    );
+  });
 });

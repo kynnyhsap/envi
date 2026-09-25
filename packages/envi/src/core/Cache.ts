@@ -91,15 +91,15 @@ export const layerMemory: Layer.Layer<Cache> = Layer.effect(
 );
 
 /** A disabled cache. CI uses it by default. */
-export const layerNone: Layer.Layer<Cache> = Layer.succeed(
-  Cache,
-  Cache.of({
-    getMany: () => Effect.succeed({}),
-    setMany: () => Effect.void,
-    removeMany: () => Effect.void,
-    list: () => Effect.succeed([]),
-    clear: () => Effect.succeed(0),
-    withResolveLock: (effect) => effect,
-    directory: Option.none(),
-  }),
-);
+export const none: Interface = Cache.of({
+  getMany: () => Effect.succeed({}),
+  setMany: () => Effect.void,
+  removeMany: () => Effect.void,
+  list: () => Effect.succeed([]),
+  clear: () => Effect.succeed(0),
+  withResolveLock: (effect) => effect,
+  directory: Option.none(),
+});
+
+/** The layer of the disabled cache. */
+export const layerNone: Layer.Layer<Cache> = Layer.succeed(Cache, none);

@@ -40,19 +40,19 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
         const args = ["--cache-dir", sandbox.cacheDirectory];
-        const first = yield* runCli(runtime, app, [...args, "sync", "--json"], sandbox.env);
+        const first = yield* runCli(runtime, app, ["sync", ...args, "--json"], sandbox.env);
 
         expect(first.exitCode).toBe(0);
         expect(JSON.parse(first.stdout).providers).toEqual([
           { provider: "file", secrets: 7, cached: 0, resolved: 7 },
         ]);
 
-        const second = yield* runCli(runtime, app, [...args, "check"], sandbox.env);
+        const second = yield* runCli(runtime, app, ["check", ...args], sandbox.env);
 
         expect(second.exitCode).toBe(0);
         expect(yield* providerCalls(sandbox)).toEqual([fullBatch, uncachedBatch]);
 
-        const inspect = yield* runCli(runtime, app, [...args, "inspect", "--json"], sandbox.env);
+        const inspect = yield* runCli(runtime, app, ["inspect", ...args, "--json"], sandbox.env);
 
         const vars: ReadonlyArray<{ key: string; origin: string; value: string | null }> =
           JSON.parse(inspect.stdout).vars;
@@ -82,7 +82,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const sandbox = yield* makeSandbox("none");
-        const args = ["--cache-dir", sandbox.cacheDirectory, "export", "--format", "json"];
+        const args = ["export", "--cache-dir", sandbox.cacheDirectory, "--format", "json"];
 
         yield* runCli(runtime, app, args, sandbox.env);
 
@@ -104,7 +104,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
     it.effect("reads and writes no cache file with --no-cache", () =>
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
-        const args = ["--cache-dir", sandbox.cacheDirectory, "--no-cache", "check"];
+        const args = ["check", "--cache-dir", sandbox.cacheDirectory, "--no-cache"];
 
         yield* runCli(runtime, app, args, sandbox.env);
         yield* runCli(runtime, app, args, sandbox.env);
@@ -120,11 +120,11 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
         const args = ["--cache-dir", sandbox.cacheDirectory];
         const env = { ...sandbox.env, CI: "true" };
 
-        yield* runCli(runtime, app, [...args, "check"], env);
+        yield* runCli(runtime, app, ["check", ...args], env);
 
         expect(yield* cacheFiles(sandbox.cacheDirectory)).toEqual([]);
 
-        yield* runCli(runtime, app, [...args, "--cache", "check"], env);
+        yield* runCli(runtime, app, ["check", ...args, "--cache"], env);
 
         expect((yield* cacheFiles(sandbox.cacheDirectory)).length).toBe(7);
       }),
@@ -135,7 +135,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
         const fs = yield* FileSystem.FileSystem;
         const sandbox = yield* makeSandbox("none");
 
-        yield* runCli(runtime, app, ["--cache-dir", sandbox.cacheDirectory, "sync"], sandbox.env);
+        yield* runCli(runtime, app, ["sync", "--cache-dir", sandbox.cacheDirectory], sandbox.env);
 
         const files = yield* cacheFiles(sandbox.cacheDirectory);
         const directory = yield* fs.stat(sandbox.cacheDirectory);
@@ -161,7 +161,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
         const fs = yield* FileSystem.FileSystem;
         const sandbox = yield* makeSandbox("none");
         const env = { ...sandbox.env, ENVI_E2E_TTL: "short" };
-        const args = ["--cache-dir", sandbox.cacheDirectory, "check", "--json"];
+        const args = ["check", "--cache-dir", sandbox.cacheDirectory, "--json"];
 
         yield* runCli(runtime, app, args, env);
         yield* Effect.sleep("1200 millis");
@@ -185,7 +185,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
     it.effect("resolves once when several processes start on an empty cache", () =>
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
-        const args = ["--cache-dir", sandbox.cacheDirectory, "check"];
+        const args = ["check", "--cache-dir", sandbox.cacheDirectory];
 
         const results = yield* Effect.all(
           [1, 2, 3, 4].map(() => runCli(runtime, app, args, sandbox.env)),

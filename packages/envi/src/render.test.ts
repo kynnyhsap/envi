@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import * as Render from "./render.ts";
 
 describe("render", () => {
-  it("renders a sync report with the counts and the failures", () => {
+  it("renders a sync report with the counts, the cache state, and the failures", () => {
     const text = Render.sync({
       stage: "development",
       configs: 2,
@@ -20,6 +20,7 @@ describe("render", () => {
           docs: "https://example.com/docs#error-secret-reference-not-found",
         },
       ],
+      cache: false,
       durationMillis: 1234,
     });
 
@@ -27,6 +28,7 @@ describe("render", () => {
       [
         "Synced the stage development from 2 configs in 1234 ms.",
         "  onepassword: 3 secrets, 1 cached, 1 resolved",
+        "The cache is off, so the next run resolves every secret again.",
         "1 var failed:",
         "  ✗ TOKEN: Envi reference failed: NotFound for op://app/api/token (provider onepassword)",
         "    config: /repo/apps/api/envi.config.ts",

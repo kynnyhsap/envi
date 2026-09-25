@@ -16,13 +16,25 @@ export interface EnviOptions {
   /** `false` turns the cache off. An object replaces the `cache` key of the config. */
   readonly cache?: false | CacheSettings;
   readonly strict?: boolean;
+  /** Allows a prompt, such as a desktop app approval. Default: `ENVI_INTERACTIVE`, then not CI. */
+  readonly interactive?: boolean;
 }
+
+/** The keychain of a platform: the macOS Keychain, the Secret Service on Linux, or none. */
+export const keyStoreOf = (platform: string): Keychain.Store => {
+  if (platform === "darwin") {
+    return Keychain.Store.MacOs;
+  }
+
+  return platform === "linux" ? Keychain.Store.SecretService : Keychain.Store.None;
+};
 
 /** The services of the `Envi` layer. `run` needs the environment and the platform services. */
 export type Services = Envi.Envi | Envi.ParentEnvironment | NodeServices.NodeServices;
 
 /**
- * The `Envi` service on Node or Bun: the default cache with its key in the OS keychain, the
+ * The `Envi` service on Node or Bun: the default cache with its key from `ENVI_CACHE_KEY` or
+ * the OS keychain, the
  * environment of the process, the signals of the process, and the platform services.
  * `createEnvi` runs on the same layer. The service serves any config, so the cache settings come
  * from `options.cache`, not from the `cache` key of a config.
@@ -33,10 +45,9 @@ export type Services = Envi.Envi | Envi.ParentEnvironment | NodeServices.NodeSer
 export const layer = (options: EnviOptions = {}): Layer.Layer<Services> => {
   const cache = DefaultCache.layer({
     settings: Option.fromUndefinedOr(options.cache),
-    keychainAvailable: process.platform === "darwin",
     enabled: Option.none(),
     directory: Option.none(),
-  }).pipe(Layer.provide(Keychain.layer));
+  }).pipe(Layer.provide(Keychain.layer(keyStoreOf(process.platform))));
 
   return Layer.mergeAll(
     Envi.layer(options).pipe(Layer.provide(cache)),

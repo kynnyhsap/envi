@@ -46,6 +46,7 @@ export const sync = (report: SyncReport): string =>
       (entry) =>
         `  ${entry.provider}: ${entry.secrets} secrets, ${entry.cached} cached, ${entry.resolved} resolved`,
     ),
+    ...(report.cache ? [] : ["The cache is off, so the next run resolves every secret again."]),
     ...(report.failures.length === 0
       ? []
       : [

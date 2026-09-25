@@ -5,7 +5,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { fileURLToPath } from "node:url";
 
 import { fixture, makeSandbox, runCli, runtimes } from "./helpers.ts";
@@ -29,12 +29,61 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         const result = yield* runCli(
           runtime,
           fixture("cached/sub"),
-          ["--no-cache", "check", "--json"],
+          ["check", "--no-cache", "--json"],
           sandbox.env,
         );
 
         expect(result.exitCode).toBe(0);
         expect(JSON.parse(result.stdout).passed).toContain("API_TOKEN");
+      }),
+    );
+
+    it.effect("searches the repo for sync, up for check, and down with the flag", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const sandbox = yield* makeSandbox("none");
+        const root = path.join(sandbox.directory, "repo");
+        const entry = path.join(enviPackage, "dist/index.js");
+
+        const writeConfig = (folder: string, text: string) =>
+          Effect.andThen(
+            fs.makeDirectory(path.join(root, folder), { recursive: true }),
+            fs.writeFileString(path.join(root, folder, "envi.config.ts"), text),
+          );
+
+        const config = (name: string) =>
+          `import { defineConfig } from ${JSON.stringify(entry)};\n\nexport default defineConfig({ cache: false, vars: { ${name}: "1" } });\n`;
+
+        yield* writeConfig("apps/api", config("API"));
+        yield* writeConfig("apps/web", config("WEB"));
+        yield* writeConfig("ignored", 'throw new Error("git ignores this config");\n');
+        yield* fs.writeFileString(path.join(root, ".gitignore"), "ignored/\n");
+        yield* spawner.exitCode(ChildProcess.make("git", ["init", "-q"], { cwd: root }));
+
+        const env = { ...sandbox.env, ENVI_CONFIG_SEARCH: undefined };
+        const api = path.join(root, "apps/api");
+        const synced = yield* runCli(runtime, api, ["sync", "--json"], env);
+        const checked = yield* runCli(runtime, api, ["check", "--json"], env);
+
+        const byFlag = yield* runCli(
+          runtime,
+          path.join(root, "apps"),
+          ["check", "--config-search", "down"],
+          env,
+        );
+
+        const byVariable = yield* runCli(runtime, path.join(root, "apps"), ["check"], {
+          ...env,
+          ENVI_CONFIG_SEARCH: "down",
+        });
+
+        expect(JSON.parse(synced.stdout)).toMatchObject({ configs: 2, failures: [] });
+        expect(JSON.parse(checked.stdout).passed).toEqual(["API"]);
+        expect(byFlag.exitCode).toBe(1);
+        expect(byFlag.stderr).toContain("ManyConfigs");
+        expect(byVariable.stderr).toContain("ManyConfigs");
       }),
     );
 
@@ -48,14 +97,14 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         const byFlag = yield* runCli(
           runtime,
           sandbox.directory,
-          ["--no-cache", "--config", api, "--config", web, "sync", "--json"],
+          ["sync", "--no-cache", "--config", api, "--config", web, "--json"],
           sandbox.env,
         );
 
         const byVariable = yield* runCli(
           runtime,
           sandbox.directory,
-          ["--no-cache", "sync", "--json"],
+          ["sync", "--no-cache", "--json"],
           { ...sandbox.env, ENVI_CONFIG: `${api}, ${web}` },
         );
 
@@ -74,12 +123,13 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         const result = yield* runCli(
           runtime,
           sandbox.directory,
-          ["--config", api, "--config", web, "check"],
+          ["check", "--config", api, "--config", web],
           sandbox.env,
         );
 
         expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain("This command uses one config.");
+        expect(result.stderr).toContain("ManyConfigs");
+        expect(result.stderr).toContain("This command uses one config, and Envi found 2.");
       }),
     );
 
@@ -89,15 +139,15 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         const sandbox = yield* makeSandbox("none");
 
         const extension = yield* runCli(runtime, app, [
+          "check",
           "--config",
           path.join(workspace, "package.json"),
-          "check",
         ]);
 
         const missing = yield* runCli(runtime, app, [
+          "check",
           "--config",
           path.join(sandbox.directory, "nope.config.ts"),
-          "check",
         ]);
 
         expect(extension.exitCode).toBe(1);
@@ -214,8 +264,8 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
           runtime,
           app,
           [
-            "--no-cache",
             "run",
+            "--no-cache",
             "--",
             "node",
             "-e",
@@ -233,10 +283,10 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         const sandbox = yield* makeSandbox("none");
 
         const args = [
+          "export",
           "--cache-dir",
           sandbox.cacheDirectory,
           "--debug",
-          "export",
           "--format",
           "json",
         ];
@@ -264,19 +314,25 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         const sandbox = yield* makeSandbox("none");
         const cached = ["--cache-dir", sandbox.cacheDirectory, "--debug"];
 
+        // The name of each command, and the arguments after its flags.
         const commands: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
-          ["sync", ["sync"]],
-          ["check", ["check"]],
-          ["inspect", ["inspect"]],
-          ["export", ["export"]],
-          ["run", ["run", "--", "node", "-e", ""]],
-          ["cache path", ["cache", "path"]],
-          ["cache list", ["cache", "list"]],
-          ["cache clear", ["cache", "clear"]],
+          ["sync", []],
+          ["check", []],
+          ["inspect", []],
+          ["export", []],
+          ["run", ["--", "node", "-e", ""]],
+          ["cache path", []],
+          ["cache list", []],
+          ["cache clear", []],
         ];
 
-        for (const [name, args] of commands) {
-          const result = yield* runCli(runtime, app, [...cached, ...args], sandbox.env);
+        for (const [name, rest] of commands) {
+          const result = yield* runCli(
+            runtime,
+            app,
+            [...name.split(" "), ...cached, ...rest],
+            sandbox.env,
+          );
 
           expect(result.stderr).toMatch(/step=startup durationMs=\d+ outcome=success/);
           expect(result.stderr).toMatch(
@@ -287,7 +343,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         const first = yield* runCli(
           runtime,
           app,
-          [...cached, "--refresh", "run", "--", "node", "-e", ""],
+          ["run", ...cached, "--refresh", "--", "node", "-e", ""],
           sandbox.env,
         );
 
@@ -311,7 +367,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
 
-        const result = yield* runCli(runtime, app, ["--no-cache", "--debug", "check"], {
+        const result = yield* runCli(runtime, app, ["check", "--no-cache", "--debug"], {
           ...sandbox.env,
           ENVI_E2E_SECRETS_FILE: `${sandbox.directory}/missing.json`,
         });
@@ -323,7 +379,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
     it.effect("prints no debug log without --debug", () =>
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
-        const result = yield* runCli(runtime, app, ["--no-cache", "check"], sandbox.env);
+        const result = yield* runCli(runtime, app, ["check", "--no-cache"], sandbox.env);
 
         expect(result.stderr).toBe("");
       }),

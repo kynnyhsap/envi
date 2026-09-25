@@ -1,3 +1,5 @@
+import * as Arr from "effect/Array";
+import * as EffectConfig from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -6,6 +8,9 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as ChildProcess from "effect/unstable/process/ChildProcess";
+import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
 import * as Config from "./Config.ts";
 import { ConfigLoadError, ConfigLoadFailure } from "./Errors.ts";
@@ -21,41 +26,57 @@ export const configExtensions: ReadonlyArray<string> = [".ts", ".mts", ".js", ".
 /** The lowest Node version that imports a TypeScript file without a flag. */
 export const minimumNodeVersion = "22.19.0";
 
+/**
+ * The directions of the config search. The project root is the nearest folder with `.git`.
+ */
+export const ConfigSearch = {
+  /** The nearest config in the folder or an ancestor, up to the project root or the home folder. */
+  Up: "up",
+  /** Every config in the folder and below it. Git decides which files count in a repo. */
+  Down: "down",
+  /** Every config of the project: a search down from the project root. */
+  Repo: "repo",
+} as const;
+
+/** The schema of `ConfigSearch`. */
+export const ConfigSearchSchema = Schema.Literals([
+  ConfigSearch.Up,
+  ConfigSearch.Down,
+  ConfigSearch.Repo,
+]);
+
+export type ConfigSearch = typeof ConfigSearchSchema.Type;
+
+/** The variable of the config search direction. */
+export const configSearchVariable = "ENVI_CONFIG_SEARCH";
+
 /** Finds and loads config files. */
 export interface Interface {
   /** Imports one config file. The default export must come from `defineConfig`. */
   readonly load: (file: string) => Effect.Effect<Config.Config, ConfigLoadError>;
-  /** The config file of the directory, or of its nearest ancestor. `run` uses it. */
-  readonly findNearest: (directory: string) => Effect.Effect<string, ConfigLoadError>;
   /**
-   * The config file of the root, plus the config file of each package in `workspaces` of the root
-   * `package.json`. `sync` uses it. A pattern is a path, or a path that ends with `/*`.
+   * The config files of a search from a directory, sorted by path. `up` finds one file. A search
+   * that finds no file fails with `NoConfig`.
    */
-  readonly findWorkspace: (root: string) => Effect.Effect<ReadonlyArray<string>, ConfigLoadError>;
+  readonly find: (
+    directory: string,
+    search: ConfigSearch,
+  ) => Effect.Effect<Arr.NonEmptyReadonlyArray<string>, ConfigLoadError>;
 }
 
 /** The config loader service. */
 export class ConfigLoader extends Context.Service<ConfigLoader, Interface>()("envi/ConfigLoader") {}
 
-/** `workspaces` is a list, or an object with `packages`, as in a Bun catalog workspace. */
-const PackageJson = Schema.fromJsonString(
-  Schema.Struct({
-    workspaces: Schema.optional(
-      Schema.Union([
-        Schema.Array(Schema.String),
-        Schema.Struct({ packages: Schema.optional(Schema.Array(Schema.String)) }),
-      ]),
-    ),
-  }),
-);
+const gitMarker = ".git";
 
-const isPatternList = Schema.is(Schema.Array(Schema.String));
+const homeVariable = "HOME";
+
+/** A search down never enters these folders, and no folder whose name starts with a dot. */
+const skippedFolder = "node_modules";
 
 const unknownExtensionCode = "ERR_UNKNOWN_FILE_EXTENSION";
 
 const moduleNotFoundCode = "ERR_MODULE_NOT_FOUND";
-
-const childrenPattern = "/*";
 
 /** A parse error of Bun. The message and the line text are left out: they show source code. */
 const BuildMessage = Schema.Struct({
@@ -90,9 +111,13 @@ const syntaxLocationOf = (cause: unknown): Option.Option<string | undefined> =>
     () => Option.map(asSyntaxError(cause), (error) => Thrown.locationOf(error.stack ?? "")),
   );
 
+const noConfig = (directory: string, detail: string) =>
+  new ConfigLoadError({ reason: ConfigLoadFailure.NoConfig, path: directory, detail });
+
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const spawner = yield* ChildProcessSpawner;
 
   const exists = (file: string) => Effect.orElseSucceed(fs.exists(file), () => false);
 
@@ -191,76 +216,181 @@ const make = Effect.gen(function* () {
       : yield* invalid("The default export must be the result of `defineConfig`.");
   });
 
-  const findNearest: Interface["findNearest"] = Effect.fn("ConfigLoader.findNearest")(
-    function* (directory) {
-      const start = path.resolve(directory);
-      let current = start;
+  const configNames = new Set(configExtensions.map((extension) => `${configBaseName}${extension}`));
 
-      while (true) {
-        const found = yield* configIn(current);
+  /** The nearest folder with `.git`, a folder in a repo or a file in a worktree. */
+  const projectRoot = Effect.fn("ConfigLoader.projectRoot")(function* (start: string) {
+    let current = start;
 
-        if (Option.isSome(found)) {
-          return found.value;
-        }
-
-        const parent = path.dirname(current);
-
-        if (parent === current) {
-          return yield* new ConfigLoadError({
-            reason: ConfigLoadFailure.NoConfig,
-            path: start,
-            detail: `No ${configBaseName}.ts exists in this directory or in an ancestor.`,
-          });
-        }
-
-        current = parent;
+    while (true) {
+      if (yield* exists(path.join(current, gitMarker))) {
+        return Option.some(current);
       }
-    },
-  );
 
-  const directoriesOf = (root: string, pattern: string): Effect.Effect<ReadonlyArray<string>> => {
-    if (!pattern.endsWith(childrenPattern)) {
-      return Effect.succeed([path.join(root, pattern)]);
+      const parent = path.dirname(current);
+
+      if (parent === current) {
+        return Option.none<string>();
+      }
+
+      current = parent;
     }
+  });
 
-    const parent = path.join(root, pattern.slice(0, -childrenPattern.length));
+  const isWithin = (file: string, folder: string) => {
+    const relative = path.relative(folder, file);
 
-    return fs.readDirectory(parent).pipe(
-      Effect.map((names) => names.toSorted().map((name) => path.join(parent, name))),
-      Effect.orElseSucceed(() => []),
-    );
+    return !relative.startsWith("..") && !path.isAbsolute(relative);
   };
 
-  const findWorkspace: Interface["findWorkspace"] = Effect.fn("ConfigLoader.findWorkspace")(
-    function* (root) {
-      const absolute = path.resolve(root);
-      const manifest = path.join(absolute, "package.json");
+  const up = Effect.fn("ConfigLoader.up")(function* (start: string) {
+    const home = yield* Effect.orElseSucceed(
+      EffectConfig.option(EffectConfig.String(homeVariable)),
+      () => Option.none<string>(),
+    );
 
-      const patterns = yield* fs.readFileString(manifest).pipe(
-        Effect.flatMap(Schema.decodeEffect(PackageJson)),
-        Effect.map(({ workspaces }): ReadonlyArray<string> => {
-          if (workspaces === undefined) {
-            return [];
-          }
+    const stop = Option.orElse(yield* projectRoot(start), () =>
+      Option.filter(home, (folder) => isWithin(start, path.resolve(folder))).pipe(
+        Option.map((folder) => path.resolve(folder)),
+      ),
+    );
 
-          return isPatternList(workspaces) ? workspaces : (workspaces.packages ?? []);
-        }),
-        Effect.orElseSucceed((): ReadonlyArray<string> => []),
-      );
+    let current = start;
 
-      const directories = yield* Effect.forEach(patterns, (pattern) =>
-        directoriesOf(absolute, pattern),
-      );
+    while (true) {
+      const found = yield* configIn(current);
 
-      const found = yield* Effect.forEach([absolute, ...directories.flat()], configIn);
+      if (Option.isSome(found)) {
+        return Arr.of(found.value);
+      }
 
-      return [...new Set(found.flatMap(Option.toArray))];
-    },
-  );
+      const parent = path.dirname(current);
 
-  return ConfigLoader.of({ load, findNearest, findWorkspace });
+      if (Option.contains(stop, current) || parent === current) {
+        return yield* noConfig(
+          start,
+          `No ${configBaseName}.ts exists in this directory or in an ancestor up to ${Option.getOrElse(stop, () => parent)}.`,
+        );
+      }
+
+      current = parent;
+    }
+  });
+
+  /** The files that git tracks or does not ignore. None when git fails, as outside a repo. */
+  const gitFiles = (directory: string): Effect.Effect<Option.Option<ReadonlyArray<string>>> =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const handle = yield* spawner.spawn(
+          ChildProcess.make(
+            "git",
+            ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            {
+              cwd: directory,
+              stdin: "ignore",
+              stderr: "ignore",
+            },
+          ),
+        );
+
+        const [stdout, exitCode] = yield* Effect.all(
+          [Stream.mkString(Stream.decodeText(handle.stdout)), handle.exitCode],
+          { concurrency: 2 },
+        );
+
+        return exitCode === 0
+          ? Option.some(
+              stdout
+                .split("\0")
+                .filter((file) => file !== "")
+                .map((file) => path.join(directory, file)),
+            )
+          : Option.none();
+      }),
+    ).pipe(Effect.orElseSucceed(() => Option.none()));
+
+  /** Every config file below a folder, without `node_modules` and dot folders. */
+  const walk = (directory: string): Effect.Effect<ReadonlyArray<string>> =>
+    Effect.gen(function* () {
+      const names = yield* Effect.orElseSucceed(fs.readDirectory(directory), () => []);
+
+      const nested = yield* Effect.forEach(names, (name) => {
+        const file = path.join(directory, name);
+
+        if (configNames.has(name)) {
+          return Effect.succeed([file]);
+        }
+
+        if (name === skippedFolder || name.startsWith(".")) {
+          return Effect.succeed([]);
+        }
+
+        return fs.stat(file).pipe(
+          Effect.flatMap((info) => (info.type === "Directory" ? walk(file) : Effect.succeed([]))),
+          Effect.orElseSucceed(() => []),
+        );
+      });
+
+      return nested.flat();
+    });
+
+  const down = Effect.fn("ConfigLoader.down")(function* (start: string) {
+    const listed = Option.isSome(yield* projectRoot(start))
+      ? yield* gitFiles(start)
+      : Option.none<ReadonlyArray<string>>();
+
+    const candidates = Option.isSome(listed)
+      ? yield* Effect.filter(
+          listed.value.filter((file) => configNames.has(path.basename(file))),
+          exists,
+        )
+      : yield* walk(start);
+
+    const skipped = (file: string) =>
+      path
+        .relative(start, path.dirname(file))
+        .split(path.sep)
+        .some((part) => part === skippedFolder || part.startsWith("."));
+
+    // One config per folder: the first extension in the order of the search.
+    const byFolder = Arr.groupBy(
+      candidates.filter((file) => !skipped(file)),
+      (file) => path.dirname(file),
+    );
+
+    const found = Object.values(byFolder)
+      .map((files) =>
+        files.toSorted(
+          (a, b) =>
+            configExtensions.indexOf(path.extname(a)) - configExtensions.indexOf(path.extname(b)),
+        ),
+      )
+      .flatMap((files) => files.slice(0, 1))
+      .toSorted();
+
+    return Arr.isReadonlyArrayNonEmpty(found)
+      ? found
+      : yield* noConfig(start, `No ${configBaseName}.ts exists in this directory or below it.`);
+  });
+
+  const find: Interface["find"] = (directory, search) => {
+    const start = path.resolve(directory);
+
+    if (search === ConfigSearch.Up) {
+      return up(start);
+    }
+
+    return search === ConfigSearch.Down
+      ? down(start)
+      : Effect.flatMap(projectRoot(start), (root) => down(Option.getOrElse(root, () => start)));
+  };
+
+  return ConfigLoader.of({ load, find });
 });
 
 /** The config loader on top of the platform file system. */
-export const layer: Layer.Layer<ConfigLoader, never, FileSystem.FileSystem | Path.Path> =
-  Layer.effect(ConfigLoader, make);
+export const layer: Layer.Layer<
+  ConfigLoader,
+  never,
+  FileSystem.FileSystem | Path.Path | ChildProcessSpawner
+> = Layer.effect(ConfigLoader, make);

@@ -15,6 +15,16 @@ const decode = (source: Source.AnySource) =>
   });
 
 describe("op", () => {
+  it.effect("rejects a part with / or ?, which the reference syntax cannot escape", () =>
+    Effect.gen(function* () {
+      const slash = yield* Effect.flip(decode(op("app", "api/prod", "key")));
+      const query = yield* Effect.flip(decode(op({ vault: "app", item: "otp?", field: "key" })));
+
+      expect(slash.message).toContain("item ID");
+      expect(query.message).toContain("item ID");
+    }),
+  );
+
   it.effect("turns all three forms into one normalized reference", () =>
     Effect.gen(function* () {
       const fromString = yield* decode(op("op://app/postgres/url"));

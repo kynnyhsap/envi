@@ -3,6 +3,7 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import * as Cache from "./Cache.ts";
@@ -16,10 +17,12 @@ import {
   ExportError,
   hints,
   SecretReferenceError,
+  SettingsError,
   UnknownStageError,
   VarsError,
 } from "./Errors.ts";
 import { mem, memoryProvider } from "./Memory.ts";
+import * as Provider from "./Provider.ts";
 import { ExportFormat, ValueOrigin } from "./Reports.ts";
 import * as Source from "./Source.ts";
 
@@ -47,6 +50,27 @@ const layer = Layer.provide(Envi.layer(), Cache.layerMemory);
 
 const withEnv = (env: Readonly<Record<string, string>>) =>
   ConfigProvider.layer(ConfigProvider.fromUnknown(env));
+
+/** A provider that records whether each batch may ask the user. */
+const recording = () => {
+  const seen: Array<boolean> = [];
+
+  const provider = Provider.make({
+    id: "memory",
+    scope: "recording",
+    resolveMany: (requests, context) =>
+      Effect.sync(() => {
+        seen.push(context.interactive);
+
+        return Object.fromEntries(
+          requests.map((request) => [request.key, Result.succeed("value")]),
+        );
+      }),
+    helpers: {},
+  });
+
+  return { seen, config: defineConfig({ providers: [provider], vars: { A: mem("a") } }) };
+};
 
 describe("Envi", () => {
   it.effect("loads the decoded values of the default stage", () =>
@@ -426,4 +450,46 @@ describe("Envi", () => {
       expect((yield* envi.cache.list).entries).toEqual([]);
     }).pipe(Effect.provide(layer), Effect.provide(withEnv({ GITHUB_SHA: "abc123" }))),
   );
+
+  describe("interactive", () => {
+    const interactiveOf = (
+      env: Readonly<Record<string, string>>,
+      options: Envi.LayerOptions = {},
+    ) =>
+      Effect.gen(function* () {
+        const { seen, config } = recording();
+
+        yield* Effect.flatMap(Envi.Envi, (envi) => envi.load(config)).pipe(
+          Effect.provide(Layer.provide(Envi.layer(options), Cache.layerMemory)),
+          Effect.provide(withEnv(env)),
+        );
+
+        return seen[0];
+      });
+
+    it.effect("is on outside CI, off in CI, and set by ENVI_INTERACTIVE and the option", () =>
+      Effect.gen(function* () {
+        expect(yield* interactiveOf({})).toBe(true);
+        expect(yield* interactiveOf({ CI: "true" })).toBe(false);
+        expect(yield* interactiveOf({ CI: "woodpecker" })).toBe(false);
+        expect(yield* interactiveOf({ CI: "false" })).toBe(true);
+        expect(yield* interactiveOf({ CI: "0" })).toBe(true);
+        expect(yield* interactiveOf({ CI: "" })).toBe(true);
+        expect(yield* interactiveOf({ ENVI_INTERACTIVE: "false" })).toBe(false);
+        expect(yield* interactiveOf({ CI: "true", ENVI_INTERACTIVE: "true" })).toBe(true);
+        expect(yield* interactiveOf({ ENVI_INTERACTIVE: "true" }, { interactive: false })).toBe(
+          false,
+        );
+      }),
+    );
+
+    it.effect("rejects an ENVI_INTERACTIVE value that is not a boolean", () =>
+      Effect.gen(function* () {
+        const error = yield* Effect.flip(interactiveOf({ ENVI_INTERACTIVE: "maybe" }));
+
+        expect(error).toBeInstanceOf(SettingsError);
+        expect(error).toMatchObject({ name: "ENVI_INTERACTIVE" });
+      }),
+    );
+  });
 });

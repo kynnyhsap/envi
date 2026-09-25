@@ -4,17 +4,18 @@ import type * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 
 import * as Cache from "./Cache.ts";
 import type { CacheSettings } from "./Config.ts";
+import { type CacheError, CacheFailure, hints } from "./Errors.ts";
 import * as FileCache from "./FileCache.ts";
+import * as Settings from "./Settings.ts";
 
 /** The inputs of the cache selection. A flag wins over a variable, and a variable over the config. */
 export interface Options {
   /** The `cache` key of the config, or of the client overrides. */
   readonly settings: Option.Option<false | CacheSettings>;
-  /** `true` on macOS. Without a keychain, the encrypted cache is off. */
-  readonly keychainAvailable: boolean;
   /** `--cache` and `--no-cache`. */
   readonly enabled: Option.Option<boolean>;
   /** `--cache-dir`. */
@@ -29,15 +30,56 @@ export const directoryVariable = "ENVI_CACHE_DIR";
 
 const homeVariable = "HOME";
 
-const ciVariable = "CI";
-
 /** Reads a variable. A value that does not parse counts as absent, because a cache is optional. */
 const read = <A>(setting: EffectConfig.Config<A>): Effect.Effect<Option.Option<A>> =>
   Effect.orElseSucceed(EffectConfig.option(setting), () => Option.none());
 
+const isKeyUnavailable = (error: CacheError): boolean =>
+  error.reason === CacheFailure.KeyUnavailable;
+
+/**
+ * Turns a missing encryption key into a run without a cache and one warning. Envi reads the key
+ * on the first use, so a run without a cached reference never reads it.
+ */
+const withoutKeyFallback = (cache: Cache.Interface): Effect.Effect<Cache.Interface> =>
+  Effect.map(Ref.make(false), (off) => {
+    const guarded =
+      <Args extends ReadonlyArray<unknown>, A>(
+        use: (target: Cache.Interface) => (...args: Args) => Effect.Effect<A, CacheError>,
+      ) =>
+      (...args: Args): Effect.Effect<A, CacheError> =>
+        Effect.flatMap(Ref.get(off), (isOff) =>
+          isOff
+            ? use(Cache.none)(...args)
+            : use(cache)(...args).pipe(
+                Effect.catchIf(isKeyUnavailable, (error) =>
+                  Effect.flatMap(Ref.getAndSet(off, true), (wasOff) =>
+                    wasOff
+                      ? use(Cache.none)(...args)
+                      : Effect.logWarning(
+                          `Envi runs without a cache. ${error.detail} ${hints.CacheError.KeyUnavailable}`,
+                        ).pipe(Effect.andThen(use(Cache.none)(...args))),
+                  ),
+                ),
+              ),
+        );
+
+    return Cache.Cache.of({
+      getMany: guarded((target) => target.getMany),
+      setMany: guarded((target) => target.setMany),
+      removeMany: guarded((target) => target.removeMany),
+      list: guarded((target) => target.list),
+      clear: guarded((target) => target.clear),
+      withResolveLock: (effect) =>
+        Effect.flatMap(Ref.get(off), (isOff) => (isOff ? effect : cache.withResolveLock(effect))),
+      directory: cache.directory,
+    });
+  });
+
 /**
  * Selects the cache of a run: the encrypted file cache, the plaintext file cache after an
- * explicit opt-in, or no cache. The cache is off in CI and off without a keychain.
+ * explicit opt-in, or no cache. The cache is off in CI. Without a key, the cache is off with a
+ * warning, unless `--cache` or `ENVI_CACHE_ENABLED` asks for it.
  */
 export const layer = (
   options: Options,
@@ -45,22 +87,18 @@ export const layer = (
   Layer.unwrap(
     Effect.gen(function* () {
       const path = yield* Path.Path;
-      const isCi = Option.getOrElse(yield* read(EffectConfig.Boolean(ciVariable)), () => false);
+      const isCi = yield* Settings.isCi;
       const fromVariable = yield* read(EffectConfig.Boolean(enabledVariable));
+      const explicit = Option.orElse(options.enabled, () => fromVariable);
       const settings = Option.filter(options.settings, (value) => value !== false);
       const isPlaintext = Option.exists(settings, (value) => value.encryption === "none");
 
-      const isEnabled = options.enabled.pipe(
-        Option.orElse(() => fromVariable),
-        Option.getOrElse(
-          () =>
-            !Option.contains(options.settings, false) &&
-            !isCi &&
-            (options.keychainAvailable || isPlaintext),
-        ),
+      const isEnabled = Option.getOrElse(
+        explicit,
+        () => !Option.contains(options.settings, false) && !isCi,
       );
 
-      if (!isEnabled || (!options.keychainAvailable && !isPlaintext)) {
+      if (!isEnabled) {
         return Cache.layerNone;
       }
 
@@ -80,8 +118,16 @@ export const layer = (
         return Cache.layerNone;
       }
 
-      return isPlaintext
-        ? FileCache.layerPlaintext({ directory: selected.value })
-        : FileCache.layer({ directory: selected.value });
+      if (isPlaintext) {
+        return FileCache.layerPlaintext({ directory: selected.value });
+      }
+
+      const encrypted = FileCache.layer({ directory: selected.value });
+
+      return Option.isSome(explicit)
+        ? encrypted
+        : Layer.effect(Cache.Cache, Effect.flatMap(Cache.Cache, withoutKeyFallback)).pipe(
+            Layer.provide(encrypted),
+          );
     }),
   );

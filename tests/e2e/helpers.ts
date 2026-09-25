@@ -26,14 +26,21 @@ export const secrets = {
   shared: "shared-value",
 } as const;
 
-/** Variables of the developer machine that must not reach a test run. */
+/**
+ * Variables of the developer machine that must not reach a test run. The fixtures live in the
+ * Envi repo, so the search goes up only: `repo` would find every fixture. A test of the search
+ * sets its own value.
+ */
 const cleared = {
   CI: undefined,
   ENVI_STAGE: undefined,
   ENVI_CONFIG: undefined,
+  ENVI_CONFIG_SEARCH: "up",
   ENVI_STRICT: undefined,
+  ENVI_INTERACTIVE: undefined,
   ENVI_CACHE_DIR: undefined,
   ENVI_CACHE_ENABLED: undefined,
+  ENVI_CACHE_KEY: undefined,
   ENVI_DELEGATED: undefined,
 };
 

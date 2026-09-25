@@ -23,7 +23,7 @@ import {
   type ProviderError,
   RunError,
   RunFailure,
-  SettingsError,
+  type SettingsError,
   type UnknownStageError,
   VarsError,
 } from "./Errors.ts";
@@ -40,6 +40,7 @@ import {
   type VarFailure,
 } from "./Reports.ts";
 import * as Resolver from "./Resolver.ts";
+import * as Settings from "./Settings.ts";
 import * as Signals from "./Signals.ts";
 import * as Source from "./Source.ts";
 import * as Timing from "./Timing.ts";
@@ -70,6 +71,11 @@ export interface LayerOptions {
   /** Replaces the providers of every config. Tests pass an in-memory provider here. */
   readonly providers?: ReadonlyArray<Provider.Provider> | undefined;
   readonly strict?: boolean | undefined;
+  /**
+   * Allows a prompt, such as a desktop app approval. Default: `ENVI_INTERACTIVE`, then `true`
+   * outside CI and `false` in CI. Without it, a provider fails at once instead of waiting.
+   */
+  readonly interactive?: boolean | undefined;
 }
 
 /** The options of one resolution. */
@@ -205,31 +211,16 @@ export const providerVariablePrefix = "ENVI_PROVIDER_";
 
 const strictVariable = "ENVI_STRICT";
 
-const ciVariable = "CI";
-
-const readSetting = <A>(
-  name: string,
-  expected: string,
-  setting: EffectConfig.Config<A>,
-): Effect.Effect<A, SettingsError> =>
-  Effect.mapError(setting, () => new SettingsError({ name, expected }));
-
-const readStage = readSetting(
+const readStage = Settings.read(
   stageVariable,
   "a stage name",
   EffectConfig.option(EffectConfig.String(stageVariable)),
 );
 
-const readStrict = readSetting(
+const readStrict = Settings.read(
   strictVariable,
   "true or false",
   EffectConfig.option(EffectConfig.Boolean(strictVariable)),
-);
-
-const readCi = readSetting(
-  ciVariable,
-  "true or false",
-  EffectConfig.withDefault(EffectConfig.Boolean(ciVariable), false),
 );
 
 /** The reference text and the reason code of one failure. It never holds a value. */
@@ -370,8 +361,9 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     stage: string,
     options: ResolveOptions | undefined,
   ) {
-    const isCi = yield* readCi;
+    const isCi = yield* Settings.isCi;
     const strictFromEnvironment = yield* readStrict;
+    const interactiveFromEnvironment = yield* Settings.interactive;
 
     const strict = Option.fromUndefinedOr(options?.strict).pipe(
       Option.orElse(() => Option.fromUndefinedOr(layerOptions.strict)),
@@ -387,7 +379,10 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
       refresh: options?.refresh ?? false,
       // CI is always strict.
       strict: isCi || strict,
-      interactive: !isCi,
+      interactive: Option.fromUndefinedOr(layerOptions.interactive).pipe(
+        Option.orElse(() => interactiveFromEnvironment),
+        Option.getOrElse(() => !isCi),
+      ),
       ttl: Option.getOrElse(
         Option.flatMap(settings, (value) => Option.fromUndefinedOr(value.ttl)),
         () => defaultTtl,
@@ -635,6 +630,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
             : [];
         }),
       ),
+      cache: Option.isSome(cache.directory),
       durationMillis: finishedAt - startedAt,
     };
   });

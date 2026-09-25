@@ -3,7 +3,7 @@ import { onePasswordProvider } from "@envi/1password";
 // `vars` receives the stage, the built-in helpers, and the helpers of each provider.
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { CustomFailure, defineConfig } from "envi";
+import { BooleanFromString, CustomFailure, defineConfig } from "envi";
 
 declare const fetchBuildNumber: () => Promise<string>;
 declare const exchangeToken: (clientSecret: string) => Effect.Effect<string, Error>;
@@ -15,7 +15,8 @@ export default defineConfig({
   cache: { ttl: "12 hours", maxStale: "3 days" },
   vars: ({ stage, op, value, derive, custom, fromEnv }) => ({
     NODE_ENV: stage === "production" ? "production" : "development",
-    PORT: value("3000").schema(Schema.NumberFromString),
+    PORT: value("3000").schema(Schema.FiniteFromString),
+    FEATURE_SEARCH: fromEnv("FEATURE_SEARCH").schema(BooleanFromString).default("false"),
     DATABASE_URL: op(`op://app-${stage}/postgres/url`).schema(Schema.URLFromString),
     STRIPE_KEY: op("payments", "stripe", "secret-key"),
     SENTRY_DSN: op({
@@ -45,7 +46,7 @@ export default defineConfig({
       {
         user: op("app", "replica", "user"),
         password: op("app", "replica", "password"),
-        port: op("app", "replica", "port").schema(Schema.NumberFromString),
+        port: op("app", "replica", "port").schema(Schema.FiniteFromString),
       },
       ({ user, password, port }) => `postgres://${user}:${password}@replica:${port}/app`,
     ).schema(Schema.URLFromString),

@@ -172,9 +172,9 @@ Next action: Check that the cache directory is writable, or select another one w
 
 ### CacheError KeyUnavailable
 
-Envi cannot get the encryption key of the cache from the OS keychain.
+Envi has no encryption key for the cache: `ENVI_CACHE_KEY` is not set, and the OS keychain gives no key. Without `--cache` or `ENVI_CACHE_ENABLED`, Envi warns once and runs without a cache.
 
-Next action: Allow Envi to use the OS keychain, or turn the cache off with `--no-cache`.
+Next action: Set ENVI_CACHE_KEY, or allow Envi to use the OS keychain (on Linux, install `secret-tool`), or turn the cache off with `--no-cache`.
 
 <a id="error-cache-lock-timeout"></a>
 
@@ -191,14 +191,6 @@ Next action: Another Envi process holds the cache lock. Wait for it to finish, t
 A value holds characters that the dotenv format cannot quote safely.
 
 Next action: Export with `--format json`, or remove the characters that dotenv cannot quote from the value.
-
-<a id="error-export-file-not-ignored"></a>
-
-### ExportFileError NotIgnored
-
-git does not ignore the output file of `envi export --output`.
-
-Next action: Add the file to `.gitignore` first.
 
 <a id="error-export-file-write-failed"></a>
 
@@ -260,9 +252,17 @@ Next action: Check the path in `--config` or `ENVI_CONFIG`.
 
 ### ConfigLoadError NoConfig
 
-Envi found no config file in the working directory or in an ancestor.
+The config search found no config file. `up` looks in the working directory and its ancestors up to the project root, or up to the home folder outside a repo. `down` and `repo` look below a folder.
 
-Next action: Create `envi.config.ts` in the project, or pass `--config <file>`.
+Next action: Create `envi.config.ts` in the project, pass `--config <file>`, or search in another direction with `--config-search`.
+
+<a id="error-config-load-many-configs"></a>
+
+### ConfigLoadError ManyConfigs
+
+`run`, `check`, `inspect`, and `export` use one config. The search or the flags gave several.
+
+Next action: Pass one `--config <file>`, or run the command in the folder of one config with `--config-search up`.
 
 <a id="error-config-load-import-failed"></a>
 

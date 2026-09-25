@@ -30,6 +30,7 @@
     "test:unit": "vitest run --project unit",
     "test:e2e": "bun run build && vitest run --project e2e",
     "test:onepassword": "bun run build && node --env-file-if-exists=.env.local node_modules/vitest/vitest.mjs run --project onepassword --no-file-parallelism",
+    "test:linux": "sh tests/linux/run.sh",
     "test:unit:bun": "bun --bun vitest run --project unit",
     "test": "bun test:unit && bun test:unit:bun && bun test:e2e",
     "verify": "bun run --parallel check test",

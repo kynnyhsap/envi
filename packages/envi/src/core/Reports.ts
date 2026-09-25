@@ -78,6 +78,8 @@ export const SyncReport = Schema.Struct({
     }),
   ),
   failures: Schema.Array(VarFailure),
+  /** `false` when the cache is off, as in CI. The next run then resolves every secret again. */
+  cache: Schema.Boolean,
   durationMillis: Schema.Number,
 });
 

@@ -6,9 +6,10 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import { fileURLToPath } from "node:url";
 
-import { ExitCode, KeychainAvailable, main } from "./cli.ts";
+import { ExitCode, KeyStore, main } from "./cli.ts";
 import { Envi } from "./core/index.ts";
 import { delegatedVariable, findLocalBin, runLocal } from "./delegate.ts";
+import { keyStoreOf } from "./layer.ts";
 import * as Signals from "./signals.ts";
 
 // The entry point is the only place that reads the process: arguments, environment, platform.
@@ -20,7 +21,7 @@ const MainLayer = Layer.mergeAll(
   NodeServices.layer,
   Signals.layer,
   Layer.succeed(Envi.ParentEnvironment, parentEnvironment),
-  Layer.succeed(KeychainAvailable, process.platform === "darwin"),
+  Layer.succeed(KeyStore, keyStoreOf(process.platform)),
 );
 
 const argv = process.argv.slice(2);

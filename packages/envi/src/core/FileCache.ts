@@ -9,6 +9,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
+import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
@@ -92,6 +93,9 @@ const Entry = Schema.fromJsonString(Schema.Union([EncryptedEntry, PlainEntry]));
 type Entry = typeof Entry.Type;
 
 const entrySuffix = ".json";
+
+/** The suffix of an entry that Envi writes and has not renamed yet. `clear` removes it. */
+const tempSuffix = ".tmp";
 
 const algorithm = "AES-GCM";
 
@@ -252,31 +256,42 @@ const make = Effect.fn("FileCache.make")(function* (
       ),
     );
 
-  /** Writes a temp file and renames it, so a reader never sees a partial entry. */
+  /**
+   * Writes a temp file and renames it, so a reader never sees a partial entry. The release
+   * removes the temp file also after an interrupt, because a plaintext entry holds a secret.
+   */
   const writeRecord = (key: string, record: Cache.CacheRecord): Effect.Effect<void, CacheError> =>
     Effect.gen(function* () {
       const file = path.join(options.directory, yield* fileNameOf(key));
-      const temp = `${file}.${Encoding.encodeHex(crypto.getRandomValues(new Uint8Array(6)))}.tmp`;
+      const suffix = Encoding.encodeHex(crypto.getRandomValues(new Uint8Array(6)));
+      const temp = `${file}.${suffix}${tempSuffix}`;
       const text = yield* encodeEntry(key, record);
 
-      yield* fs.writeFileString(temp, text, { flag: "wx", mode: 0o600 }).pipe(
-        Effect.andThen(fs.rename(temp, file)),
-        Effect.mapError(() => unwritable("Envi cannot write a cache entry.")),
-      );
+      yield* Effect.acquireUseRelease(
+        Effect.as(fs.writeFileString(temp, text, { flag: "wx", mode: 0o600 }), temp),
+        () => fs.rename(temp, file),
+        () => Effect.ignore(fs.remove(temp, { force: true })),
+      ).pipe(Effect.mapError(() => unwritable("Envi cannot write a cache entry.")));
     });
 
-  const entryFiles = fs.readDirectory(options.directory).pipe(
-    Effect.map((names) =>
-      names
-        .filter((name) => name.endsWith(entrySuffix))
-        .map((name) => path.join(options.directory, name)),
-    ),
-    Effect.catchIf(
-      (error) => Predicate.isTagged(error.reason, "NotFound"),
-      () => Effect.succeed([]),
-    ),
-    Effect.mapError(() => unreadable("Envi cannot read the cache directory.")),
-  );
+  /** The files of the cache directory whose names end with the suffix. */
+  const filesEndingWith = (suffix: string) =>
+    fs.readDirectory(options.directory).pipe(
+      Effect.map((names) =>
+        names
+          .filter((name) => name.endsWith(suffix))
+          .map((name) => path.join(options.directory, name)),
+      ),
+      Effect.catchIf(
+        (error) => Predicate.isTagged(error.reason, "NotFound"),
+        () => Effect.succeed([]),
+      ),
+      Effect.mapError(() => unreadable("Envi cannot read the cache directory.")),
+    );
+
+  const entryFiles = filesEndingWith(entrySuffix);
+
+  const tempFiles = filesEndingWith(tempSuffix);
 
   const remove = (file: string) =>
     fs
@@ -289,7 +304,38 @@ const make = Effect.fn("FileCache.make")(function* (
     return Effect.as(fs.writeFileString(temp, String(now), { flag: "wx", mode: 0o600 }), temp);
   };
 
-  const tryTakeLock: Effect.Effect<boolean, CacheError> = Effect.gen(function* () {
+  /** The text of the lock file. None when the lock file is missing or does not read. */
+  const lockText = Effect.option(fs.readFileString(lockFile));
+
+  /**
+   * Removes a stale lock. The rename to a unique name is atomic, so only one process moves the
+   * file. When the moved file holds another text, another process took the lock after the read:
+   * the link puts its lock back, unless a third process holds the lock already.
+   */
+  const removeStaleLock = (observed: string) =>
+    Effect.gen(function* () {
+      const moved = `${lockFile}.${crypto.randomUUID()}.stale`;
+
+      const renamed = yield* fs.rename(lockFile, moved).pipe(
+        Effect.as(true),
+        Effect.orElseSucceed(() => false),
+      );
+
+      if (!renamed) {
+        return;
+      }
+
+      const text = yield* Effect.orElseSucceed(fs.readFileString(moved), () => observed);
+
+      if (text !== observed) {
+        yield* Effect.ignore(fs.link(moved, lockFile));
+      }
+
+      yield* Effect.ignore(fs.remove(moved, { force: true }));
+    });
+
+  /** Takes the lock once. Some holds the time that this process wrote into the lock file. */
+  const tryTakeLock: Effect.Effect<Option.Option<number>, CacheError> = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
 
     // A lock file always holds a complete time: Envi writes a temp file and links it. A reader
@@ -308,26 +354,41 @@ const make = Effect.fn("FileCache.make")(function* (
     ).pipe(Effect.mapError(() => unwritable("Envi cannot create the lock file of the cache.")));
 
     if (taken) {
-      return true;
+      return Option.some(now);
     }
 
     // A lock file without a readable time, or with an old time, belongs to a crashed owner.
-    const heldSince = yield* fs.readFileString(lockFile).pipe(
-      Effect.map((text) => Number(text)),
-      Effect.orElseSucceed(() => now),
-    );
+    const observed = yield* lockText;
 
-    if (now - heldSince > Duration.toMillis(lockStaleAfter) || Number.isNaN(heldSince)) {
-      yield* remove(lockFile);
+    if (Option.isNone(observed)) {
+      return yield* Effect.suspend(() => tryTakeLock);
+    }
+
+    const heldSince = Number(observed.value);
+
+    if (Number.isNaN(heldSince) || now - heldSince > Duration.toMillis(lockStaleAfter)) {
+      yield* removeStaleLock(observed.value);
 
       return yield* Effect.suspend(() => tryTakeLock);
     }
 
-    return false;
+    return Option.none();
   });
 
-  const takeLock = tryTakeLock.pipe(
-    Effect.repeat({ until: (taken) => taken, schedule: Schedule.spaced("100 millis") }),
+  /** Tries to take the lock every 100 ms until it holds the time of this process. */
+  const waitForLock: Effect.Effect<number, CacheError> = Effect.flatMap(
+    tryTakeLock,
+    Option.match({
+      onSome: Effect.succeed,
+      onNone: () =>
+        Effect.andThen(
+          Effect.sleep("100 millis"),
+          Effect.suspend(() => waitForLock),
+        ),
+    }),
+  );
+
+  const takeLock = waitForLock.pipe(
     Effect.timeoutOrElse({
       duration: lockWait,
       orElse: () =>
@@ -340,18 +401,44 @@ const make = Effect.fn("FileCache.make")(function* (
     }),
   );
 
-  /** The owner renews the time in the lock file, so a long provider prompt does not look crashed. */
-  const renewLock = Clock.currentTimeMillis.pipe(
-    Effect.flatMap((now) =>
-      Effect.acquireUseRelease(
+  /** `true` while the lock file holds the time that this process wrote last. */
+  const ownsLock = (owned: Ref.Ref<number>) =>
+    Effect.map(Effect.all([lockText, Ref.get(owned)]), ([text, time]) =>
+      Option.contains(text, String(time)),
+    );
+
+  /**
+   * The owner renews the time in the lock file, so a long provider prompt does not look crashed.
+   * It renews only its own lock: after a steal, the lock belongs to the other process. One renewal
+   * is uninterruptible, so the lock file and `owned` always hold the same time for the release.
+   */
+  const renewLock = (owned: Ref.Ref<number>) => {
+    const interval = Duration.divideUnsafe(lockStaleAfter, 3);
+
+    const renew = Effect.gen(function* () {
+      if (!(yield* ownsLock(owned))) {
+        return;
+      }
+
+      const now = yield* Clock.currentTimeMillis;
+
+      yield* Effect.acquireUseRelease(
         writeLockTemp(now),
         (temp) => fs.rename(temp, lockFile),
         (temp) => Effect.ignore(fs.remove(temp, { force: true })),
-      ),
-    ),
-    Effect.ignore,
-    Effect.repeat(Schedule.spaced(Duration.divideUnsafe(lockStaleAfter, 3))),
-  );
+      );
+
+      yield* Ref.set(owned, now);
+    }).pipe(Effect.ignore, Effect.uninterruptible);
+
+    return Effect.andThen(Effect.sleep(interval), renew).pipe(Effect.repeat(Schedule.forever));
+  };
+
+  /** Removes the lock only while it holds the time of this process. */
+  const releaseLock = (owned: Ref.Ref<number>) =>
+    Effect.flatMap(ownsLock(owned), (owns) =>
+      owns ? Effect.ignore(remove(lockFile)) : Effect.void,
+    );
 
   return Cache.Cache.of({
     getMany: (keys) =>
@@ -397,17 +484,23 @@ const make = Effect.fn("FileCache.make")(function* (
         ),
       ),
     clear: () =>
-      Effect.flatMap(entryFiles, (files) =>
+      Effect.flatMap(Effect.all([entryFiles, tempFiles]), ([entries, temps]) =>
         Effect.as(
-          Effect.forEach(files, remove, { concurrency: "unbounded", discard: true }),
-          files.length,
+          Effect.forEach([...entries, ...temps], remove, {
+            concurrency: "unbounded",
+            discard: true,
+          }),
+          entries.length,
         ),
       ),
     withResolveLock: (effect) =>
       Effect.acquireUseRelease(
-        Effect.andThen(ensureDirectory, takeLock),
-        () => Effect.raceFirst(effect, Effect.andThen(renewLock, Effect.never)),
-        () => Effect.ignore(remove(lockFile)),
+        ensureDirectory.pipe(
+          Effect.andThen(takeLock),
+          Effect.flatMap((time) => Ref.make(time)),
+        ),
+        (owned) => Effect.raceFirst(effect, Effect.andThen(renewLock(owned), Effect.never)),
+        releaseLock,
       ),
     directory: Option.some(options.directory),
   });

@@ -73,15 +73,11 @@ export type CacheFailure = typeof CacheFailureSchema.Type;
 
 /** The reasons why `envi export --output` writes no file. */
 export const ExportFileFailure = {
-  NotIgnored: "NotIgnored",
   WriteFailed: "WriteFailed",
 } as const;
 
 /** The schema of `ExportFileFailure`. */
-export const ExportFileFailureSchema = Schema.Literals([
-  ExportFileFailure.NotIgnored,
-  ExportFileFailure.WriteFailed,
-]);
+export const ExportFileFailureSchema = Schema.Literals([ExportFileFailure.WriteFailed]);
 
 export type ExportFileFailure = typeof ExportFileFailureSchema.Type;
 
@@ -110,6 +106,8 @@ export const ConfigLoadFailure = {
   NotFound: "NotFound",
   /** The search found no config file. */
   NoConfig: "NoConfig",
+  /** A command that uses one config got several, from the search or from the flags. */
+  ManyConfigs: "ManyConfigs",
   ImportFailed: "ImportFailed",
   ConfigSyntax: "ConfigSyntax",
   /** `vars` threw while Envi evaluated it for a stage. */
@@ -123,6 +121,7 @@ export const ConfigLoadFailure = {
 export const ConfigLoadFailureSchema = Schema.Literals([
   ConfigLoadFailure.NotFound,
   ConfigLoadFailure.NoConfig,
+  ConfigLoadFailure.ManyConfigs,
   ConfigLoadFailure.ImportFailed,
   ConfigLoadFailure.ConfigSyntax,
   ConfigLoadFailure.VarsThrew,
@@ -188,14 +187,14 @@ export const hints: Catalog = {
       "Check the permissions of the cache directory, or remove the entries with `envi cache clear`.",
     Unwritable:
       "Check that the cache directory is writable, or select another one with `--cache-dir` or `ENVI_CACHE_DIR`.",
-    KeyUnavailable: "Allow Envi to use the OS keychain, or turn the cache off with `--no-cache`.",
+    KeyUnavailable:
+      "Set ENVI_CACHE_KEY, or allow Envi to use the OS keychain (on Linux, install `secret-tool`), or turn the cache off with `--no-cache`.",
     LockTimeout:
       "Another Envi process holds the cache lock. Wait for it to finish, then run the command again.",
   },
   ExportError:
     "Export with `--format json`, or remove the characters that dotenv cannot quote from the value.",
   ExportFileError: {
-    NotIgnored: "Add the file to `.gitignore` first.",
     WriteFailed: "Check that the folder of the file exists and is writable.",
   },
   SettingsError: "Fix the value of the environment variable, or unset it.",
@@ -210,7 +209,10 @@ export const hints: Catalog = {
   },
   ConfigLoadError: {
     NotFound: "Check the path in `--config` or `ENVI_CONFIG`.",
-    NoConfig: "Create `envi.config.ts` in the project, or pass `--config <file>`.",
+    NoConfig:
+      "Create `envi.config.ts` in the project, pass `--config <file>`, or search in another direction with `--config-search`.",
+    ManyConfigs:
+      "Pass one `--config <file>`, or run the command in the folder of one config with `--config-search up`.",
     ImportFailed: "Run the config file on its own to see the error, such as `bun envi.config.ts`.",
     ConfigSyntax:
       "Fix the syntax error at the location. Run the config file on its own to see the parser message.",
@@ -517,9 +519,7 @@ export class ExportFileError extends Schema.TaggedError<ExportFileError>()("Expo
   path: Schema.String,
 }) {
   get summary(): string {
-    return this.reason === ExportFileFailure.NotIgnored
-      ? `Envi export wrote no file: git does not ignore ${this.path}`
-      : `Envi export wrote no file: ${this.reason} at ${this.path}`;
+    return `Envi export wrote no file: ${this.reason} at ${this.path}`;
   }
 
   get hint(): string {
