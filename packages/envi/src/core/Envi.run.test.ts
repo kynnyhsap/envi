@@ -12,6 +12,7 @@ import { defineConfig } from "./Config.ts";
 import * as Envi from "./Envi.ts";
 import { RunError, RunFailure, SecretReferenceError, VarsError } from "./Errors.ts";
 import { mem, memoryProvider } from "./Memory.ts";
+import * as Provider from "./Provider.ts";
 
 const spawned: Array<ChildProcess.StandardCommand> = [];
 
@@ -51,7 +52,7 @@ const spawner = ChildProcessSpawner.make((command) => {
 const parent = {
   PATH: "/usr/bin",
   TOKEN: "inherited",
-  OP_SERVICE_ACCOUNT_TOKEN: "ops_secret",
+  VAULT_TOKEN: "vault-secret",
   ENVI_PROVIDER_ONEPASSWORD_ACCOUNT: "my-team",
   ENVI_STAGE: "development",
 };
@@ -62,9 +63,18 @@ const layer = Layer.mergeAll(
   Layer.succeed(Envi.ParentEnvironment, parent),
 );
 
+/** A provider with a credential variable. `run` removes the variable from the child. */
+const vault = Provider.make({
+  id: "vault",
+  scope: "vault",
+  credentialVariables: ["VAULT_TOKEN"],
+  resolveMany: () => Effect.succeed({}),
+  helpers: {},
+});
+
 const config = defineConfig({
   stages: ["development", "production"],
-  providers: [memoryProvider({ token: "resolved" })],
+  providers: [memoryProvider({ token: "resolved" }), vault],
   vars: { TOKEN: mem("token"), PORT: "3000", SENTRY_DSN: mem("sentry").optional() },
 });
 

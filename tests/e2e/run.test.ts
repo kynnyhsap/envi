@@ -162,7 +162,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
           "FROM_PARENT",
           "ENVI_STAGE",
           "KEEP_ME",
-          "OP_SERVICE_ACCOUNT_TOKEN",
+          "ENVI_E2E_FILE_TOKEN",
           "ENVI_PROVIDER_EXAMPLE_TOKEN",
         ];
 
@@ -185,7 +185,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
             API_TOKEN: "inherited-value",
             KEEP_ME: "kept",
             ENVI_E2E_PARENT: "from-parent-value",
-            OP_SERVICE_ACCOUNT_TOKEN: "fake-token-that-must-not-leak",
+            ENVI_E2E_FILE_TOKEN: "fake-token-that-must-not-leak",
             ENVI_PROVIDER_EXAMPLE_TOKEN: "fake-setting-that-must-not-leak",
           },
         );
@@ -202,7 +202,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
           FROM_PARENT: "from-parent-value",
           ENVI_STAGE: "production",
           KEEP_ME: "kept",
-          OP_SERVICE_ACCOUNT_TOKEN: null,
+          ENVI_E2E_FILE_TOKEN: null,
           ENVI_PROVIDER_EXAMPLE_TOKEN: null,
         });
       }),

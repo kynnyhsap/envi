@@ -13,6 +13,9 @@ export const secretsVariable = "ENVI_E2E_SECRETS_FILE";
 
 export const callsVariable = "ENVI_E2E_CALLS_FILE";
 
+/** A fake credential of the file provider. `run` must remove it from the child. */
+export const tokenVariable = "ENVI_E2E_FILE_TOKEN";
+
 const Secrets = Schema.fromJsonString(Schema.Record(Schema.String, Schema.String));
 
 /** The descriptor helper of the file provider. */
@@ -32,6 +35,7 @@ export const fileProvider = Provider.make({
   describe: (key) => `file://${key}`,
   // Each secrets file is its own source of values.
   scope: Effect.sync(() => process.env[secretsVariable] ?? ""),
+  credentialVariables: [tokenVariable],
   resolveMany: (requests) =>
     Effect.gen(function* () {
       const text = yield* Effect.try({

@@ -63,6 +63,39 @@ export default defineConfig({
     // It is read constantly and is not a private-member convention.
     "eslint/no-underscore-dangle": ["error", { allow: ["_tag"] }],
   },
+  overrides: [
+    {
+      // The core depends only on Effect platform services. It runs on Node and on Bun alike, and
+      // only the entry points of `envi` provide the platform layer and read the process.
+      files: ["packages/envi/src/core/**/*.ts"],
+      rules: {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                group: ["node:*", "@effect/platform-*"],
+                message: "The core uses only Effect platform services.",
+              },
+            ],
+          },
+        ],
+        "eslint/no-restricted-globals": [
+          "error",
+          { name: "Bun", message: "The core runs on Node and on Bun alike." },
+          { name: "process", message: "Only the entry points of `envi` read the process." },
+        ],
+      },
+    },
+    {
+      // A test provides the platform layer of Node itself.
+      files: ["packages/envi/src/core/**/*.test.ts"],
+      rules: {
+        "eslint/no-restricted-imports": "off",
+        "eslint/no-restricted-globals": "off",
+      },
+    },
+  ],
   env: {
     node: true,
     es2022: true,

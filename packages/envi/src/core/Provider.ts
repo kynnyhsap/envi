@@ -53,6 +53,11 @@ export interface Definition<Ref, Helpers extends object> {
    * `describe` leaves out a part that selects the value.
    */
   readonly referenceKey?: (reference: Ref) => string;
+  /**
+   * The environment variables that hold a credential of the provider. `run` removes them from
+   * the environment of the child. Default: none.
+   */
+  readonly credentialVariables?: ReadonlyArray<string>;
   /** The only resolve method. Envi rejects a result with a missing or an unknown key. */
   readonly resolveMany: (
     requests: ReadonlyArray<ProviderRequest<Ref>>,
@@ -88,6 +93,8 @@ export interface Provider<out Helpers extends object = object> {
   readonly [TypeId]: typeof TypeId;
   readonly id: string;
   readonly helpers: Helpers;
+  /** The credential variables of `Definition`. `run` removes them from the child. */
+  readonly credentialVariables: ReadonlyArray<string>;
   /** The scope of `Definition`. It can hold a credential, so only a hash of it leaves the core. */
   readonly scope: Effect.Effect<string, ProviderError>;
   /** Decodes one reference. Fails with `Invalid` when the reference does not fit the provider. */
@@ -119,6 +126,7 @@ const fromDefinition = <Ref, Helpers extends object>(
     [TypeId]: TypeId,
     id: definition.id,
     helpers: definition.helpers,
+    credentialVariables: definition.credentialVariables ?? [],
     scope: Effect.isEffect(definition.scope) ? definition.scope : Effect.succeed(definition.scope),
     prepare: (reference) =>
       Effect.map(decodeReference(reference), (decoded) => ({

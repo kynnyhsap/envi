@@ -1,4 +1,5 @@
-import { defineConfig, memoryProvider } from "envi";
+import { defineConfig } from "envi";
+import { memoryProvider } from "envi/testing";
 
 export default defineConfig({
   stages: ["development", "production"],

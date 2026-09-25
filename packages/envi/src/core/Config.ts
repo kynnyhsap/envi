@@ -195,16 +195,46 @@ const sourcesOf = (vars: Vars): Readonly<Record<string, Source.AnySource>> =>
     ]),
   );
 
+/** The names that `vars` receives besides the helpers of the providers. */
+const builtInNames: ReadonlyArray<string> = [
+  "stage",
+  "value",
+  "derive",
+  "custom",
+  "fromEnv",
+  "reference",
+];
+
+/** The first helper name that two providers, or a provider and a built-in, both define. */
+const duplicateHelperOf = (config: Config): Option.Option<string> => {
+  const names = [...builtInNames, ...config.providers.flatMap((p) => Object.keys(p.helpers))];
+
+  return Option.fromUndefinedOr(names.find((name, index) => names.indexOf(name) !== index));
+};
+
 /**
  * The descriptors of a config for one stage.
  *
- * @returns The descriptors, or `VarsThrew` with the class name and the location of the throw.
+ * @returns The descriptors. `InvalidConfig` when two providers define one helper name. `VarsThrew`
+ * with the class name and the location of a throw.
  */
 export const varsFor = (
   config: Config,
   stage: string,
-): Effect.Effect<Readonly<Record<string, Source.AnySource>>, ConfigLoadError> =>
-  Effect.map(
+): Effect.Effect<Readonly<Record<string, Source.AnySource>>, ConfigLoadError> => {
+  const duplicate = duplicateHelperOf(config);
+
+  if (Option.isSome(duplicate)) {
+    return Effect.fail(
+      new ConfigLoadError({
+        reason: ConfigLoadFailure.InvalidConfig,
+        path: Option.getOrElse(config.path, () => "defineConfig()"),
+        detail: `Two sources define the helper \`${duplicate.value}\`. Each helper name of \`vars\` must be unique across the providers and the built-in helpers.`,
+      }),
+    );
+  }
+
+  return Effect.map(
     Effect.try({
       try: () => config.evaluate(stage),
       catch: (thrown) => {
@@ -220,6 +250,7 @@ export const varsFor = (
     }),
     sourcesOf,
   );
+};
 
 /** The var record of a config. */
 export type VarsOf<C> = C extends Config<string, infer V> ? V : never;

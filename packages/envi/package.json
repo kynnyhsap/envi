@@ -13,14 +13,18 @@
       "@envi/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "@envi/source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@effect/platform-node": "catalog:",
-    "@envi/core": "workspace:*"
+    "@effect/platform-node": "catalog:"
   },
   "devDependencies": {
     "effect": "catalog:"

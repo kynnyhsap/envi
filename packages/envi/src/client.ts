@@ -1,43 +1,27 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
-import {
-  type CacheClearReport,
-  type CacheListReport,
-  type CheckReport,
-  type Config,
-  DefaultCache,
-  Envi,
-  type ExportFormat,
-  type InspectReport,
-  Keychain,
-  type Provider,
-  type RunReport,
-  Source,
-  type SyncReport,
-} from "@envi/core";
+import type * as NodeServices from "@effect/platform-node/NodeServices";
 import type * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
 
-import * as Signals from "./signals.ts";
-
-/** The settings of one client. They win over the config. */
-export interface EnviOptions {
-  /** Replaces the providers of the config. Tests pass an in-memory provider here. */
-  readonly providers?: ReadonlyArray<Provider.Provider>;
-  /** `false` turns the cache off. An object replaces the `cache` key of the config. */
-  readonly cache?: false | Config.CacheSettings;
-  readonly strict?: boolean;
-}
+import type * as Config from "./core/Config.ts";
+import * as Envi from "./core/Envi.ts";
+import type {
+  CacheClearReport,
+  CacheListReport,
+  CheckReport,
+  ExportFormat,
+  InspectReport,
+  RunReport,
+  SyncReport,
+} from "./core/Reports.ts";
+import * as Source from "./core/Source.ts";
+import { type EnviOptions, layer, type Services } from "./layer.ts";
 
 const configOf: unique symbol = Symbol.for("envi/client/config");
 
 const runtimeOf: unique symbol = Symbol.for("envi/client/runtime");
 
-type ClientRuntime = ManagedRuntime.ManagedRuntime<
-  Envi.Envi | Envi.ParentEnvironment | NodeServices.NodeServices,
-  never
->;
+type ClientRuntime = ManagedRuntime.ManagedRuntime<Services, never>;
 
 /** The members that do not depend on the type of the config. `syncAll` accepts a list of them. */
 export interface AnyEnvi {
@@ -88,22 +72,17 @@ export interface EnviClient<C extends Config.Config> extends AnyEnvi {
   };
 }
 
-const makeRuntime = (config: Config.Config, overrides: EnviOptions): ClientRuntime => {
-  const cache = DefaultCache.layer({
-    settings: Option.orElse(Option.fromUndefinedOr(overrides.cache), () => config.cache),
-    keychainAvailable: process.platform === "darwin",
-    enabled: Option.none(),
-    directory: Option.none(),
-  }).pipe(Layer.provide(Keychain.layer));
-
-  const envi = Envi.layer(overrides).pipe(Layer.provide(cache));
-
-  return ManagedRuntime.make(
-    Layer.mergeAll(envi, Signals.layer, Layer.succeed(Envi.ParentEnvironment, process.env)).pipe(
-      Layer.provideMerge(NodeServices.layer),
+/** The runtime of one client. The cache settings of the config apply unless the overrides replace them. */
+const makeRuntime = (config: Config.Config, overrides: EnviOptions): ClientRuntime =>
+  ManagedRuntime.make(
+    Option.match(
+      Option.orElse(Option.fromUndefinedOr(overrides.cache), () => config.cache),
+      {
+        onNone: () => layer(overrides),
+        onSome: (cache) => layer({ ...overrides, cache }),
+      },
     ),
   );
-};
 
 /** Creates the client of one config. The config is the single source of settings. */
 export const createEnvi = <C extends Config.Config>(

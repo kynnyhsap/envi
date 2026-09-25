@@ -1,15 +1,18 @@
-import {
-  DecodeError,
-  defineConfig,
-  mem,
-  memoryProvider,
-  SecretReferenceError,
-  VarsError,
-} from "@envi/core";
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { createEnvi, syncAll } from "./client.ts";
+import {
+  createEnvi,
+  DecodeError,
+  defineConfig,
+  Envi,
+  layer,
+  SecretReferenceError,
+  syncAll,
+  VarsError,
+} from "./index.ts";
+import { mem, memoryProvider } from "./testing.ts";
 
 const provider = memoryProvider({ "db/url": "postgres://fake", port: "5432" });
 
@@ -101,5 +104,17 @@ describe("createEnvi", () => {
     expect(report.failures).toEqual([]);
     await web.dispose();
     await api.dispose();
+  });
+});
+
+describe("layer", () => {
+  it("provides the Envi service with the options of a client", async () => {
+    const program = Effect.flatMap(Envi.Envi, (envi) => envi.load(config));
+
+    const env = await Effect.runPromise(
+      program.pipe(Effect.provide(layer({ cache: false, providers: [provider] }))),
+    );
+
+    expect(env.DATABASE_URL).toBe("postgres://fake");
   });
 });

@@ -13,7 +13,7 @@ import {
   VarsError,
 } from "./Errors.ts";
 
-const readme = new URL("../../../README.md", import.meta.url);
+const readme = new URL("../../../../README.md", import.meta.url);
 
 describe("Errors", () => {
   it.effect("has a README section with the hint for each catalog entry", () =>

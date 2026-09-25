@@ -1,10 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Provider, ProviderFailure, ReferenceFailure } from "@envi/core";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
+import { Provider, ProviderFailure, ReferenceFailure } from "envi";
 
-import { makeProvider, type Sdk } from "./Provider.ts";
+import { makeProvider, type Sdk, tokenVariables } from "./Provider.ts";
 
 class FakeDesktopAuth {
   readonly accountName: string;
@@ -73,6 +73,13 @@ const requests = [
 const secrets = { "op://app/postgres/url": "postgres://fake", "op://app/stripe/key": "sk_fake" };
 
 describe("onePasswordProvider", () => {
+  it("declares its token variables, so that run removes them from the child", () => {
+    const provider = makeProvider({}, Effect.succeed(fakeSdk(secrets)));
+
+    expect(provider.credentialVariables).toEqual(tokenVariables);
+    expect(tokenVariables).toContain("OP_SERVICE_ACCOUNT_TOKEN");
+  });
+
   it.effect("resolves one batch through desktop authentication", () =>
     Effect.gen(function* () {
       const sdk = fakeSdk(secrets);

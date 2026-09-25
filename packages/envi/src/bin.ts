@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Envi } from "@envi/core";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -8,6 +7,7 @@ import * as Ref from "effect/Ref";
 import { fileURLToPath } from "node:url";
 
 import { ExitCode, KeychainAvailable, main } from "./cli.ts";
+import { Envi } from "./core/index.ts";
 import { delegatedVariable, findLocalBin, runLocal } from "./delegate.ts";
 import * as Signals from "./signals.ts";
 

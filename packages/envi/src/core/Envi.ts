@@ -203,9 +203,6 @@ export const stageVariable = "ENVI_STAGE";
 /** `run` removes every variable with this prefix from the child, because it can hold a credential. */
 export const providerVariablePrefix = "ENVI_PROVIDER_";
 
-/** `run` removes the token of the 1Password service account from the child. */
-const withheldVariables: ReadonlyArray<string> = ["OP_SERVICE_ACCOUNT_TOKEN"];
-
 const strictVariable = "ENVI_STRICT";
 
 const ciVariable = "CI";
@@ -706,8 +703,14 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     const entries = yield* allOrVarsError(config, stage, resolution);
     const parent = yield* ParentEnvironment;
 
+    const withheld = new Set(
+      Option.getOrElse(override, () => config.providers).flatMap(
+        (provider) => provider.credentialVariables,
+      ),
+    );
+
     const inherited = Object.entries(parent).filter(
-      ([name]) => !name.startsWith(providerVariablePrefix) && !withheldVariables.includes(name),
+      ([name]) => !name.startsWith(providerVariablePrefix) && !withheld.has(name),
     );
 
     const resolved = entries.flatMap(([key, value]) =>

@@ -1,3 +1,17 @@
+import * as EffectConfig from "effect/Config";
+import * as Console from "effect/Console";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
+import * as References from "effect/References";
+import * as Schema from "effect/Schema";
+import { Argument, Command, Flag } from "effect/unstable/cli";
+
+import packageJson from "../package.json" with { type: "json" };
 import {
   type AnyEnviError,
   CacheClearReport,
@@ -17,21 +31,7 @@ import {
   Keychain,
   SyncReport,
   Timing,
-} from "@envi/core";
-import * as EffectConfig from "effect/Config";
-import * as Console from "effect/Console";
-import * as Context from "effect/Context";
-import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Logger from "effect/Logger";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Ref from "effect/Ref";
-import * as References from "effect/References";
-import * as Schema from "effect/Schema";
-import { Argument, Command, Flag } from "effect/unstable/cli";
-
-import packageJson from "../package.json" with { type: "json" };
+} from "./core/index.ts";
 import * as Render from "./render.ts";
 
 /** The exit code of the process. `run` sets the exit code of the child. */
@@ -50,7 +50,9 @@ export const configVariable = "ENVI_CONFIG";
 const failureExitCode = 1;
 
 const root = Command.make("envi").pipe(
-  Command.withDescription("Manage environment variables with 1Password."),
+  Command.withDescription(
+    "Resolve the env of a project once from a secret provider, cache it, and inject it.",
+  ),
   Command.withSharedFlags({
     config: Flag.String("config").pipe(
       Flag.withDescription("A config file. Repeat the flag for several files."),

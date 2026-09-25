@@ -1,9 +1,9 @@
-import { Source } from "@envi/core";
 import * as Effect from "effect/Effect";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as SchemaGetter from "effect/SchemaGetter";
 import * as SchemaIssue from "effect/SchemaIssue";
+import { Source } from "envi";
 
 /** The id of the 1Password provider. */
 export const providerId = "onepassword";

@@ -1,4 +1,5 @@
-import { defineConfig, mem, memoryProvider } from "envi";
+import { defineConfig } from "envi";
+import { mem, memoryProvider } from "envi/testing";
 
 export default defineConfig({
   providers: [memoryProvider({})],

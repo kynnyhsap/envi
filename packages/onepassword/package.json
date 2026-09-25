@@ -19,13 +19,12 @@
     "@1password/sdk": "catalog:"
   },
   "devDependencies": {
-    "@envi/core": "workspace:*",
     "effect": "catalog:",
     "envi": "workspace:*"
   },
   "peerDependencies": {
-    "@envi/core": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "envi": "workspace:*"
   },
   "engines": {
     "node": ">=22.19.0"

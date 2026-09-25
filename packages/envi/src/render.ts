@@ -7,7 +7,7 @@ import {
   type SyncReport,
   ValueOrigin,
   type VarFailure,
-} from "@envi/core";
+} from "./core/index.ts";
 
 /** The text that stands for a redacted value, and for an absent cell. */
 const redacted = "<redacted>";

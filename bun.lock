@@ -9,7 +9,6 @@
         "@effect/platform-node": "catalog:",
         "@effect/vitest": "catalog:",
         "@envi/1password": "workspace:*",
-        "@envi/core": "workspace:*",
         "@oxlint/plugins": "1.83.0",
         "@types/node": "catalog:",
         "effect": "catalog:",
@@ -21,17 +20,6 @@
         "vitest": "catalog:",
       },
     },
-    "packages/core": {
-      "name": "@envi/core",
-      "version": "0.0.0",
-      "devDependencies": {
-        "@effect/platform-node": "catalog:",
-        "effect": "catalog:",
-      },
-      "peerDependencies": {
-        "effect": "catalog:",
-      },
-    },
     "packages/envi": {
       "name": "envi",
       "version": "0.0.0",
@@ -40,7 +28,6 @@
       },
       "dependencies": {
         "@effect/platform-node": "catalog:",
-        "@envi/core": "workspace:*",
       },
       "devDependencies": {
         "effect": "catalog:",
@@ -56,13 +43,12 @@
         "@1password/sdk": "catalog:",
       },
       "devDependencies": {
-        "@envi/core": "workspace:*",
         "effect": "catalog:",
         "envi": "workspace:*",
       },
       "peerDependencies": {
-        "@envi/core": "workspace:*",
         "effect": "catalog:",
+        "envi": "workspace:*",
       },
     },
   },
@@ -87,8 +73,6 @@
     "@effect/vitest": ["@effect/vitest@4.0.0-rc.116", "", { "peerDependencies": { "effect": "^4.0.0-rc.116", "vitest": ">=5.0.0 <6.0.0" } }, "sha512-q42ue4hAa5AcPBwqi8rvMvR1Jstr+JjsyyxEBUoBk+WWm8otnqFxQ+XbWslW1QSwdg5+2Fdgd7z59IValt9Oiw=="],
 
     "@envi/1password": ["@envi/1password@workspace:packages/onepassword"],
-
-    "@envi/core": ["@envi/core@workspace:packages/core"],
 
     "@jridgewell/resolve-uri": ["@jridgewell/resolve-uri@3.1.2", "", {}, "sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw=="],
 

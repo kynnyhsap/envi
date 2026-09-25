@@ -151,7 +151,9 @@ SDK rules:
 
 - The child gets the parent environment plus the resolved vars. A resolved var wins over an
   inherited var.
-- Envi removes `OP_SERVICE_ACCOUNT_TOKEN` and every `ENVI_PROVIDER_*` variable from the child.
+- Envi removes the `credentialVariables` of each provider and every `ENVI_PROVIDER_*` variable
+  from the child. The 1Password provider declares its token variables, such as
+  `OP_SERVICE_ACCOUNT_TOKEN`. The core names no provider variable.
 - Envi resolves and validates all vars before it starts the child. A failure starts no child.
 - Envi forwards signals to the child and returns the exit code of the child. The child stays in
   the process group of Envi (`detached: false`), so it keeps the terminal. Envi forwards
@@ -168,8 +170,10 @@ SDK rules:
 
 - The core never imports a provider. A provider package exports a descriptor helper, such as
   `op()`, and a provider factory, such as `onePasswordProvider(settings)`.
-- A provider has the members `id`, `Reference`, `describe`, `scope`, `resolveMany`, and
-  `helpers`. `helpers` holds the descriptor helpers that `vars` receives. Without `Reference`, a
+- A provider has the members `id`, `Reference`, `describe`, `scope`, `credentialVariables`,
+  `resolveMany`, and `helpers`. `helpers` holds the descriptor helpers that `vars` receives. A
+  helper name must be unique across the providers and the built-in helpers, or the config fails
+  with `InvalidConfig`. Without `Reference`, a
   reference is a plain string, and `describe` defaults to `<id>://<reference>`.
   Users can write a custom provider with `Provider.make`, and a descriptor
   helper with `reference(id, ref)`. The provider interface and the cache interface are public and
@@ -296,22 +300,30 @@ key needs only the `id`, the stage, and the `scope`.
 
 ## Repository structure
 
-The repo is one Bun workspace with three published packages. All three share one version and
-release together. The package names are placeholders until the npm name is decided.
+The repo is one Bun workspace with two published packages. Both share one version and release
+together. The package names are placeholders until the npm name is decided.
 
-| Package           | Folder                 | Holds                                            | Depends on                                                     |
-| ----------------- | ---------------------- | ------------------------------------------------ | -------------------------------------------------------------- |
-| `@envi/core`      | `packages/core`        | all logic, as Effect services                    | peer: `effect`                                                 |
-| `@envi/1password` | `packages/onepassword` | `op()` and `onePasswordProvider`                 | peer: `@envi/core`, `effect`. Regular: `@1password/sdk`        |
-| `envi`            | `packages/envi`        | the plain client, the runtime layer, and the CLI | peer: `effect`. Regular: `@envi/core`, `@effect/platform-node` |
+| Package           | Folder                 | Holds                                              | Depends on                                        |
+| ----------------- | ---------------------- | -------------------------------------------------- | ------------------------------------------------- |
+| `envi`            | `packages/envi`        | the core, the plain client, the layer, and the CLI | peer: `effect`. Regular: `@effect/platform-node`  |
+| `@envi/1password` | `packages/onepassword` | `op()` and `onePasswordProvider`                   | peer: `envi`, `effect`. Regular: `@1password/sdk` |
 
-- `core` holds the descriptors, `defineConfig`, the config loader, the provider registry, the
+- One package for the core and the CLI makes a version mismatch between them impossible.
+- The public API of `envi` is the config (`defineConfig`, the descriptors, `schemaOf`, and the
+  types), the plain client (`createEnvi`, `syncAll`), the Effect API (`Envi` and
+  `layer(options?)`), the reports, the errors, and the extension points (`Provider`, `Source`,
+  `Cache`, `FileCache`, `Timing`). `envi/testing` exports `memoryProvider` and `mem`. Every other
+  module of `src/core` is internal.
+- `layer(options?)` provides the `Envi` service on Node or Bun: the default cache, the environment
+  and the signals of the process, and the platform services. `createEnvi` runs on this layer.
+- `core` (`packages/envi/src/core`) holds the descriptors, `defineConfig`, the config loader, the provider registry, the
   resolver, the cache with its layers, the keychain layer, the `Envi` service with `run`, the
   reports, the errors, the in-memory provider, and the built-in values `derive`, `custom`, and
   `fromEnv`.
   `core` owns every shared type. `core` never imports a provider package, `@effect/platform-*`,
-  `node:`, or `Bun.*`. It requires the platform services and does not provide them.
-- `envi` is the only package that provides the platform layer. It uses `@effect/platform-node` on
+  or `node:`, and it never reads `Bun` or `process`. A lint rule enforces this. It requires the
+  platform services and does not provide them.
+- The modules of `envi` outside `core` are the only ones that provide the platform layer. It uses `@effect/platform-node` on
   both Node and Bun, because Bun implements the Node APIs. Do not add `@effect/platform-bun`. The
   plain client and the CLI share this layer. An import of
   `envi` installs no signal handler and starts nothing.

@@ -6,13 +6,12 @@ import {
   defineConfig,
   type Env,
   ExportFormat,
-  mem,
-  memoryProvider,
   type RawEnv,
   schemaOf,
   type StageOf,
   syncAll,
 } from "envi";
+import { mem, memoryProvider } from "envi/testing";
 
 import { assertType, type Equal } from "./assert.ts";
 import config from "./config-staged.ts";

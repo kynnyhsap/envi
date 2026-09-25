@@ -4,6 +4,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as Config from "./Config.ts";
+import { ConfigLoadFailure } from "./Errors.ts";
 import { memoryProvider } from "./Memory.ts";
 import * as Source from "./Source.ts";
 
@@ -49,6 +50,20 @@ describe("defineConfig", () => {
       expect(vars["DATABASE_URL"]?.origin).toEqual(
         Source.Origin.Reference({ provider: "memory", reference: "db/production" }),
       );
+    }),
+  );
+
+  it.effect("rejects two providers that define one helper name", () =>
+    Effect.gen(function* () {
+      const twice = Config.defineConfig({
+        providers: [memoryProvider({}), memoryProvider({})],
+        vars: ({ mem }) => ({ TOKEN: mem("token") }),
+      });
+
+      const error = yield* Effect.flip(Config.varsFor(twice, "development"));
+
+      expect(error.reason).toBe(ConfigLoadFailure.InvalidConfig);
+      expect(error.detail).toContain("`mem`");
     }),
   );
 

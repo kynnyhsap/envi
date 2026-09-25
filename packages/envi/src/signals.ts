@@ -1,10 +1,11 @@
-// The signals of the running process. This module is the only place that calls `process.on`.
-import { Signals } from "@envi/core";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Runtime from "effect/Runtime";
 import * as Stream from "effect/Stream";
+
+// The signals of the running process. This module is the only place that calls `process.on`.
+import { Signals } from "./core/index.ts";
 
 const names: ReadonlyArray<Signals.SignalName> = ["SIGHUP", "SIGINT", "SIGTERM"];
 

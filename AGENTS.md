@@ -91,23 +91,26 @@ This repository is public. These rules have no exception.
   `Schema`, such as `ExportFormat.Dotenv`.
 - Prefer a small set of strong primitives. Do not add a custom helper when plain TypeScript or a
   built-in Effect function does the job. Do not add a special case without a real use case.
-- All code runs on both Node and Bun. The core depends only on Effect platform services. It never
-  imports `@effect/platform-*`, `node:`, or `Bun.*`. Only the `envi` package provides the
-  platform layer and reads `process`.
+- All code runs on both Node and Bun. The core (`packages/envi/src/core`) depends only on Effect
+  platform services. It never imports `@effect/platform-*` or `node:`, and it never reads `Bun` or
+  `process`. A lint rule enforces this. Only the entry points of `envi` outside `core` provide the
+  platform layer and read `process`.
 - Write the test first. Tests use Effect through `@effect/vitest`. Unit tests use the in-memory
   provider. End-to-end tests work on real files and run the built CLI on Node and on Bun.
 - Run `bun run verify` before you report work as done.
 
 ## Repository
 
-One Bun workspace with three packages. All three share one version. Shared dependency versions
-come from `workspaces.catalog` in the root `package.json`.
+One Bun workspace with two packages. Both share one version. Shared dependency versions come
+from `workspaces.catalog` in the root `package.json`.
 
-| Package           | Folder                 | Holds                                            |
-| ----------------- | ---------------------- | ------------------------------------------------ |
-| `@envi/core`      | `packages/core`        | all logic, as Effect services                    |
-| `@envi/1password` | `packages/onepassword` | `op()`, `onePasswordProvider`, and its e2e tests |
-| `envi`            | `packages/envi`        | the plain client, the platform layer, the CLI    |
+| Package           | Folder                 | Holds                                                         |
+| ----------------- | ---------------------- | ------------------------------------------------------------- |
+| `envi`            | `packages/envi`        | the core in `src/core`, the plain client, the layer, the CLI  |
+| `@envi/1password` | `packages/onepassword` | `op()`, `onePasswordProvider`, and its e2e tests; peer `envi` |
+
+- `envi` exports a small public API from `src/index.ts`, and the test helpers from
+  `envi/testing`. Every other module of `src/core` is internal.
 
 - `tests/e2e/` holds the end-to-end tests of the CLI and the SDK.
 - `examples/` holds config and SDK examples with compile-time type assertions. Change an example

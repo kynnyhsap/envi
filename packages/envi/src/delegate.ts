@@ -1,13 +1,14 @@
-// A global `envi` starts the local `envi` of the project. The config file imports the local
-// packages, and the CLI must use the same copy of `effect` as the config file. Two copies of
-// `effect` in one process break `Schema` decoding and `Redacted`.
-import { Signals } from "@envi/core";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
+
+// A global `envi` starts the local `envi` of the project. The config file imports the local
+// packages, and the CLI must use the same copy of `effect` as the config file. Two copies of
+// `effect` in one process break `Schema` decoding and `Redacted`.
+import { Signals } from "./core/index.ts";
 
 /** The variable that marks a delegated run. It prevents a loop. */
 export const delegatedVariable = "ENVI_DELEGATED";

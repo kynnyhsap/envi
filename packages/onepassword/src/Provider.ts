@@ -1,4 +1,3 @@
-import { Provider, ProviderError, ProviderFailure, ReferenceFailure, Timing } from "@envi/core";
 import * as Arr from "effect/Array";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -6,6 +5,7 @@ import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
 import * as Result from "effect/Result";
+import { Provider, ProviderError, ProviderFailure, ReferenceFailure, Timing } from "envi";
 
 import {
   describeReference,
@@ -194,6 +194,7 @@ export const makeProvider = <DesktopAuth>(
     id: providerId,
     Reference,
     describe: describeReference,
+    credentialVariables: tokenVariables,
     // The token itself selects the vaults, so two tokens never share an entry. The core hashes it.
     scope: Effect.gen(function* () {
       const token = yield* readToken;
