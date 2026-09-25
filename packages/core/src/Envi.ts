@@ -15,7 +15,9 @@ import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSp
 import * as Cache from "./Cache.ts";
 import * as Config from "./Config.ts";
 import {
+  type AnyEnviError,
   type CacheError,
+  type ConfigLoadError,
   DecodeError,
   ExportError,
   type ProviderError,
@@ -23,12 +25,14 @@ import {
   RunFailure,
   SettingsError,
   type UnknownStageError,
+  VarsError,
 } from "./Errors.ts";
 import * as Provider from "./Provider.ts";
 import {
   type CacheClearReport,
   type CacheListReport,
   type CheckReport,
+  type ErrorReport,
   ExportFormat,
   type InspectReport,
   type RunReport,
@@ -40,8 +44,26 @@ import * as Signals from "./Signals.ts";
 import * as Source from "./Source.ts";
 import * as Timing from "./Timing.ts";
 
-/** The failures of an operation that resolves values. */
-export type EnviError = Resolver.VarError | CacheError | UnknownStageError | SettingsError;
+/**
+ * The failures of an operation that resolves values. An operation on the vars of a config fails
+ * with one `VarsError` that lists every failed var. `resolve` of one descriptor fails with the
+ * error of that descriptor.
+ */
+export type EnviError =
+  | Resolver.VarError
+  | VarsError
+  | ConfigLoadError
+  | CacheError
+  | UnknownStageError
+  | SettingsError;
+
+/** The failures of an operation that reports each failed var instead of failing. */
+export type ReportError =
+  | ProviderError
+  | ConfigLoadError
+  | CacheError
+  | UnknownStageError
+  | SettingsError;
 
 /** The settings of the service. They win over the config and lose against a call option. */
 export interface LayerOptions {
@@ -109,7 +131,10 @@ export interface Interface {
     config: C,
     record: Readonly<Record<string, string | undefined>>,
     options?: { readonly stage?: Config.StageOf<C> },
-  ) => Effect.Effect<Config.Env<C>, DecodeError | UnknownStageError | SettingsError>;
+  ) => Effect.Effect<
+    Config.Env<C>,
+    VarsError | ConfigLoadError | UnknownStageError | SettingsError
+  >;
   /** Resolves one descriptor, or a record of descriptors in one batch. */
   readonly resolve: {
     <A, Optional extends boolean>(
@@ -127,12 +152,12 @@ export interface Interface {
   readonly sync: (
     configs: Config.Config | ReadonlyArray<Config.Config>,
     options?: LoadOptions<string>,
-  ) => Effect.Effect<SyncReport, ProviderError | CacheError | UnknownStageError | SettingsError>;
+  ) => Effect.Effect<SyncReport, ReportError>;
   /** Resolves and decodes every var, and reports each failed var. It shows no value. */
   readonly check: <C extends Config.Config>(
     config: C,
     options?: LoadOptions<Config.StageOf<C>>,
-  ) => Effect.Effect<CheckReport, ProviderError | CacheError | UnknownStageError | SettingsError>;
+  ) => Effect.Effect<CheckReport, ReportError>;
   readonly inspect: <C extends Config.Config>(
     config: C,
     options?: ExportOptions<Config.StageOf<C>>,
@@ -210,39 +235,55 @@ const readCi = readSetting(
   EffectConfig.withDefault(EffectConfig.Boolean(ciVariable), false),
 );
 
-const failureOf = (key: string, error: Resolver.VarError): VarFailure =>
+/** The reference text and the reason code of one failure. It never holds a value. */
+const referenceAndReason = (
+  error: Resolver.VarError,
+): { readonly reference: string | null; readonly reason: string } =>
   Match.valueTags(error, {
-    DecodeError: (failure) => ({
-      key,
-      reference: null,
-      error: failure._tag,
-      reason: failure.expected,
-    }),
-    ProviderError: (failure) => ({
-      key,
-      reference: null,
-      error: failure._tag,
-      reason: failure.reason,
-    }),
-    CustomError: (failure) => ({
-      key,
-      reference: `custom(${failure.id})`,
-      error: failure._tag,
-      reason: failure.reason,
-    }),
-    DeriveError: (failure) => ({
-      key,
-      reference: null,
-      error: failure._tag,
-      reason: "Threw",
-    }),
-    ReferenceError: (failure) => ({
-      key,
-      reference: failure.reference,
-      error: failure._tag,
-      reason: failure.reason,
-    }),
+    DecodeError: (failure) => ({ reference: null, reason: failure.expected }),
+    ProviderError: (failure) => ({ reference: null, reason: failure.reason }),
+    CustomError: (failure) => ({ reference: `custom(${failure.id})`, reason: failure.reason }),
+    DeriveError: () => ({ reference: null, reason: "Threw" }),
+    SecretReferenceError: (failure) => ({ reference: failure.reference, reason: failure.reason }),
   });
+
+const failureOf = (
+  key: string,
+  config: Option.Option<string>,
+  error: Resolver.VarError,
+): VarFailure => ({
+  key,
+  config: Option.getOrNull(config),
+  ...referenceAndReason(error),
+  error: error._tag,
+  summary: error.summary,
+  hint: error.hint,
+  docs: error.docs,
+});
+
+/** The report of a failed operation. A `VarsError` lists each failed var. */
+export const errorReport = (error: AnyEnviError): ErrorReport => {
+  const report = {
+    error: error._tag,
+    reason: "reason" in error ? error.reason : null,
+    summary: error.summary,
+    hint: error.hint,
+    docs: error.docs,
+  };
+
+  if (!(error instanceof VarsError)) {
+    return { error: report };
+  }
+
+  const config = Option.fromUndefinedOr(error.config);
+
+  return {
+    error: {
+      ...report,
+      failures: error.failures.map((failure) => failureOf(failure.key, config, failure.error)),
+    },
+  };
+};
 
 const safeDotenv = /^[\w./:@+=,-]*$/u;
 
@@ -261,14 +302,26 @@ const dotenvLine = (key: string, raw: string): Effect.Effect<string, ExportError
     : Effect.succeed(`${key}="${raw.replaceAll("\n", "\\n")}"`);
 };
 
-/** Every var in the order of the config, or the first failure. */
-const allOrFirstFailure = (resolution: Resolver.Resolution) =>
-  Effect.forEach(Object.entries(resolution.vars), ([key, outcome]) =>
-    Result.match(outcome, {
-      onFailure: (error) => Effect.fail(error),
-      onSuccess: (resolved) => Effect.succeed([key, resolved] as const),
-    }),
+/** Every var in the order of the config, or one `VarsError` with every failed var. */
+const allOrVarsError = (
+  config: Config.Config,
+  stage: string,
+  resolution: Resolver.Resolution,
+): Effect.Effect<ReadonlyArray<readonly [string, Resolver.Resolved]>, VarsError> => {
+  const entries = Object.entries(resolution.vars);
+
+  const failures = entries.flatMap(([key, outcome]) =>
+    Result.isFailure(outcome) ? [{ key, error: outcome.failure }] : [],
   );
+
+  return failures.length > 0
+    ? Effect.fail(new VarsError({ stage, config: Option.getOrUndefined(config.path), failures }))
+    : Effect.succeed(
+        entries.flatMap(([key, outcome]) =>
+          Result.isSuccess(outcome) ? [[key, outcome.success] as const] : [],
+        ),
+      );
+};
 
 const rawOf = (resolved: Resolver.Resolved): string | undefined =>
   Option.getOrUndefined(Option.map(resolved.raw, Redacted.value));
@@ -370,7 +423,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     options: LoadOptions<string> | undefined,
   ) {
     const stage = yield* stageOf(config, options?.stage);
-    const sources = Config.varsFor(config, stage);
+    const sources = yield* Config.varsFor(config, stage);
 
     const resolution = yield* resolveWith(
       config,
@@ -383,9 +436,12 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     return { stage, sources, resolution };
   });
 
-  const failuresOf = (resolution: Resolver.Resolution): ReadonlyArray<VarFailure> =>
+  const failuresOf = (
+    config: Config.Config,
+    resolution: Resolver.Resolution,
+  ): ReadonlyArray<VarFailure> =>
     Object.entries(resolution.vars).flatMap(([key, outcome]) =>
-      Result.isFailure(outcome) ? [failureOf(key, outcome.failure)] : [],
+      Result.isFailure(outcome) ? [failureOf(key, config.path, outcome.failure)] : [],
     );
 
   const load: Interface["load"] = <C extends Config.Config>(
@@ -393,7 +449,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     options?: LoadOptions<Config.StageOf<C>>,
   ) =>
     resolveVars(config, options).pipe(
-      Effect.flatMap(({ resolution }) => allOrFirstFailure(resolution)),
+      Effect.flatMap(({ stage, resolution }) => allOrVarsError(config, stage, resolution)),
       Effect.map((entries) => {
         const env = Object.fromEntries(entries.map(([key, resolved]) => [key, resolved.decoded]));
 
@@ -409,7 +465,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     options?: LoadOptions<Config.StageOf<C>>,
   ) =>
     resolveVars(config, options).pipe(
-      Effect.flatMap(({ resolution }) => allOrFirstFailure(resolution)),
+      Effect.flatMap(({ stage, resolution }) => allOrVarsError(config, stage, resolution)),
       Effect.map((entries) => {
         const raw = Object.fromEntries(entries.map(([key, resolved]) => [key, rawOf(resolved)]));
 
@@ -425,17 +481,38 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     record: Readonly<Record<string, string | undefined>>,
     options?: { readonly stage?: Config.StageOf<C> },
   ) =>
-    stageOf(config, options?.stage).pipe(
-      Effect.flatMap((stage) =>
-        Effect.forEach(Object.entries(Config.varsFor(config, stage)), ([key, source]) =>
-          Effect.map(parseOne(key, source, record[key]), (decoded) => [key, decoded] as const),
-        ),
-      ),
+    Effect.gen(function* () {
+      const stage = yield* stageOf(config, options?.stage);
+      const sources = yield* Config.varsFor(config, stage);
+
+      const outcomes = yield* Effect.forEach(Object.entries(sources), ([key, source]) =>
+        Effect.map(Effect.result(parseOne(key, source, record[key])), (outcome) => ({
+          key,
+          outcome,
+        })),
+      );
+
+      const failures = outcomes.flatMap(({ key, outcome }) =>
+        Result.isFailure(outcome) ? [{ key, error: outcome.failure }] : [],
+      );
+
+      if (failures.length > 0) {
+        return yield* new VarsError({
+          stage,
+          config: Option.getOrUndefined(config.path),
+          failures,
+        });
+      }
+
+      const entries = outcomes.flatMap(({ key, outcome }) =>
+        Result.isSuccess(outcome) ? [[key, outcome.success] as const] : [],
+      );
+
       // SAFETY: TypeScript cannot relate the entries to the mapped type. Each entry holds the
       // value that the codec of the descriptor under the same key decoded.
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      Effect.map((entries) => Object.fromEntries(entries) as Config.Env<C>),
-    );
+      return Object.fromEntries(entries) as Config.Env<C>;
+    });
 
   const resolveRecord = (
     config: Config.Config,
@@ -450,9 +527,8 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
           Option.getOrElse(override, () => config.providers),
           sources,
           options,
-        ),
+        ).pipe(Effect.flatMap((resolution) => allOrVarsError(config, stage, resolution))),
       ),
-      Effect.flatMap(allOrFirstFailure),
       Effect.map((entries) =>
         Object.fromEntries(entries.map(([key, resolved]) => [key, resolved.decoded])),
       ),
@@ -476,7 +552,13 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     options?: ResolveOptions,
   ): Effect.Effect<unknown, EnviError> {
     return Source.isSource(input)
-      ? Effect.map(resolveRecord(config, { [single]: input }, options), (record) => record[single])
+      ? resolveRecord(config, { [single]: input }, options).pipe(
+          Effect.map((record) => record[single]),
+          // One descriptor has one failure. The caller gets it without the list around it.
+          Effect.catchTag("VarsError", (error) =>
+            Effect.fail(error.failures.length === 1 ? (error.failures[0]?.error ?? error) : error),
+          ),
+        )
       : resolveRecord(config, input, options);
   }
 
@@ -484,6 +566,13 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     const startedAt = yield* Clock.currentTimeMillis;
     const list = Config.isConfig(configs) ? [configs] : configs;
     const groups: Array<Group> = [];
+
+    // The var key and the config file behind each key of a group.
+    const origins = new Map<
+      string,
+      { readonly key: string; readonly config: Option.Option<string> }
+    >();
+
     let firstStage = Option.none<string>();
 
     for (const [index, config] of list.entries()) {
@@ -512,8 +601,11 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
         group.providers.set(provider.id, provider);
       }
 
-      for (const [key, source] of Object.entries(Config.varsFor(config, stage))) {
-        group.sources[list.length === 1 ? key : `${index}:${key}`] = source;
+      for (const [key, source] of Object.entries(yield* Config.varsFor(config, stage))) {
+        const groupKey = list.length === 1 ? key : `${index}:${key}`;
+
+        group.sources[groupKey] = source;
+        origins.set(groupKey, { key, config: config.path });
       }
     }
 
@@ -537,7 +629,15 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
         cached: Arr.reduce(entries, 0, (sum, entry) => sum + entry.cached),
         resolved: Arr.reduce(entries, 0, (sum, entry) => sum + entry.resolved),
       })),
-      failures: resolutions.flatMap(failuresOf),
+      failures: resolutions.flatMap((resolution) =>
+        Object.entries(resolution.vars).flatMap(([groupKey, outcome]) => {
+          const origin = origins.get(groupKey) ?? { key: groupKey, config: Option.none() };
+
+          return Result.isFailure(outcome)
+            ? [failureOf(origin.key, origin.config, outcome.failure)]
+            : [];
+        }),
+      ),
       durationMillis: finishedAt - startedAt,
     };
   });
@@ -548,12 +648,12 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
       passed: Object.entries(resolution.vars).flatMap(([key, outcome]) =>
         Result.isSuccess(outcome) ? [key] : [],
       ),
-      failures: failuresOf(resolution),
+      failures: failuresOf(config, resolution),
     }));
 
   const inspect: Interface["inspect"] = Effect.fn("Envi.inspect")(function* (config, options) {
     const { stage, resolution } = yield* resolveVars(config, options);
-    const entries = yield* allOrFirstFailure(resolution);
+    const entries = yield* allOrVarsError(config, stage, resolution);
     const redact = options?.redact ?? true;
 
     return {
@@ -578,8 +678,8 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
 
   const exportVars: Interface["export"] = Effect.fn("Envi.export")(
     function* (config, format, options) {
-      const { resolution } = yield* resolveVars(config, options);
-      const entries = yield* allOrFirstFailure(resolution);
+      const { stage, resolution } = yield* resolveVars(config, options);
+      const entries = yield* allOrVarsError(config, stage, resolution);
       const redact = options?.redact ?? false;
 
       const values = entries.flatMap(([key, resolved]) =>
@@ -603,7 +703,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
 
   const run: Interface["run"] = Effect.fn("Envi.run")(function* (config, command, args, options) {
     const { stage, resolution } = yield* resolveVars(config, options);
-    const entries = yield* allOrFirstFailure(resolution);
+    const entries = yield* allOrVarsError(config, stage, resolution);
     const parent = yield* ParentEnvironment;
 
     const inherited = Object.entries(parent).filter(

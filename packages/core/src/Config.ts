@@ -4,9 +4,10 @@ import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
-import { UnknownStageError } from "./Errors.ts";
+import { ConfigLoadError, ConfigLoadFailure, UnknownStageError } from "./Errors.ts";
 import type { Provider } from "./Provider.ts";
 import * as Source from "./Source.ts";
+import * as Thrown from "./Thrown.ts";
 
 /** The brand of a config. It is a registered symbol, so a second copy of this module agrees. */
 export const TypeId: unique symbol = Symbol.for("envi/Config");
@@ -87,7 +88,9 @@ export interface Config<out Stage extends string = string, out V extends Vars = 
   readonly providers: ReadonlyArray<Provider>;
   readonly cache: Option.Option<false | CacheSettings>;
   readonly strict: Option.Option<boolean>;
-  /** Evaluates `vars` for one stage. */
+  /** The config file. The loader sets it. A config from `defineConfig` in code has none. */
+  readonly path: Option.Option<string>;
+  /** Evaluates `vars` for one stage. It throws what `vars` throws. */
   readonly evaluate: (stage: string) => Vars;
 }
 
@@ -155,6 +158,7 @@ export const defineConfig = <
     providers,
     cache: Option.fromUndefinedOr(input.cache),
     strict: Option.fromUndefinedOr(input.strict),
+    path: Option.none(),
     evaluate,
   };
 };
@@ -182,16 +186,39 @@ export const selectStage = (
     : Effect.fail(new UnknownStageError({ stage, stages: config.stages }));
 };
 
-/** The descriptors of a config for one stage. A plain string becomes a literal descriptor. */
-export const varsFor = (
-  config: Config,
-  stage: string,
-): Readonly<Record<string, Source.AnySource>> =>
+/** The descriptors of evaluated vars. A plain string becomes a literal descriptor. */
+const sourcesOf = (vars: Vars): Readonly<Record<string, Source.AnySource>> =>
   Object.fromEntries(
-    Object.entries(config.evaluate(stage)).map(([key, entry]) => [
+    Object.entries(vars).map(([key, entry]) => [
       key,
       Predicate.isString(entry) ? Source.value(entry) : entry,
     ]),
+  );
+
+/**
+ * The descriptors of a config for one stage.
+ *
+ * @returns The descriptors, or `VarsThrew` with the class name and the location of the throw.
+ */
+export const varsFor = (
+  config: Config,
+  stage: string,
+): Effect.Effect<Readonly<Record<string, Source.AnySource>>, ConfigLoadError> =>
+  Effect.map(
+    Effect.try({
+      try: () => config.evaluate(stage),
+      catch: (thrown) => {
+        const described = Thrown.describe(Thrown.asError(thrown));
+
+        return new ConfigLoadError({
+          reason: ConfigLoadFailure.VarsThrew,
+          path: Option.getOrElse(config.path, () => "defineConfig()"),
+          detail: `\`vars\` threw ${described.thrown} for the stage ${stage}. Envi hides the error message, because it can hold a secret.`,
+          location: described.location,
+        });
+      },
+    }),
+    sourcesOf,
   );
 
 /** The var record of a config. */
@@ -217,7 +244,7 @@ export const schemaOf = <C extends Config>(
   stage: StageOf<C>,
 ): Schema.Struct<FieldsOf<VarsOf<C>>> => {
   const fields = Object.fromEntries(
-    Object.entries(varsFor(config, stage)).map(([key, source]) => [
+    Object.entries(sourcesOf(config.evaluate(stage))).map(([key, source]) => [
       key,
       source.isOptional ? Schema.optional(source.codec) : source.codec,
     ]),

@@ -1,4 +1,11 @@
-import { DecodeError, defineConfig, mem, memoryProvider, ReferenceError } from "@envi/core";
+import {
+  DecodeError,
+  defineConfig,
+  mem,
+  memoryProvider,
+  SecretReferenceError,
+  VarsError,
+} from "@envi/core";
 import * as Schema from "effect/Schema";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
@@ -32,8 +39,15 @@ describe("createEnvi", () => {
       defineConfig({ providers: [memoryProvider({})], cache: false, vars: { A: mem("a") } }),
     );
 
-    await expect(envi.load()).rejects.toBeInstanceOf(ReferenceError);
-    await expect(envi.parse({})).rejects.toBeInstanceOf(DecodeError);
+    await expect(envi.load()).rejects.toSatisfy(
+      (error) =>
+        error instanceof VarsError && error.failures[0]?.error instanceof SecretReferenceError,
+    );
+
+    await expect(envi.parse({})).rejects.toSatisfy(
+      (error) => error instanceof VarsError && error.failures[0]?.error instanceof DecodeError,
+    );
+
     await envi.dispose();
   });
 

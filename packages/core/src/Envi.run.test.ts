@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@effect/vitest";
+import { assert, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
@@ -10,7 +10,7 @@ import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawne
 import * as Cache from "./Cache.ts";
 import { defineConfig } from "./Config.ts";
 import * as Envi from "./Envi.ts";
-import { ReferenceError, RunError, RunFailure } from "./Errors.ts";
+import { RunError, RunFailure, SecretReferenceError, VarsError } from "./Errors.ts";
 import { mem, memoryProvider } from "./Memory.ts";
 
 const spawned: Array<ChildProcess.StandardCommand> = [];
@@ -109,7 +109,8 @@ describe("Envi.run", () => {
 
       const error = yield* Effect.flip(envi.run(broken, "bun", ["run", "dev"]));
 
-      expect(error).toBeInstanceOf(ReferenceError);
+      assert(error instanceof VarsError);
+      expect(error.failures[0]?.error).toBeInstanceOf(SecretReferenceError);
       expect(spawned.length).toBe(before);
     }).pipe(Effect.provide(layer)),
   );

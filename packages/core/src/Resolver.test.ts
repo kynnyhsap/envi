@@ -18,7 +18,7 @@ import {
   DeriveError,
   ProviderError,
   ProviderFailure,
-  ReferenceError,
+  SecretReferenceError,
   ReferenceFailure,
 } from "./Errors.ts";
 import { mem, memoryProvider, type MemoryProvider } from "./Memory.ts";
@@ -184,7 +184,7 @@ describe("Resolver", () => {
 
       const error = failed(resolution, "REQUIRED");
 
-      expect(error).toBeInstanceOf(ReferenceError);
+      expect(error).toBeInstanceOf(SecretReferenceError);
       expect(error).toMatchObject({
         reason: ReferenceFailure.NotFound,
         reference: "memory://missing",

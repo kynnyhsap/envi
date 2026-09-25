@@ -5,7 +5,12 @@ import * as Predicate from "effect/Predicate";
 import type * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
-import { ProviderError, ProviderFailure, ReferenceError, ReferenceFailure } from "./Errors.ts";
+import {
+  ProviderError,
+  ProviderFailure,
+  SecretReferenceError,
+  ReferenceFailure,
+} from "./Errors.ts";
 
 /** The brand of a provider. It is a registered symbol, so a second copy of this module agrees. */
 export const TypeId: unique symbol = Symbol.for("envi/Provider");
@@ -88,15 +93,15 @@ export interface Provider<out Helpers extends object = object> {
   /** Decodes one reference. Fails with `Invalid` when the reference does not fit the provider. */
   readonly prepare: (
     reference: Schema.Json,
-  ) => Effect.Effect<PreparedReference, ReferenceError | ProviderError>;
+  ) => Effect.Effect<PreparedReference, SecretReferenceError | ProviderError>;
   readonly resolveMany: (
     requests: ReadonlyArray<ProviderRequest<Schema.Json>>,
     context: ResolveContext,
-  ) => Effect.Effect<BatchResults, ProviderError | ReferenceError>;
+  ) => Effect.Effect<BatchResults, ProviderError | SecretReferenceError>;
 }
 
-const invalidReference = (provider: string): ReferenceError =>
-  new ReferenceError({
+const invalidReference = (provider: string): SecretReferenceError =>
+  new SecretReferenceError({
     reason: ReferenceFailure.Invalid,
     provider,
     reference: "a reference that does not match the schema of the provider",
@@ -105,7 +110,7 @@ const invalidReference = (provider: string): ReferenceError =>
 const fromDefinition = <Ref, Helpers extends object>(
   definition: Definition<Ref, Helpers>,
 ): Provider<Helpers> => {
-  const decodeReference = (reference: Schema.Json): Effect.Effect<Ref, ReferenceError> =>
+  const decodeReference = (reference: Schema.Json): Effect.Effect<Ref, SecretReferenceError> =>
     Schema.decodeEffect(definition.Reference)(reference).pipe(
       Effect.mapError(() => invalidReference(definition.id)),
     );

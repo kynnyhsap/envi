@@ -4,8 +4,10 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
+import * as SchemaIssue from "effect/SchemaIssue";
 
 import { CustomError, CustomFailure, CustomReason, DecodeError, DeriveError } from "./Errors.ts";
+import * as Thrown from "./Thrown.ts";
 
 /**
  * The brand of a descriptor. It is a registered symbol, so a descriptor from a second copy of this
@@ -191,42 +193,7 @@ export type InputsOf<From extends Readonly<Record<string, AnySource>>> = {
   readonly [K in keyof From]: Decoded<From[K]>;
 };
 
-/** Parses a thrown value at the boundary of user code. Only an `Error` has a name and a stack. */
-const asError = Schema.decodeUnknownOption(Schema.instanceOf(Error));
-
 const isCustomFailure = Schema.is(CustomFailure);
-
-/** One frame of a V8 or a JavaScriptCore stack: an absolute path or a file URL, a line, a column. */
-const stackFrame = /((?:file:\/\/)?\/[^\s()]+):(\d+):(\d+)\)?$/u;
-
-/** The first frame of a stack outside `node_modules`: the place in user code that threw. */
-const locationOf = (stack: string): string | undefined =>
-  stack
-    .split("\n")
-    .flatMap((line) => {
-      const match = stackFrame.exec(line.trim());
-
-      if (match === null || match[1] === undefined) {
-        return [];
-      }
-
-      const file = match[1].replace(/^file:\/\//u, "").replace(/\?.*$/u, "");
-
-      return file.includes("/node_modules/") ? [] : [`${file}:${match[2]}:${match[3]}`];
-    })
-    .at(0);
-
-/** The class name and the location of a thrown value. They never hold the message. */
-const describeThrown = (
-  thrown: Option.Option<Error>,
-): { readonly thrown: string; readonly location: string | undefined } =>
-  Option.match(thrown, {
-    onNone: () => ({ thrown: "a value that is not an Error", location: undefined }),
-    onSome: (error) => ({
-      thrown: /^[\w$.]{1,64}$/u.test(error.name) ? error.name : "an Error",
-      location: locationOf(error.stack ?? ""),
-    }),
-  });
 
 /** The input name of a `derive()` with one input. */
 const singleInput = "value";
@@ -263,7 +230,7 @@ export function derive<A>(
 
           return fn(argument);
         },
-        catch: (thrown) => new DeriveError(describeThrown(asError(thrown))),
+        catch: (thrown) => new DeriveError(Thrown.describe(Thrown.asError(thrown))),
       }),
       Option.fromUndefinedOr,
     );
@@ -327,7 +294,7 @@ export const custom = <const From extends Readonly<Record<string, AnySource>> = 
           : new CustomError({
               reason: CustomReason.Threw,
               id,
-              ...describeThrown(asError(cause)),
+              ...Thrown.describe(Thrown.asError(cause)),
               transient: false,
             }),
       ),
@@ -346,8 +313,17 @@ export const custom = <const From extends Readonly<Record<string, AnySource>> = 
   );
 };
 
-const decodeFailure = (key: string, codec: Schema.Top): DecodeError =>
-  new DecodeError({ key, expected: String(codec.ast) });
+const formatIssue = SchemaIssue.makeFormatterDefault();
+
+/**
+ * The expected type from a schema issue, such as "a finite number". The default formatter reports
+ * no input, so the text never holds the rejected value.
+ */
+const expectedOf = (issue: SchemaIssue.Issue): string =>
+  formatIssue(issue)
+    .split("\n")
+    .map((line) => line.trim().replace(/^Expected /u, ""))
+    .join(" ");
 
 /**
  * Decodes one raw string with the schema of its descriptor.
@@ -370,5 +346,5 @@ export const decode = <A, Optional extends boolean>(
         }),
       ),
     ),
-    Effect.mapError(() => decodeFailure(key, source.codec)),
+    Effect.mapError((error) => new DecodeError({ key, expected: expectedOf(error.issue) })),
   );

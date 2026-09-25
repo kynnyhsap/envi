@@ -29,7 +29,7 @@ const program = Effect.gen(function* () {
   const token = yield* envi
     .resolve(config, mem("token"))
     .pipe(
-      Effect.catchTag("ReferenceError", (error) =>
+      Effect.catchTag("SecretReferenceError", (error) =>
         error.reason === ReferenceFailure.NotFound
           ? Effect.succeed("fallback")
           : Effect.fail(error),

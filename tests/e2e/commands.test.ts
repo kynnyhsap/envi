@@ -95,9 +95,14 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           expect(JSON.parse(result.stdout).failures).toEqual([
             {
               key: "API_TOKEN",
-              error: "ReferenceError",
+              config: `${app}/envi.config.ts`,
+              error: "SecretReferenceError",
               reason: "NotFound",
               reference: "file://token-development",
+              summary:
+                "Envi reference failed: NotFound for file://token-development (provider file)",
+              hint: expect.stringContaining("existing secret"),
+              docs: "https://github.com/kynnyhsap/envi#error-secret-reference-not-found",
             },
           ]);
         }),

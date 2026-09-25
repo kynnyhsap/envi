@@ -247,6 +247,24 @@ key needs only the `id`, the stage, and the `scope`.
 
 - Every error is a tagged error with a reason code. An error never holds a secret value or a
   rejected input. It holds the var key or the `describe()` text.
+- Every error has the getters `summary`, `hint`, and `docs`. `summary` says what failed and where:
+  the var key, the reference, the stage, and the config file or the source location. `hint` comes
+  from the catalog in `Errors.ts` and names the next action. `docs` links to the README section of
+  the error: `https://github.com/kynnyhsap/envi#error-<tag>-<reason>`. The README is the source of
+  truth for the error docs. A unit test checks that the README has a section and the hint for each
+  catalog entry.
+- An operation surfaces every failed var, not only the first one. `load`, `loadRaw`, `parse`,
+  `export`, and `run` fail with one `VarsError` that lists each failure. `resolve` of one var fails
+  with the error of that var.
+- A throw in user code shows only the class name and the location of the throw, never the message:
+  `derive()` fails with `DeriveError`, `custom()` with `CustomError` `Threw`, and `vars` with
+  `ConfigLoadError` `VarsThrew`. `custom()` shows a safe message through `CustomFailure`.
+- A syntax error in a config file fails with `ConfigLoadError` `ConfigSyntax` and the location from
+  the runtime: the first stack line of the Node `SyntaxError`, or the `position` of the Bun
+  `BuildMessage`. The parser message and the source text never appear. A search that finds no
+  config file fails with `NoConfig`. An explicit path that does not exist fails with `NotFound`.
+- The CLI prints `error.message` on stderr and exits with 1. With `--json`, the CLI prints the
+  `ErrorReport` on stdout: `{ "error": { error, reason, summary, hint, docs, failures? } }`.
 - The CLI logs through the Effect structured logger. All logs go to stderr, so stdout stays clean
   for `export`. `--debug` shows debug logs: the cache read, each provider batch with its safe
   reference texts, a provider failure, and a schema message. A schema message can quote the

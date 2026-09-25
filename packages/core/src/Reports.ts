@@ -48,12 +48,20 @@ export const InspectReport = Schema.Struct({
 
 export type InspectReport = typeof InspectReport.Type;
 
-/** One failed var. `reason` is a reason code or a schema message. It never holds a value. */
+/**
+ * One failed var. `reason` is a reason code, or the expected type of a schema. `hint` names the
+ * next action, and `docs` links to the section of the error in the README. It never holds a value.
+ */
 export const VarFailure = Schema.Struct({
   key: Schema.String,
+  /** The config file of the var, when Envi loaded the config from a file. */
+  config: Schema.NullOr(Schema.String),
   reference: Schema.NullOr(Schema.String),
   error: Schema.String,
   reason: Schema.String,
+  summary: Schema.String,
+  hint: Schema.String,
+  docs: Schema.String,
 });
 
 export type VarFailure = typeof VarFailure.Type;
@@ -106,6 +114,23 @@ export const CacheListReport = Schema.Struct({
 });
 
 export type CacheListReport = typeof CacheListReport.Type;
+
+/**
+ * An operation failed. `--json` prints it on stdout. `failures` lists each failed var of a
+ * `VarsError`. `reason` is null for an error without reasons.
+ */
+export const ErrorReport = Schema.Struct({
+  error: Schema.Struct({
+    error: Schema.String,
+    reason: Schema.NullOr(Schema.String),
+    summary: Schema.String,
+    hint: Schema.String,
+    docs: Schema.String,
+    failures: Schema.optional(Schema.Array(VarFailure)),
+  }),
+});
+
+export type ErrorReport = typeof ErrorReport.Type;
 
 export const CacheClearReport = Schema.Struct({
   removed: Schema.Number,

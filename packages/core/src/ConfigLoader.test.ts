@@ -2,7 +2,9 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
 import * as Config from "./Config.ts";
@@ -19,7 +21,8 @@ const fixture = (...segments: ReadonlyArray<string>) =>
     path.join(import.meta.dirname, "fixtures", "loader", ...segments),
   );
 
-const nameOf = (config: Config.Config) => Config.varsFor(config, "development")["NAME"]?.origin;
+const nameOf = (config: Config.Config) =>
+  Effect.map(Config.varsFor(config, "development"), (vars) => vars["NAME"]?.origin);
 
 describe("ConfigLoader", () => {
   it.effect("loads the default export of a config file", () =>
@@ -28,7 +31,8 @@ describe("ConfigLoader", () => {
       const config = yield* loader.load(yield* fixture("valid", "envi.config.ts"));
 
       expect(Config.isConfig(config)).toBe(true);
-      expect(nameOf(config)).toMatchObject({ value: "valid" });
+      expect(yield* nameOf(config)).toMatchObject({ value: "valid" });
+      expect(config.path).toEqual(Option.some(yield* fixture("valid", "envi.config.ts")));
     }).pipe(Effect.provide(layer)),
   );
 
@@ -49,6 +53,17 @@ describe("ConfigLoader", () => {
       expect(throwing.message).not.toContain("secret-in-config-error");
       expect(extension.reason).toBe(ConfigLoadFailure.InvalidConfig);
     }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("fails with NoConfig when the search finds no config file", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const loader = yield* ConfigLoader.ConfigLoader;
+      const directory = yield* fs.makeTempDirectoryScoped();
+      const error = yield* Effect.flip(loader.findNearest(directory));
+
+      expect(error.reason).toBe(ConfigLoadFailure.NoConfig);
+    }).pipe(Effect.scoped, Effect.provide(layer)),
   );
 
   it.effect("reports an install hint for an import that does not resolve", () =>

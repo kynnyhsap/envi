@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it } from "@effect/vitest";
+import { assert, describe, expect, expectTypeOf, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -8,7 +8,17 @@ import * as Schema from "effect/Schema";
 import * as Cache from "./Cache.ts";
 import { defineConfig } from "./Config.ts";
 import * as Envi from "./Envi.ts";
-import { DecodeError, ExportError, ReferenceError, UnknownStageError } from "./Errors.ts";
+import {
+  ConfigLoadError,
+  ConfigLoadFailure,
+  DecodeError,
+  docsBase,
+  ExportError,
+  hints,
+  SecretReferenceError,
+  UnknownStageError,
+  VarsError,
+} from "./Errors.ts";
 import { mem, memoryProvider } from "./Memory.ts";
 import { ExportFormat, ValueOrigin } from "./Reports.ts";
 import * as Source from "./Source.ts";
@@ -88,19 +98,60 @@ describe("Envi", () => {
     }).pipe(Effect.provide(layer), Effect.provide(withEnv({ ENVI_STAGE: "qa" }))),
   );
 
-  it.effect("fails a load with the failure of the first failed var", () =>
+  it.effect("fails a load with every failed var, the stage, and a hint for each failure", () =>
     Effect.gen(function* () {
       const envi = yield* Envi.Envi;
 
       const config = defineConfig({
-        providers: [memoryProvider({})],
-        vars: { A: "1", MISSING: mem("missing") },
+        providers: [memoryProvider({ word: "not-a-number-secret" })],
+        vars: {
+          A: "1",
+          MISSING: mem("missing"),
+          PORT: mem("word").schema(Schema.FiniteFromString),
+        },
       });
 
       const error = yield* Effect.flip(envi.load(config));
 
-      expect(error).toBeInstanceOf(ReferenceError);
-      expect(error).toMatchObject({ reference: "memory://missing" });
+      assert(error instanceof VarsError);
+      expect(error.stage).toBe("development");
+      expect(error.failures.map((failure) => failure.key)).toEqual(["MISSING", "PORT"]);
+      expect(error.failures[0]?.error).toBeInstanceOf(SecretReferenceError);
+      expect(error.failures[0]?.error).toMatchObject({ reference: "memory://missing" });
+      expect(error.failures[1]?.error).toMatchObject({ key: "PORT", expected: "a finite number" });
+      expect(error.message).toContain("MISSING");
+      expect(error.message).toContain(hints.SecretReferenceError.NotFound);
+      expect(error.message).toContain(`${docsBase}error-secret-reference-not-found`);
+      expect(error.message).not.toContain("not-a-number-secret");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("fails with VarsThrew and the location when vars throws", () =>
+    Effect.gen(function* () {
+      const envi = yield* Envi.Envi;
+
+      const config = defineConfig({
+        vars: (): Record<string, string> => {
+          throw new TypeError("fake-secret-in-vars");
+        },
+      });
+
+      const error = yield* Effect.flip(envi.load(config));
+
+      assert(error instanceof ConfigLoadError);
+      expect(error.reason).toBe(ConfigLoadFailure.VarsThrew);
+      expect(error.location).toMatch(/Envi\.test\.ts:\d+:\d+$/u);
+      expect(error.message).not.toContain("fake-secret-in-vars");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("fails a single resolve with the error of the descriptor", () =>
+    Effect.gen(function* () {
+      const envi = yield* Envi.Envi;
+      const config = defineConfig({ providers: [memoryProvider({})] });
+      const error = yield* Effect.flip(envi.resolve(config, mem("missing")));
+
+      expect(error).toBeInstanceOf(SecretReferenceError);
     }).pipe(Effect.provide(layer)),
   );
 
@@ -144,9 +195,10 @@ describe("Envi", () => {
         envi.parse(config, { PORT: "secret-port", DATABASE_URL: "x", TOKEN: "t" }),
       );
 
-      expect(missing).toBeInstanceOf(DecodeError);
-      expect(missing).toMatchObject({ key: "DATABASE_URL" });
-      expect(invalid).toMatchObject({ key: "PORT" });
+      assert(missing instanceof VarsError);
+      expect(missing.failures.map((failure) => failure.key)).toEqual(["DATABASE_URL", "TOKEN"]);
+      expect(missing.failures[0]?.error).toBeInstanceOf(DecodeError);
+      expect(invalid).toMatchObject({ failures: [{ key: "PORT" }] });
       expect(invalid.message).not.toContain("secret-port");
     }).pipe(Effect.provide(layer)),
   );
@@ -191,12 +243,25 @@ describe("Envi", () => {
       expect(first.configs).toBe(1);
       expect(first.providers).toEqual([{ provider: "memory", secrets: 3, cached: 0, resolved: 3 }]);
       expect(first.failures).toEqual([
-        { key: "BAD", reference: null, error: "DecodeError", reason: expect.any(String) },
+        {
+          key: "BAD",
+          config: null,
+          reference: null,
+          error: "DecodeError",
+          reason: "a finite number",
+          summary: "Envi value does not match its schema: BAD expects a finite number",
+          hint: hints.DecodeError,
+          docs: `${docsBase}error-decode`,
+        },
         {
           key: "MISSING",
+          config: null,
           reference: "memory://missing",
-          error: "ReferenceError",
+          error: "SecretReferenceError",
           reason: "NotFound",
+          summary: expect.stringContaining("memory://missing"),
+          hint: hints.SecretReferenceError.NotFound,
+          docs: `${docsBase}error-secret-reference-not-found`,
         },
       ]);
       expect(JSON.stringify(first)).not.toContain("not-a-number");
@@ -212,19 +277,24 @@ describe("Envi", () => {
       const web = defineConfig({ providers: [provider], vars: { A: mem("a") } });
       const api = defineConfig({ providers: [provider], vars: { A: mem("a"), B: mem("b") } });
 
-      const other = defineConfig({
-        providers: [memoryProvider({ c: "3" })],
-        vars: { C: mem("c") },
-      });
+      const other = {
+        ...defineConfig({
+          providers: [memoryProvider({ c: "3" })],
+          vars: { C: mem("c"), MISSING: mem("missing") },
+        }),
+        path: Option.some("/repo/tools/envi.config.ts"),
+      };
 
       const report = yield* envi.sync([web, api, other]);
 
       expect(report.configs).toBe(3);
       expect(provider.calls()).toEqual([["a", "b"]]);
       expect(report.providers).toEqual([
-        { provider: "memory", secrets: 3, cached: 0, resolved: 3 },
+        { provider: "memory", secrets: 4, cached: 0, resolved: 4 },
       ]);
-      expect(report.failures).toEqual([]);
+      expect(report.failures).toMatchObject([
+        { key: "MISSING", config: "/repo/tools/envi.config.ts", reason: "NotFound" },
+      ]);
     }).pipe(Effect.provide(layer)),
   );
 

@@ -11,9 +11,13 @@ describe("render", () => {
       failures: [
         {
           key: "TOKEN",
+          config: "/repo/apps/api/envi.config.ts",
           reference: "op://app/api/token",
-          error: "ReferenceError",
+          error: "SecretReferenceError",
           reason: "NotFound",
+          summary: "Envi reference failed: NotFound for op://app/api/token (provider onepassword)",
+          hint: "Check the reference.",
+          docs: "https://example.com/docs#error-secret-reference-not-found",
         },
       ],
       durationMillis: 1234,
@@ -24,7 +28,10 @@ describe("render", () => {
         "Synced the stage development from 2 configs in 1234 ms.",
         "  onepassword: 3 secrets, 1 cached, 1 resolved",
         "1 var failed:",
-        "  ✗ TOKEN (op://app/api/token): ReferenceError NotFound",
+        "  ✗ TOKEN: Envi reference failed: NotFound for op://app/api/token (provider onepassword)",
+        "    config: /repo/apps/api/envi.config.ts",
+        "    hint: Check the reference.",
+        "    docs: https://example.com/docs#error-secret-reference-not-found",
         "",
       ].join("\n"),
     );
@@ -34,11 +41,29 @@ describe("render", () => {
     const text = Render.check({
       stage: "production",
       passed: ["PORT"],
-      failures: [{ key: "BAD", reference: null, error: "DecodeError", reason: "a finite number" }],
+      failures: [
+        {
+          key: "BAD",
+          config: null,
+          reference: null,
+          error: "DecodeError",
+          reason: "a finite number",
+          summary: "Envi value does not match its schema: BAD expects a finite number",
+          hint: "Fix the value.",
+          docs: "https://example.com/docs#error-decode",
+        },
+      ],
     });
 
     expect(text).toBe(
-      ["Stage: production", "  ✓ PORT", "  ✗ BAD: DecodeError a finite number", ""].join("\n"),
+      [
+        "Stage: production",
+        "  ✓ PORT",
+        "  ✗ BAD: Envi value does not match its schema: BAD expects a finite number",
+        "    hint: Fix the value.",
+        "    docs: https://example.com/docs#error-decode",
+        "",
+      ].join("\n"),
     );
   });
 

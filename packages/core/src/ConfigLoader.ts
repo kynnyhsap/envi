@@ -9,6 +9,7 @@ import * as Schema from "effect/Schema";
 
 import * as Config from "./Config.ts";
 import { ConfigLoadError, ConfigLoadFailure } from "./Errors.ts";
+import * as Thrown from "./Thrown.ts";
 import * as Timing from "./Timing.ts";
 
 /** The base name of a config file that Envi finds on its own. */
@@ -56,6 +57,39 @@ const moduleNotFoundCode = "ERR_MODULE_NOT_FOUND";
 
 const childrenPattern = "/*";
 
+/** A parse error of Bun. The message and the line text are left out: they show source code. */
+const BuildMessage = Schema.Struct({
+  name: Schema.Literal("BuildMessage"),
+  position: Schema.Struct({ file: Schema.String, line: Schema.Number, column: Schema.Number }),
+});
+
+/** Bun throws one build message, or an aggregate of them for several errors. */
+const BuildFailure = Schema.Union([
+  BuildMessage,
+  Schema.Struct({ errors: Schema.NonEmptyArray(BuildMessage) }),
+]);
+
+const isBuildMessage = Schema.is(BuildMessage);
+
+const asBuildFailure = Schema.decodeUnknownOption(BuildFailure);
+
+/** A parse error of Node. The first line of its stack is the location in the file. */
+const asSyntaxError = Schema.decodeUnknownOption(Schema.instanceOf(SyntaxError));
+
+/**
+ * The location of a syntax error in a config file. The outer `Option` is none for another failure.
+ * The inner value is undefined when the runtime does not report the location.
+ */
+const syntaxLocationOf = (cause: unknown): Option.Option<string | undefined> =>
+  Option.orElse(
+    Option.map(asBuildFailure(cause), (failure) => {
+      const { position } = isBuildMessage(failure) ? failure : failure.errors[0];
+
+      return `${position.file}:${position.line}:${position.column}`;
+    }),
+    () => Option.map(asSyntaxError(cause), (error) => Thrown.locationOf(error.stack ?? "")),
+  );
+
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -88,11 +122,25 @@ const make = Effect.gen(function* () {
       });
     }
 
+    const syntax = syntaxLocationOf(cause);
+
+    if (Option.isSome(syntax)) {
+      return new ConfigLoadError({
+        reason: ConfigLoadFailure.ConfigSyntax,
+        path: file,
+        detail: "The file has a syntax error.",
+        location: syntax.value,
+      });
+    }
+
+    // The cause can hold a secret from user code, so the error holds only its name and location.
+    const { thrown, location } = Thrown.describe(Thrown.asError(cause));
+
     return new ConfigLoadError({
       reason: ConfigLoadFailure.ImportFailed,
       path: file,
-      // The cause can hold a secret from user code, so the error holds only its name.
-      detail: `The import threw ${cause instanceof Error ? cause.name : "a value"}. Run the file on its own to see the cause.`,
+      detail: `The import threw ${thrown}.`,
+      location,
     });
   };
 
@@ -139,7 +187,7 @@ const make = Effect.gen(function* () {
     const exported = Predicate.hasProperty(module, "default") ? module.default : undefined;
 
     return Config.isConfig(exported)
-      ? exported
+      ? { ...exported, path: Option.some(absolute) }
       : yield* invalid("The default export must be the result of `defineConfig`.");
   });
 
@@ -159,9 +207,9 @@ const make = Effect.gen(function* () {
 
         if (parent === current) {
           return yield* new ConfigLoadError({
-            reason: ConfigLoadFailure.NotFound,
+            reason: ConfigLoadFailure.NoConfig,
             path: start,
-            detail: `No ${configBaseName}.ts exists in this directory or in an ancestor. Pass --config.`,
+            detail: `No ${configBaseName}.ts exists in this directory or in an ancestor.`,
           });
         }
 

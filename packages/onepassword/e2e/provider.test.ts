@@ -1,6 +1,13 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
-import { Cache, defineConfig, Envi, FileCache, ReferenceError, ValueOrigin } from "@envi/core";
+import {
+  Cache,
+  defineConfig,
+  Envi,
+  FileCache,
+  SecretReferenceError,
+  ValueOrigin,
+} from "@envi/core";
 // Tests against real 1Password. They need the fixture: `bun fixture:onepassword setup`.
 // The service account token or the account name comes from the environment. Without both, the
 // suite skips itself. With a token, no test asks for an approval.
@@ -93,7 +100,7 @@ describe.skipIf(account === undefined && token === undefined)(
             .resolve(config, op(primaryVault, "app", "DOES_NOT_EXIST"))
             .pipe(Effect.provide(Layer.provide(Envi.layer(), Cache.layerNone)), Effect.flip);
 
-          expect(error).toBeInstanceOf(ReferenceError);
+          expect(error).toBeInstanceOf(SecretReferenceError);
           expect(error).toMatchObject({ reference: `op://${primaryVault}/app/DOES_NOT_EXIST` });
         }),
       );

@@ -28,10 +28,13 @@ const table = (rows: ReadonlyArray<ReadonlyArray<string>>): ReadonlyArray<string
   );
 };
 
-const failureLine = (failure: VarFailure): string =>
-  failure.reference === null
-    ? `  ✗ ${failure.key}: ${failure.error} ${failure.reason}`
-    : `  ✗ ${failure.key} (${failure.reference}): ${failure.error} ${failure.reason}`;
+/** A failed var: what failed, the config file when it is known, the next action, and the docs. */
+const failureLines = (failure: VarFailure): ReadonlyArray<string> => [
+  `  ✗ ${failure.key}: ${failure.summary}`,
+  ...(failure.config === null ? [] : [`    config: ${failure.config}`]),
+  `    hint: ${failure.hint}`,
+  `    docs: ${failure.docs}`,
+];
 
 const lines = (parts: ReadonlyArray<string>): string => `${parts.join("\n")}\n`;
 
@@ -47,7 +50,7 @@ export const sync = (report: SyncReport): string =>
       ? []
       : [
           `${report.failures.length} ${report.failures.length === 1 ? "var" : "vars"} failed:`,
-          ...report.failures.map(failureLine),
+          ...report.failures.flatMap(failureLines),
         ]),
   ]);
 
@@ -56,7 +59,7 @@ export const check = (report: CheckReport): string =>
   lines([
     `Stage: ${report.stage}`,
     ...report.passed.map((key) => `  ✓ ${key}`),
-    ...report.failures.map(failureLine),
+    ...report.failures.flatMap(failureLines),
   ]);
 
 /** The text of `envi inspect`. */

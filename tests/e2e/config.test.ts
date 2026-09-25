@@ -107,6 +107,35 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
       }),
     );
 
+    it.effect("reports the location of a syntax error without the source text", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const sandbox = yield* makeSandbox("none");
+
+        yield* fs.writeFileString(
+          path.join(sandbox.directory, "envi.config.ts"),
+          'export default {\n  vars: {\n    TOKEN: "secret-in-source" +\n  },\n};\n',
+        );
+
+        const text = yield* runCli(runtime, sandbox.directory, ["check"]);
+        const json = yield* runCli(runtime, sandbox.directory, ["check", "--json"]);
+
+        expect(text.exitCode).toBe(1);
+        expect(text.stderr).toContain("ConfigSyntax");
+        expect(text.stderr).toMatch(/envi\.config\.ts:4/u);
+        expect(text.stderr).toContain(
+          "docs: https://github.com/kynnyhsap/envi#error-config-load-config-syntax",
+        );
+        expect(text.stderr + json.stdout).not.toContain("secret-in-source");
+        expect(json.exitCode).toBe(1);
+        expect(JSON.parse(json.stdout).error).toMatchObject({
+          error: "ConfigLoadError",
+          reason: "ConfigSyntax",
+        });
+      }),
+    );
+
     it.effect("prints the install hint for a project without a local Envi", () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;

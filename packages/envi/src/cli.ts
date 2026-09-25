@@ -1,4 +1,5 @@
 import {
+  type AnyEnviError,
   CacheClearReport,
   CacheListReport,
   CheckReport,
@@ -8,9 +9,11 @@ import {
   ConfigLoadFailure,
   DefaultCache,
   Envi,
+  ErrorReport,
   ExportFile,
   ExportFormat,
   InspectReport,
+  isEnviError,
   Keychain,
   SyncReport,
   Timing,
@@ -349,6 +352,21 @@ const loggerLayer = (argv: ReadonlyArray<string>) => {
 };
 
 /**
+ * Prints an Envi error and sets the exit code 1. The text goes to stderr. With `--json`, the
+ * encoded `ErrorReport` goes to stdout, so a program reads one JSON document in both cases.
+ */
+const report = (argv: ReadonlyArray<string>) => (error: AnyEnviError) =>
+  Effect.andThen(
+    argv.includes("--json")
+      ? Effect.flatMap(
+          Effect.orDie(Schema.encodeEffect(ErrorReport)(Envi.errorReport(error))),
+          (encoded) => Console.log(JSON.stringify(encoded, null, 2)),
+        )
+      : Console.error(error.message),
+    fail,
+  );
+
+/**
  * Runs the CLI. An expected failure prints its message on stderr and sets the exit code 1.
  *
  * @param argv - The arguments after the program name.
@@ -357,18 +375,7 @@ const loggerLayer = (argv: ReadonlyArray<string>) => {
 export const main = (argv: ReadonlyArray<string>, startupMs: number) =>
   Timing.report("startup", startupMs, Timing.Outcome.Success).pipe(
     Effect.andThen(Command.runWith(command, { version: packageJson.version })(argv)),
-    Effect.catchTags({
-      CacheError: (error) => Effect.andThen(Console.error(error.message), fail),
-      ConfigLoadError: (error) => Effect.andThen(Console.error(error.message), fail),
-      DecodeError: (error) => Effect.andThen(Console.error(error.message), fail),
-      ExportError: (error) => Effect.andThen(Console.error(error.message), fail),
-      ExportFileError: (error) => Effect.andThen(Console.error(error.message), fail),
-      ProviderError: (error) => Effect.andThen(Console.error(error.message), fail),
-      ReferenceError: (error) => Effect.andThen(Console.error(error.message), fail),
-      RunError: (error) => Effect.andThen(Console.error(error.message), fail),
-      SettingsError: (error) => Effect.andThen(Console.error(error.message), fail),
-      UnknownStageError: (error) => Effect.andThen(Console.error(error.message), fail),
-    }),
+    Effect.catchIf(isEnviError, report(argv)),
     Effect.provide(ConfigLoader.layer),
     Effect.provide(loggerLayer(argv)),
   );

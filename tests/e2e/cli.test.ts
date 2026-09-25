@@ -104,7 +104,38 @@ layer(NodeServices.layer)("envi CLI", (it) => {
 
         expect(result.exitCode).toBe(1);
         expect(result.stdout).toBe("");
-        expect(result.stderr).toContain("memory://token");
+        expect(result.stderr).toContain("Envi failed to resolve 1 var of the stage development");
+        expect(result.stderr).toContain(
+          "✗ TOKEN: Envi reference failed: NotFound for memory://token",
+        );
+        expect(result.stderr).toContain("hint: ");
+        expect(result.stderr).toContain(
+          "docs: https://github.com/kynnyhsap/envi#error-secret-reference-not-found",
+        );
+      }),
+    );
+
+    it.effect("prints an error as one JSON document on stdout with --json", () =>
+      Effect.gen(function* () {
+        const result = yield* runCli(runtime, fixture("broken"), ["inspect", "--json"]);
+        const report = JSON.parse(result.stdout);
+
+        expect(result.exitCode).toBe(1);
+        expect(report.error).toMatchObject({
+          error: "VarsError",
+          reason: null,
+          docs: "https://github.com/kynnyhsap/envi#error-vars",
+          failures: [
+            {
+              key: "TOKEN",
+              config: expect.stringMatching(/broken\/envi\.config\.ts$/u),
+              reference: "memory://token",
+              error: "SecretReferenceError",
+              reason: "NotFound",
+            },
+          ],
+        });
+        expect(report.error.hint.length).toBeGreaterThan(0);
       }),
     );
 
@@ -113,7 +144,9 @@ layer(NodeServices.layer)("envi CLI", (it) => {
         const result = yield* runCli(runtime, fixture("broken"), ["check"]);
 
         expect(result.exitCode).toBe(1);
-        expect(result.stdout).toContain("✗ TOKEN (memory://token)");
+        expect(result.stdout).toContain(
+          "✗ TOKEN: Envi reference failed: NotFound for memory://token",
+        );
       }),
     );
 
@@ -131,6 +164,7 @@ layer(NodeServices.layer)("envi CLI", (it) => {
         const result = yield* runCli(runtime, "/", ["inspect"]);
 
         expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain("NoConfig");
         expect(result.stderr).toContain("envi.config.ts");
       }),
     );

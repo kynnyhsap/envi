@@ -11,14 +11,13 @@ import * as Schema from "effect/Schema";
 
 import * as Cache from "./Cache.ts";
 import * as Digest from "./Digest.ts";
+import type * as Errors from "./Errors.ts";
 import {
   type CacheError,
-  type CustomError,
   type DecodeError,
-  type DeriveError,
   ProviderError,
   ProviderFailure,
-  ReferenceError,
+  SecretReferenceError,
   ReferenceFailure,
 } from "./Errors.ts";
 import * as Provider from "./Provider.ts";
@@ -40,7 +39,7 @@ export interface Options {
 }
 
 /** The failure of one var. A cache failure is not one: it fails the whole resolution. */
-export type VarError = ReferenceError | ProviderError | DecodeError | CustomError | DeriveError;
+export type VarError = Errors.VarError;
 
 /** One resolved var. `raw` is absent for an optional var without a value. */
 export interface Resolved {
@@ -162,7 +161,9 @@ const whenMissing = (
 
   return source.isOptional
     ? Effect.succeed({ ...base, raw: Option.none(), origin: ValueOrigin.Unset })
-    : Effect.fail(new ReferenceError({ reason: ReferenceFailure.NotFound, provider, reference }));
+    : Effect.fail(
+        new SecretReferenceError({ reason: ReferenceFailure.NotFound, provider, reference }),
+      );
 };
 
 /** A value from an expired input is itself expired, and the origin tells `inspect` so. */
@@ -176,7 +177,7 @@ const allowsMissing = (source: Source.AnySource): boolean =>
   source.isOptional || Option.isSome(source.fallback);
 
 const isNotFound = (error: VarError): boolean =>
-  Predicate.isTagged(error, "ReferenceError") && error.reason === ReferenceFailure.NotFound;
+  Predicate.isTagged(error, "SecretReferenceError") && error.reason === ReferenceFailure.NotFound;
 
 /** A cached `NotFound` serves only a var that accepts a missing value. */
 const fromCached = (
@@ -396,7 +397,7 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
                   return Result.mapError(
                     result,
                     (reason) =>
-                      new ReferenceError({
+                      new SecretReferenceError({
                         reason,
                         provider: provider.id,
                         reference: leaf.description,
@@ -733,7 +734,7 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
           DecodeError: (error) => Effect.succeed([key, Result.fail(error)] as const),
           DeriveError: (error) => Effect.succeed([key, Result.fail(error)] as const),
           ProviderError: (error) => Effect.succeed([key, Result.fail(error)] as const),
-          ReferenceError: (error) => Effect.succeed([key, Result.fail(error)] as const),
+          SecretReferenceError: (error) => Effect.succeed([key, Result.fail(error)] as const),
         }),
       ),
     { concurrency: "unbounded" },
