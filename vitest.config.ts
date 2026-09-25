@@ -18,6 +18,9 @@ export default defineConfig({
         test: {
           name: "e2e",
           include: ["tests/e2e/**/*.test.ts"],
+          // A test starts several CLI processes. A CI runner has two cores and runs the unit tests
+          // at the same time, so one test can take longer than the default of 5 seconds.
+          testTimeout: 30_000,
         },
       },
       {
