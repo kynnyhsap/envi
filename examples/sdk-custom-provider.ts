@@ -1,9 +1,9 @@
+import { createEnvi, defineConfig, Provider, reference, ReferenceFailure } from "@kynnyhsap/envi";
 // A custom provider. The provider interface is public and unstable until a second real provider
 // proves it.
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
-import { createEnvi, defineConfig, Provider, reference, ReferenceFailure } from "envi";
 
 import { assertType, type Equal } from "./assert.ts";
 

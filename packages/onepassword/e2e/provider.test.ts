@@ -1,5 +1,13 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
+import {
+  Cache,
+  defineConfig,
+  Envi,
+  FileCache,
+  SecretReferenceError,
+  ValueOrigin,
+} from "@kynnyhsap/envi";
 // Tests against real 1Password. They need the fixture: `bun fixture:onepassword setup`.
 // The service account token or the account name comes from the environment. Without both, the
 // suite skips itself. With a token, no test asks for an approval.
@@ -7,7 +15,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { Cache, defineConfig, Envi, FileCache, SecretReferenceError, ValueOrigin } from "envi";
 
 import { onePasswordProvider, op } from "../src/index.ts";
 import { expected } from "./expected.ts";

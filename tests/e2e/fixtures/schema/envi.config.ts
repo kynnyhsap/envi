@@ -1,6 +1,6 @@
+import { defineConfig } from "@kynnyhsap/envi";
+import { memoryProvider } from "@kynnyhsap/envi/testing";
 import * as Schema from "effect/Schema";
-import { defineConfig } from "envi";
-import { memoryProvider } from "envi/testing";
 
 export default defineConfig({
   providers: [memoryProvider({ good: "8080", bad: "not-a-number" })],

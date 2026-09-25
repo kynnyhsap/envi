@@ -6,7 +6,9 @@ injects the values into a runtime. 1Password is the only provider for now. The a
 provider agnostic.
 
 Envi works as a CLI (`envi`) and as an SDK with a plain TypeScript API and an Effect API. The npm
-package name is not decided, so code must not depend on the package name.
+names are `@kynnyhsap/envi` and `@kynnyhsap/envi-1password` for now. The command stays `envi`.
+`scripts/packages.ts` holds the names. To change them, edit that file and run `bun run rename`.
+Code never spells a package name: each package reads its own name from its manifest.
 
 Reasons for Envi:
 
@@ -127,14 +129,14 @@ yet. Shared dependency versions come from `workspaces.catalog` in the root `pack
 - Every change goes through a pull request against `main`. Do not commit to `main` directly.
   CI must pass before a merge.
 
-| Package           | Folder                 | Holds                                                         |
-| ----------------- | ---------------------- | ------------------------------------------------------------- |
-| `envi`            | `packages/envi`        | the core in `src/core`, the plain client, the layer, the CLI  |
-| `@envi/1password` | `packages/onepassword` | `op()`, `onePasswordProvider`, and its e2e tests; peer `envi` |
+| Package                     | Folder                 | Holds                                                                    |
+| --------------------------- | ---------------------- | ------------------------------------------------------------------------ |
+| `@kynnyhsap/envi`           | `packages/envi`        | the core in `src/core`, the plain client, the layer, the CLI             |
+| `@kynnyhsap/envi-1password` | `packages/onepassword` | `op()`, `onePasswordProvider`, and its e2e tests; peer `@kynnyhsap/envi` |
 
 - `envi` exports a small public API from `src/index.ts`, and the test helpers from
-  `envi/testing`. Every other module of `src/core` is internal.
-- A published package holds `dist`, and `src` for the declaration maps. `@envi/1password` has its
+  `@kynnyhsap/envi/testing`. Every other module of `src/core` is internal.
+- A published package holds `dist`, and `src` for the declaration maps. `@kynnyhsap/envi-1password` has its
   own `README.md`. `scripts/prepack.ts` copies the root `LICENSE` into each package, and the root
   `README.md` into `envi`. The peer range of `effect` is `^4.0.0-rc.116`.
 - `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/build.ts`
@@ -156,6 +158,8 @@ yet. Shared dependency versions come from `workspaces.catalog` in the root `pack
 
 - `bun dev <args>` runs the CLI from source on Bun. `bun dev:node <args>` runs it on Node.
 - `bun run build` builds every package into its `dist` folder.
+- `bun run rename` writes the names of `scripts/packages.ts` into every manifest, import, and doc.
+  `bun run check` fails while a manifest differs from that file.
 - `bun run verify` runs format check, lint, typecheck, the unit tests on Node and on Bun, and the
   end-to-end tests, all in parallel.
 - `bun run test:onepassword` runs the tests against real 1Password. It needs

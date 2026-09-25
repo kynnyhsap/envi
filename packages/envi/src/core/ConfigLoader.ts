@@ -14,6 +14,7 @@ import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner
 
 import * as Config from "./Config.ts";
 import { ConfigLoadError, ConfigLoadFailure } from "./Errors.ts";
+import * as Package from "./Package.ts";
 import * as Thrown from "./Thrown.ts";
 import * as Timing from "./Timing.ts";
 
@@ -142,8 +143,7 @@ const make = Effect.gen(function* () {
       return new ConfigLoadError({
         reason: ConfigLoadFailure.MissingDependency,
         path: file,
-        detail:
-          "The config imports a module that does not resolve. Install Envi and each provider package in the project, such as `bun add -d envi`.",
+        detail: `The config imports a module that does not resolve. Install Envi and each provider package in the project, such as \`bun add -d ${Package.name}\`.`,
       });
     }
 

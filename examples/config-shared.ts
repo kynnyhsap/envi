@@ -1,8 +1,8 @@
-import { onePasswordProvider, op } from "@envi/1password";
 // Config 3: a monorepo. `shared` and `sentry` live in `envi.shared.ts` at the repo root.
 // A shared module sits outside `vars`, so it imports `op`. The import and the `vars` parameter
 // give the same function.
-import { defineConfig } from "envi";
+import { defineConfig } from "@kynnyhsap/envi";
+import { onePasswordProvider, op } from "@kynnyhsap/envi-1password";
 
 export const shared = {
   stages: ["development", "production"],

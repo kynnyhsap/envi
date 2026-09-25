@@ -1,5 +1,5 @@
-import { defineConfig } from "envi";
-import { mem, memoryProvider } from "envi/testing";
+import { defineConfig } from "@kynnyhsap/envi";
+import { mem, memoryProvider } from "@kynnyhsap/envi/testing";
 
 export default defineConfig({
   providers: [memoryProvider({})],

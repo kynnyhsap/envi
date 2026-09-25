@@ -9,11 +9,10 @@ import * as ChildProcess from "effect/unstable/process/ChildProcess";
 // packages, and the CLI must use the same copy of `effect` as the config file. Two copies of
 // `effect` in one process break `Schema` decoding and `Redacted`.
 import { Signals } from "./core/index.ts";
+import * as Package from "./core/Package.ts";
 
 /** The variable that marks a delegated run. It prevents a loop. */
 export const delegatedVariable = "ENVI_DELEGATED";
-
-const packageName = "envi";
 
 const Manifest = Schema.fromJsonString(
   Schema.Struct({ bin: Schema.Struct({ envi: Schema.String }) }),
@@ -35,7 +34,8 @@ export const findLocalBin = Effect.fn("delegate.findLocalBin")(function* (
   const current = yield* realPath(currentFile);
 
   const binIn = (candidate: string) => {
-    const packageDirectory = path.join(candidate, "node_modules", packageName);
+    // A scoped name, such as `@scope/envi`, is a folder inside a folder.
+    const packageDirectory = path.join(candidate, "node_modules", ...Package.name.split("/"));
 
     return fs.readFileString(path.join(packageDirectory, "package.json")).pipe(
       Effect.flatMap(Schema.decodeEffect(Manifest)),

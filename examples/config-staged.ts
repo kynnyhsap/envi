@@ -1,9 +1,9 @@
-import { onePasswordProvider } from "@envi/1password";
+import { BooleanFromString, CustomFailure, defineConfig } from "@kynnyhsap/envi";
+import { onePasswordProvider } from "@kynnyhsap/envi-1password";
 // Config 2: typed stages, a provider, cache settings, schemas, and all three `op()` forms.
 // `vars` receives the stage, the built-in helpers, and the helpers of each provider.
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { BooleanFromString, CustomFailure, defineConfig } from "envi";
 
 declare const fetchBuildNumber: () => Promise<string>;
 declare const exchangeToken: (clientSecret: string) => Effect.Effect<string, Error>;

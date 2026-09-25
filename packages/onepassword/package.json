@@ -1,5 +1,5 @@
 {
-  "name": "@envi/1password",
+  "name": "@kynnyhsap/envi-1password",
   "version": "1.0.0",
   "license": "MIT",
   "files": [
@@ -15,6 +15,9 @@
       "default": "./dist/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "bun ../../scripts/build.ts",
     "prepack": "bun ../../scripts/prepack.ts LICENSE"
@@ -23,12 +26,12 @@
     "@1password/sdk": "catalog:"
   },
   "devDependencies": {
-    "effect": "catalog:",
-    "envi": "workspace:*"
+    "@kynnyhsap/envi": "workspace:*",
+    "effect": "catalog:"
   },
   "peerDependencies": {
-    "effect": "^4.0.0-rc.116",
-    "envi": "workspace:*"
+    "@kynnyhsap/envi": "workspace:*",
+    "effect": "^4.0.0-rc.116"
   },
   "engines": {
     "node": ">=22.19.0"

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
+import { Source } from "@kynnyhsap/envi";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { Source } from "envi";
 
 import { describeReference, op, providerId, Reference } from "./Reference.ts";
 

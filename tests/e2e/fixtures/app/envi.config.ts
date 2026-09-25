@@ -1,5 +1,5 @@
-import { defineConfig } from "envi";
-import { memoryProvider } from "envi/testing";
+import { defineConfig } from "@kynnyhsap/envi";
+import { memoryProvider } from "@kynnyhsap/envi/testing";
 
 export default defineConfig({
   stages: ["development", "production"],

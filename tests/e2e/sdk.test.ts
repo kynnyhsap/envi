@@ -2,13 +2,6 @@
 // fixed key, and the plain client.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
-import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
-import * as Path from "effect/Path";
-import * as Redacted from "effect/Redacted";
-import * as Schema from "effect/Schema";
 import {
   Cache,
   CacheError,
@@ -18,7 +11,14 @@ import {
   Envi,
   FileCache,
   ValueOrigin,
-} from "envi";
+} from "@kynnyhsap/envi";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
+import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
 
 import { fileProvider } from "./fixtures/file-provider.ts";
 import {

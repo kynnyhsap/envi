@@ -1,6 +1,6 @@
-import { onePasswordProvider, op } from "@envi/1password";
 // Config 1: a plain object. No stage logic, no function.
-import { defineConfig } from "envi";
+import { defineConfig } from "@kynnyhsap/envi";
+import { onePasswordProvider, op } from "@kynnyhsap/envi-1password";
 
 export default defineConfig({
   providers: [onePasswordProvider({ account: "my-team" })],
