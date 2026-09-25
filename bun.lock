@@ -23,7 +23,7 @@
     },
     "packages/envi": {
       "name": "envi",
-      "version": "0.0.0",
+      "version": "1.0.0",
       "bin": {
         "envi": "./dist/bin.js",
       },
@@ -39,7 +39,7 @@
     },
     "packages/onepassword": {
       "name": "@envi/1password",
-      "version": "0.0.0",
+      "version": "1.0.0",
       "dependencies": {
         "@1password/sdk": "catalog:",
       },

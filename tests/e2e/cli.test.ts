@@ -5,6 +5,8 @@ import * as Stream from "effect/Stream";
 import { ChildProcess } from "effect/unstable/process";
 import { fileURLToPath } from "node:url";
 
+import { enviVersion } from "./helpers.ts";
+
 const cliPath = fileURLToPath(new URL("../../packages/envi/dist/bin.js", import.meta.url));
 
 const fixture = (name: string): string =>
@@ -44,7 +46,7 @@ layer(NodeServices.layer)("envi CLI", (it) => {
         const result = yield* runCli(runtime, fixture("app"), ["--version"]);
 
         expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain("0.0.0");
+        expect(result.stdout).toContain(enviVersion);
       }),
     );
 

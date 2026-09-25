@@ -121,8 +121,11 @@ This repository is public. These rules have no exception.
 
 ## Repository
 
-One Bun workspace with two packages. Both share one version. Shared dependency versions come
-from `workspaces.catalog` in the root `package.json`.
+One Bun workspace with two packages. Both share one version, `1.0.0`, which is not published
+yet. Shared dependency versions come from `workspaces.catalog` in the root `package.json`.
+
+- Every change goes through a pull request against `main`. Do not commit to `main` directly.
+  CI must pass before a merge.
 
 | Package           | Folder                 | Holds                                                         |
 | ----------------- | ---------------------- | ------------------------------------------------------------- |

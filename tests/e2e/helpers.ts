@@ -7,6 +7,11 @@ import * as Stream from "effect/Stream";
 import { ChildProcess } from "effect/unstable/process";
 import { fileURLToPath } from "node:url";
 
+import enviPackage from "../../packages/envi/package.json" with { type: "json" };
+
+/** The version of the local `envi`. `envi --version` prints it. */
+export const enviVersion = enviPackage.version;
+
 export const cliPath = fileURLToPath(new URL("../../packages/envi/dist/bin.js", import.meta.url));
 
 export const fixture = (name: string): string =>

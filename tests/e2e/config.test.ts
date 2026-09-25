@@ -8,7 +8,7 @@ import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { fileURLToPath } from "node:url";
 
-import { fixture, makeSandbox, runCli, runtimes } from "./helpers.ts";
+import { enviVersion, fixture, makeSandbox, runCli, runtimes } from "./helpers.ts";
 
 const app = fixture("cached");
 
@@ -250,7 +250,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         });
 
         // In the project, the global Envi starts the local Envi. The marker stops a loop.
-        expect(delegated).toContain("0.0.0");
+        expect(delegated).toContain(enviVersion);
         expect(marked).toContain(globalVersion);
         expect(outside).toContain(globalVersion);
       }),
