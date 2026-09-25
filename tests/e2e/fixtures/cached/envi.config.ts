@@ -1,6 +1,6 @@
+import { defineConfig } from "@kynnyhsap/envi";
 // The cache tests. The test selects the encryption and the ttl through the environment.
 import * as Schema from "effect/Schema";
-import { defineConfig } from "envi";
 
 import { fileProvider } from "../file-provider.ts";
 

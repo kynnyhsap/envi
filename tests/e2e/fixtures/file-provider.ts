@@ -1,10 +1,16 @@
+import {
+  Provider,
+  ProviderError,
+  ProviderFailure,
+  reference,
+  ReferenceFailure,
+} from "@kynnyhsap/envi";
 // A custom provider for the end-to-end tests. It reads fake secrets from a real JSON file and
 // appends the keys of each batch to a real log file. A test sees each provider call across
 // several CLI processes this way. Both paths come from the environment of the test.
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
-import { Provider, ProviderError, ProviderFailure, reference, ReferenceFailure } from "envi";
 import { appendFileSync, readFileSync } from "node:fs";
 
 export const fileProviderId = "file";

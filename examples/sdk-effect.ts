@@ -1,10 +1,10 @@
+import { Cache, Envi, ExportFormat, layer, ReferenceFailure } from "@kynnyhsap/envi";
+import { mem, memoryProvider } from "@kynnyhsap/envi/testing";
 // The Effect API. Every operation is an Effect on the `Envi` service. The plain client only runs
 // these Effects. The service takes the config as an argument, because a service cannot carry a
 // type parameter.
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { Cache, Envi, ExportFormat, layer, ReferenceFailure } from "envi";
-import { mem, memoryProvider } from "envi/testing";
 
 import { assertType, type Equal } from "./assert.ts";
 import config from "./config-staged.ts";

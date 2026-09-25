@@ -32,11 +32,12 @@ Envi runs on Node 22.19.0 or later and on Bun, on macOS and Linux. Windows is no
 ## Install
 
 ```sh
-bun add envi @envi/1password effect
+bun add @kynnyhsap/envi @kynnyhsap/envi-1password effect
 ```
 
-`effect` is a peer dependency, so the project has one copy of it. `@envi/1password` installs
-`@1password/sdk`. A global `envi` starts the local `envi` of the project.
+The package is `@kynnyhsap/envi`, and its command is `envi`. `effect` is a peer dependency, so the
+project has one copy of it. `@kynnyhsap/envi-1password` installs `@1password/sdk`. A global `envi`
+starts the local `envi` of the project.
 
 ## Quick start
 
@@ -44,8 +45,8 @@ Create `envi.config.ts` at the root of the project:
 
 ```ts
 import * as Schema from "effect/Schema";
-import { defineConfig } from "envi";
-import { onePasswordProvider } from "@envi/1password";
+import { defineConfig } from "@kynnyhsap/envi";
+import { onePasswordProvider } from "@kynnyhsap/envi-1password";
 
 export default defineConfig({
   stages: ["development", "production"],
@@ -263,7 +264,7 @@ the entries. `--cache-dir`, `ENVI_CACHE_DIR`, or `cache.directory` selects anoth
 
 ## 1Password
 
-`@envi/1password` is the 1Password provider. It gives `vars` the helper `op()`:
+`@kynnyhsap/envi-1password` is the 1Password provider. It gives `vars` the helper `op()`:
 
 ```ts
 op("op://app/postgres/url");
@@ -288,7 +289,7 @@ authentication, the timeouts, and the error classification.
 Every operation comes from a client of one config. The client mirrors the CLI.
 
 ```ts
-import { createEnvi } from "envi";
+import { createEnvi } from "@kynnyhsap/envi";
 import config from "./envi.config.ts";
 
 const envi = createEnvi(config);
@@ -315,7 +316,7 @@ Every operation is an Effect on the `Envi` service. The plain client runs these 
 
 ```ts
 import * as Effect from "effect/Effect";
-import { Envi, layer } from "envi";
+import { Envi, layer } from "@kynnyhsap/envi";
 
 const program = Effect.gen(function* () {
   const envi = yield* Envi.Envi;
@@ -336,7 +337,7 @@ the platform services of Node or Bun.
 A custom cache is a layer of the `Cache.Cache` service. Both interfaces are public and unstable
 until a second real provider proves them. `examples/sdk-custom-provider.ts` shows a provider.
 
-`envi/testing` exports `memoryProvider` and `mem` for tests.
+`@kynnyhsap/envi/testing` exports `memoryProvider` and `mem` for tests.
 
 ## Known limits
 
@@ -634,7 +635,7 @@ Next action: Fix `vars` at the location. `vars` returns literals and descriptors
 
 The config imports a package that does not resolve from the project.
 
-Next action: Install Envi and each provider package in the project, such as `bun add -d envi`.
+Next action: Install Envi and each provider package in the project, such as `bun add -d @kynnyhsap/envi`.
 
 <a id="error-config-load-unsupported-runtime"></a>
 

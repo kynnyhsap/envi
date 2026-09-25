@@ -1,3 +1,10 @@
+import {
+  Provider,
+  ProviderError,
+  ProviderFailure,
+  ReferenceFailure,
+  Timing,
+} from "@kynnyhsap/envi";
 import * as Arr from "effect/Array";
 import * as Config from "effect/Config";
 import * as Duration from "effect/Duration";
@@ -6,8 +13,9 @@ import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
 import * as Result from "effect/Result";
-import { Provider, ProviderError, ProviderFailure, ReferenceFailure, Timing } from "envi";
 
+// The npm name of this package comes from its manifest, so a rename changes only the manifest.
+import manifest from "../package.json" with { type: "json" };
 import {
   describeReference,
   op,
@@ -341,7 +349,7 @@ const loadRealSdk = Effect.tryPromise({
   catch: () =>
     failure(
       ProviderFailure.Misconfigured,
-      "The package @1password/sdk does not load. Install it next to @envi/1password.",
+      `The package @1password/sdk does not load. Install it next to ${manifest.name}.`,
     ),
 }).pipe(Timing.measure("onepassword.sdk.import"));
 

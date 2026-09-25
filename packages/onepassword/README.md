@@ -1,4 +1,4 @@
-# @envi/1password
+# @kynnyhsap/envi-1password
 
 The 1Password provider of [Envi](https://github.com/kynnyhsap/envi). It resolves `op()`
 references through the official `@1password/sdk`, in one batch for each run. It does not need the
@@ -7,16 +7,16 @@ references through the official `@1password/sdk`, in one batch for each run. It 
 ## Install
 
 ```sh
-bun add envi @envi/1password effect
+bun add @kynnyhsap/envi @kynnyhsap/envi-1password effect
 ```
 
-`@envi/1password` installs `@1password/sdk`. `envi` and `effect` are peer dependencies.
+`@kynnyhsap/envi-1password` installs `@1password/sdk`. `envi` and `effect` are peer dependencies.
 
 ## Usage
 
 ```ts
-import { defineConfig } from "envi";
-import { onePasswordProvider } from "@envi/1password";
+import { defineConfig } from "@kynnyhsap/envi";
+import { onePasswordProvider } from "@kynnyhsap/envi-1password";
 
 export default defineConfig({
   stages: ["development", "production"],
@@ -29,7 +29,7 @@ export default defineConfig({
 ```
 
 `vars` receives `op` from the provider, so the config needs no import of `op`. Code outside
-`vars` imports `op` from `@envi/1password`.
+`vars` imports `op` from `@kynnyhsap/envi-1password`.
 
 ## References
 

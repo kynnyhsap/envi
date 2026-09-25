@@ -8,11 +8,11 @@
         "@1password/sdk": "catalog:",
         "@effect/platform-node": "catalog:",
         "@effect/vitest": "catalog:",
-        "@envi/1password": "workspace:*",
+        "@kynnyhsap/envi": "workspace:*",
+        "@kynnyhsap/envi-1password": "workspace:*",
         "@oxlint/plugins": "1.83.0",
         "@types/node": "catalog:",
         "effect": "catalog:",
-        "envi": "workspace:*",
         "oxfmt": "0.68.0",
         "oxlint": "1.83.0",
         "oxlint-tsgolint": "7.0.2002",
@@ -22,7 +22,7 @@
       },
     },
     "packages/envi": {
-      "name": "envi",
+      "name": "@kynnyhsap/envi",
       "version": "1.0.0",
       "bin": {
         "envi": "./dist/bin.js",
@@ -38,18 +38,18 @@
       },
     },
     "packages/onepassword": {
-      "name": "@envi/1password",
+      "name": "@kynnyhsap/envi-1password",
       "version": "1.0.0",
       "dependencies": {
         "@1password/sdk": "catalog:",
       },
       "devDependencies": {
+        "@kynnyhsap/envi": "workspace:*",
         "effect": "catalog:",
-        "envi": "workspace:*",
       },
       "peerDependencies": {
+        "@kynnyhsap/envi": "workspace:*",
         "effect": "^4.0.0-rc.116",
-        "envi": "workspace:*",
       },
     },
   },
@@ -73,13 +73,15 @@
 
     "@effect/vitest": ["@effect/vitest@4.0.0-rc.116", "", { "peerDependencies": { "effect": "^4.0.0-rc.116", "vitest": ">=5.0.0 <6.0.0" } }, "sha512-q42ue4hAa5AcPBwqi8rvMvR1Jstr+JjsyyxEBUoBk+WWm8otnqFxQ+XbWslW1QSwdg5+2Fdgd7z59IValt9Oiw=="],
 
-    "@envi/1password": ["@envi/1password@workspace:packages/onepassword"],
-
     "@jridgewell/resolve-uri": ["@jridgewell/resolve-uri@3.1.2", "", {}, "sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw=="],
 
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.6.0", "", {}, "sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
+
+    "@kynnyhsap/envi": ["@kynnyhsap/envi@workspace:packages/envi"],
+
+    "@kynnyhsap/envi-1password": ["@kynnyhsap/envi-1password@workspace:packages/onepassword"],
 
     "@oxc-project/types": ["@oxc-project/types@0.150.0", "", {}, "sha512-rDS5/31E9HfPl/CIzGrn0DOlvBbXFseQ5URJ9sYMfstbKLD/c6Gm9vmRzRGDdAXyOIL4zmO37lc9RIwYqVruZw=="],
 
@@ -278,8 +280,6 @@
     "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
 
     "effect": ["effect@4.0.0-rc.116", "", {}, "sha512-nawqJHSjHV8XIBRZNZ+D7cLZpN3kkSjzy6aiT9ofKENsl7xAMFKEoDa0itN5JFl3GUQ1PIN1T1HNlva5+xyO/A=="],
-
-    "envi": ["envi@workspace:packages/envi"],
 
     "es-module-lexer": ["es-module-lexer@2.3.2", "", {}, "sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw=="],
 

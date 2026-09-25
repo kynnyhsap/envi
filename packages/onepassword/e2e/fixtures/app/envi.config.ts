@@ -1,8 +1,8 @@
+import { defineConfig } from "@kynnyhsap/envi";
 // The config of the CLI test against real 1Password. The account name comes from
 // `ENVI_PROVIDER_ONEPASSWORD_ACCOUNT`, which the test sets. The test passes `--cache-dir`.
-import { onePasswordProvider } from "@envi/1password";
+import { onePasswordProvider } from "@kynnyhsap/envi-1password";
 import * as Schema from "effect/Schema";
-import { defineConfig } from "envi";
 
 import { primaryVault, secondaryVault } from "../../fixture.ts";
 

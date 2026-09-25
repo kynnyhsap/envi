@@ -1,10 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
+import { Provider, ProviderFailure, ReferenceFailure } from "@kynnyhsap/envi";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
 import * as TestClock from "effect/testing/TestClock";
-import { Provider, ProviderFailure, ReferenceFailure } from "envi";
 
 import { makeProvider, type Sdk, tokenVariables } from "./Provider.ts";
 

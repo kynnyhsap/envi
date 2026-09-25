@@ -7,16 +7,20 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
+import * as Package from "./core/Package.ts";
 import { findLocalBin } from "./delegate.ts";
 
 const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 
-/** A project with a local installation of `envi`, and a directory below the project. */
+/**
+ * A project with a local installation of Envi under the name from its manifest, which can hold a
+ * scope, and a directory below the project.
+ */
 const makeProject = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const root = yield* fs.realPath(yield* fs.makeTempDirectoryScoped({ prefix: "envi-delegate-" }));
-  const packageDirectory = path.join(root, "node_modules", "envi");
+  const packageDirectory = path.join(root, "node_modules", ...Package.name.split("/"));
   const bin = path.join(packageDirectory, "dist", "bin.js");
   const nested = path.join(root, "apps", "web");
 
@@ -26,7 +30,7 @@ const makeProject = Effect.gen(function* () {
 
   yield* fs.writeFileString(
     path.join(packageDirectory, "package.json"),
-    JSON.stringify({ name: "envi", bin: { envi: "./dist/bin.js" } }),
+    JSON.stringify({ name: Package.name, bin: { envi: "./dist/bin.js" } }),
   );
 
   return { root, bin, nested };

@@ -11,7 +11,6 @@ import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
-import packageJson from "../package.json" with { type: "json" };
 import {
   type AnyEnviError,
   CacheClearReport,
@@ -33,6 +32,7 @@ import {
   SyncReport,
   Timing,
 } from "./core/index.ts";
+import * as Package from "./core/Package.ts";
 import * as Render from "./render.ts";
 
 /** The exit code of the process. `run` sets the exit code of the child. */
@@ -462,7 +462,7 @@ const report = (argv: ReadonlyArray<string>) => (error: AnyEnviError) =>
  */
 export const main = (argv: ReadonlyArray<string>, startupMs: number) =>
   Timing.report("startup", startupMs, Timing.Outcome.Success).pipe(
-    Effect.andThen(Command.runWith(command, { version: packageJson.version })(argv)),
+    Effect.andThen(Command.runWith(command, { version: Package.version })(argv)),
     Effect.catchIf(isEnviError, report(argv)),
     Effect.provide(ConfigLoader.layer),
     Effect.provide(loggerLayer(argv)),

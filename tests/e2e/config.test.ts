@@ -194,7 +194,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
 
         yield* fs.writeFileString(
           path.join(sandbox.directory, "envi.config.ts"),
-          'import { defineConfig } from "envi";\n\nexport default defineConfig({ vars: { A: "1" } });\n',
+          'import { defineConfig } from "@kynnyhsap/envi";\n\nexport default defineConfig({ vars: { A: "1" } });\n',
         );
 
         const result = yield* runCli(runtime, sandbox.directory, ["check"]);

@@ -1,6 +1,3 @@
-// The plain TypeScript API. Each method runs the Effect of the same name and returns a promise.
-import { onePasswordProvider, op } from "@envi/1password";
-import * as Schema from "effect/Schema";
 import {
   createEnvi,
   defineConfig,
@@ -10,8 +7,11 @@ import {
   schemaOf,
   type StageOf,
   syncAll,
-} from "envi";
-import { mem, memoryProvider } from "envi/testing";
+} from "@kynnyhsap/envi";
+// The plain TypeScript API. Each method runs the Effect of the same name and returns a promise.
+import { onePasswordProvider, op } from "@kynnyhsap/envi-1password";
+import { mem, memoryProvider } from "@kynnyhsap/envi/testing";
+import * as Schema from "effect/Schema";
 
 import { assertType, type Equal } from "./assert.ts";
 import config from "./config-staged.ts";

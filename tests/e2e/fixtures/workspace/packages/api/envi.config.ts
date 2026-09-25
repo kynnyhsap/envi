@@ -1,4 +1,4 @@
-import { defineConfig } from "envi";
+import { defineConfig } from "@kynnyhsap/envi";
 
 import { fileProvider } from "../../../file-provider.ts";
 

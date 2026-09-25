@@ -4,6 +4,8 @@
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
+import * as Package from "./Package.ts";
+
 /** The reasons why a provider cannot resolve one reference. */
 export const ReferenceFailure = {
   NotFound: "NotFound",
@@ -218,8 +220,7 @@ export const hints: Catalog = {
       "Fix the syntax error at the location. Run the config file on its own to see the parser message.",
     VarsThrew:
       "Fix `vars` at the location. `vars` returns literals and descriptors, and it must not throw.",
-    MissingDependency:
-      "Install Envi and each provider package in the project, such as `bun add -d envi`.",
+    MissingDependency: `Install Envi and each provider package in the project, such as \`bun add -d ${Package.name}\`.`,
     UnsupportedRuntime: "Run Envi on Node 22.19.0 or later, or on Bun.",
     InvalidConfig: "Fix the config file or the config list that the detail names.",
   },
