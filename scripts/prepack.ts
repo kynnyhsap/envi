@@ -1,4 +1,4 @@
-// Copies files of the repo root into the package in the working directory. npm and `bun publish`
+// Copies files of the repo root into the package in the working directory. npm and `bun pm pack`
 // run it as `prepack`, because a tarball holds a README and a LICENSE only from the package
 // folder. Git ignores the copies.
 //
