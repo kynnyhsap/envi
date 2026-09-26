@@ -10,7 +10,10 @@ cd "$(dirname "$0")/../.."
 
 targets="${*:-linux-secret-service linux-bare}"
 
+# The Bun of the images is the Bun of `packageManager` in the root manifest.
+bun_version=$(sed -n 's/.*"packageManager": "bun@\([^"]*\)".*/\1/p' package.json)
+
 for target in $targets; do
-  docker build --target "$target" --tag "envi-test:$target" --file tests/linux/Dockerfile .
+  docker build --build-arg "BUN_VERSION=$bun_version" --target "$target" --tag "envi-test:$target" --file tests/linux/Dockerfile .
   docker run --rm "envi-test:$target"
 done

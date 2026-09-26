@@ -20,12 +20,56 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: package.json
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: bun install --frozen-lockfile
       - run: bun run verify
+
+  # The unit and end-to-end tests on the lowest supported Node and Bun, the `engines` of the root
+  # manifest. The Bun of `packageManager` installs, builds, and packs, because an older Bun cannot
+  # read the lockfile.
+  floors:
+    name: floors (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: floors
+        run: |
+          echo "node=$(jq -r '.engines.node | ltrimstr(">=")' package.json)" >> "$GITHUB_OUTPUT"
+          echo "bun=$(jq -r '.engines.bun | ltrimstr(">=")' package.json)" >> "$GITHUB_OUTPUT"
+      # setup-bun always installs to ~/.bun/bin, so the floor Bun moves aside first.
+      - id: floor-bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.floors.outputs.bun }}
+      - run: |
+          mkdir -p "$RUNNER_TEMP/floor-bun"
+          cp "${{ steps.floor-bun.outputs.bun-path }}" "$RUNNER_TEMP/floor-bun/bun"
+      - id: workspace-bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.floors.outputs.node }}
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: test on Node ${{ steps.floors.outputs.node }} and Bun ${{ steps.floors.outputs.bun }}
+        env:
+          ENVI_E2E_WORKSPACE_BUN: ${{ steps.workspace-bun.outputs.bun-path }}
+        run: |
+          export PATH="$RUNNER_TEMP/floor-bun:$PATH"
+          test "$(node --version)" = "v${{ steps.floors.outputs.node }}"
+          test "$(bun --version)" = "${{ steps.floors.outputs.bun }}"
+          node node_modules/vitest/vitest.mjs run --project unit
+          bun --bun node_modules/vitest/vitest.mjs run --project unit
+          node node_modules/vitest/vitest.mjs run --project e2e
 
   linux-images:
     name: linux image (${{ matrix.target }})

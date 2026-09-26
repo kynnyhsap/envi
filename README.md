@@ -12,7 +12,7 @@ Envi works as a CLI (`envi`) and as an SDK with a plain TypeScript API and an Ef
   the config and its schemas as types.
 - The CLI and the SDK work on a developer machine, in CI, and for a coding agent.
 
-Envi runs on Node 22.19.0 or later and on Bun, on macOS and Linux. Windows is not supported.
+Envi runs on Node 22.19.0 or later and on Bun 1.3.0 or later, on macOS and Linux. Windows is not supported.
 
 ## Contents
 
@@ -647,7 +647,7 @@ Next action: Install Envi and each provider package in the project, such as `bun
 
 The runtime cannot import a TypeScript config file.
 
-Next action: Run Envi on Node 22.19.0 or later, or on Bun.
+Next action: Run Envi on Node 22.19.0 or later, or on Bun 1.3.0 or later.
 
 <a id="error-config-load-invalid-config"></a>
 

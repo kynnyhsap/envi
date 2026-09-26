@@ -221,7 +221,7 @@ export const hints: Catalog = {
     VarsThrew:
       "Fix `vars` at the location. `vars` returns literals and descriptors, and it must not throw.",
     MissingDependency: `Install Envi and each provider package in the project, such as \`bun add -d ${Package.name}\`.`,
-    UnsupportedRuntime: "Run Envi on Node 22.19.0 or later, or on Bun.",
+    UnsupportedRuntime: `Run Envi on Node ${Package.minimumNodeVersion} or later, or on Bun ${Package.minimumBunVersion} or later.`,
     InvalidConfig: "Fix the config file or the config list that the detail names.",
   },
 };

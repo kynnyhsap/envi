@@ -24,9 +24,6 @@ export const configBaseName = "envi.config";
 /** The extensions of a config file, in the order of the search. */
 export const configExtensions: ReadonlyArray<string> = [".ts", ".mts", ".js", ".mjs"];
 
-/** The lowest Node version that imports a TypeScript file without a flag. */
-export const minimumNodeVersion = "22.19.0";
-
 /**
  * The directions of the config search. The project root is the nearest folder with `.git`.
  */
@@ -135,7 +132,7 @@ const make = Effect.gen(function* () {
       return new ConfigLoadError({
         reason: ConfigLoadFailure.UnsupportedRuntime,
         path: file,
-        detail: `A TypeScript config needs Node ${minimumNodeVersion} or later, or Bun.`,
+        detail: `A TypeScript config needs Node ${Package.minimumNodeVersion} or later, or Bun ${Package.minimumBunVersion} or later.`,
       });
     }
 

@@ -19,6 +19,12 @@ const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 const tsc = fileURLToPath(new URL("../../node_modules/.bin/tsc", import.meta.url));
 
+/**
+ * The Bun of the workspace packs, because `bun publish` runs in the workspace. The `floors` job of
+ * CI runs the tests on an older Bun, which cannot read the lockfile, and sets this variable.
+ */
+const workspaceBun = process.env["ENVI_E2E_WORKSPACE_BUN"] ?? "bun";
+
 const packages = [
   { folder: "packages/envi", manifest: enviManifest },
   { folder: "packages/onepassword", manifest: onePasswordManifest },
@@ -138,7 +144,11 @@ const installedProject = (installer: Installer) =>
 
       yield* fs.makeDirectory(project);
       yield* Effect.forEach(packages, (item) =>
-        exec("bun", ["pm", "pack", "--destination", tarballs], path.join(repoRoot, item.folder)),
+        exec(
+          workspaceBun,
+          ["pm", "pack", "--destination", tarballs],
+          path.join(repoRoot, item.folder),
+        ),
       );
       yield* Effect.forEach(Object.entries(files), ([name, text]) =>
         fs.writeFileString(path.join(project, name), text),
