@@ -26,6 +26,7 @@
     "names:check": "bun scripts/rename.ts --check",
     "versions": "bun scripts/versions.ts",
     "versions:check": "bun scripts/versions.ts --check",
+    "release": "bun scripts/release.ts",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "lint": "oxlint",

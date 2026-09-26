@@ -1,5 +1,5 @@
-// The published packages. The test packs both packages the way `bun publish` does, installs the
-// tarballs into a fresh project with npm and with Bun, and uses them there as a user does: the
+// The published packages. The test packs both packages the way `bun run release` does, installs
+// the tarballs into a fresh project with npm and with Bun, and uses them there as a user does: the
 // command, the SDK, and the types. The install reads the dependencies from the npm registry.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
@@ -20,8 +20,8 @@ const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const tsc = fileURLToPath(new URL("../../node_modules/.bin/tsc", import.meta.url));
 
 /**
- * The Bun of the workspace packs, because `bun publish` runs in the workspace. The `floors` job of
- * CI runs the tests on an older Bun, which cannot read the lockfile, and sets this variable.
+ * The Bun of the workspace packs, because `bun run release` packs in the workspace. The `floors`
+ * job of CI runs the tests on an older Bun, which cannot read the lockfile, and sets this variable.
  */
 const workspaceBun = process.env["ENVI_E2E_WORKSPACE_BUN"] ?? "bun";
 
