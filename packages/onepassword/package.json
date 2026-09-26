@@ -31,7 +31,7 @@
   },
   "peerDependencies": {
     "@kynnyhsap/envi": "workspace:^",
-    "effect": "^4.0.0-rc.116"
+    "effect": "catalog:"
   },
   "engines": {
     "node": ">=22.19.0"

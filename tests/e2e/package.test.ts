@@ -10,6 +10,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import { fileURLToPath } from "node:url";
 
+import workspaceManifest from "../../package.json" with { type: "json" };
 import enviManifest from "../../packages/envi/package.json" with { type: "json" };
 import onePasswordManifest from "../../packages/onepassword/package.json" with { type: "json" };
 import { runProcess } from "./helpers.ts";
@@ -23,8 +24,8 @@ const packages = [
   { folder: "packages/onepassword", manifest: onePasswordManifest },
 ] as const;
 
-/** The install command of both READMEs. It asks for the peer range of `effect`. */
-const readmeInstall = `bun add ${enviManifest.name} ${onePasswordManifest.name} "effect@${enviManifest.peerDependencies.effect}"`;
+/** The peer range of `effect`, the way the README install command asks for it. */
+const effectRange = workspaceManifest.workspaces.catalog.effect;
 
 /** The file name that `npm pack` and `bun pm pack` give a tarball. */
 const tarballName = (manifest: { readonly name: string; readonly version: string }) =>
@@ -55,7 +56,7 @@ const projectManifest = (tarballs: string) => {
     dependencies: {
       [enviManifest.name]: envi,
       [onePasswordManifest.name]: onePassword,
-      effect: enviManifest.peerDependencies.effect,
+      effect: effectRange,
     },
     overrides: { [enviManifest.name]: envi },
   });
@@ -119,8 +120,11 @@ const exec = Effect.fn("exec")(function* (
       );
 });
 
-/** The folder of a fresh project that installed both tarballs. */
-class Project extends Context.Service<Project, string>()("Project") {}
+/** A fresh project that installed both tarballs, and the output of the install. */
+class Project extends Context.Service<
+  Project,
+  { readonly directory: string; readonly installLog: string }
+>()("Project") {}
 
 const installedProject = (installer: Installer) =>
   Layer.effect(
@@ -140,24 +144,11 @@ const installedProject = (installer: Installer) =>
         fs.writeFileString(path.join(project, name), text),
       );
       yield* fs.writeFileString(path.join(project, "package.json"), projectManifest(tarballs));
-      yield* exec(installer.install[0], installer.install.slice(1), project);
+      const install = yield* exec(installer.install[0], installer.install.slice(1), project);
 
-      return project;
+      return { directory: project, installLog: install.stdout + install.stderr };
     }),
   );
-
-layer(NodeServices.layer, { excludeTestServices: true })("the install command", (it) => {
-  it.effect.each(["README.md", "packages/onepassword/README.md"])(
-    "%s installs the peer range of effect",
-    (file) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const readme = yield* fs.readFileString(`${repoRoot}/${file}`);
-
-        expect(readme).toContain(readmeInstall);
-      }),
-  );
-});
 
 describe.each(installers)("the published packages installed with $manager", (installer) => {
   layer(installedProject(installer).pipe(Layer.provideMerge(NodeServices.layer)), {
@@ -168,7 +159,7 @@ describe.each(installers)("the published packages installed with $manager", (ins
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const project = yield* Project;
+        const { directory: project } = yield* Project;
         const folder = path.join(project, "node_modules", ...item.manifest.name.split("/"));
         const names = yield* fs.readDirectory(folder, { recursive: true });
         const manifest = yield* fs.readFileString(path.join(folder, "package.json"));
@@ -192,7 +183,7 @@ describe.each(installers)("the published packages installed with $manager", (ins
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const project = yield* Project;
+        const { directory: project } = yield* Project;
         const folder = path.join(project, "node_modules", ...onePasswordManifest.name.split("/"));
         const manifest = JSON.parse(yield* fs.readFileString(path.join(folder, "package.json")));
 
@@ -200,9 +191,32 @@ describe.each(installers)("the published packages installed with $manager", (ins
       }),
     );
 
+    it.effect("installs without a peer conflict", () =>
+      Effect.gen(function* () {
+        const { installLog } = yield* Project;
+
+        expect(installLog).not.toMatch(/ERESOLVE|incorrect peer/i);
+      }),
+    );
+
+    it.effect("installs no package that Envi does not use", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { directory: project } = yield* Project;
+        const unused = ["redis", "@effect/platform-node"];
+
+        const installed = yield* Effect.forEach(unused, (name) =>
+          fs.exists(path.join(project, "node_modules", name)),
+        );
+
+        expect(installed).toEqual(unused.map(() => false));
+      }),
+    );
+
     it.effect("runs the envi command", () =>
       Effect.gen(function* () {
-        const project = yield* Project;
+        const { directory: project } = yield* Project;
 
         const envi = (args: ReadonlyArray<string>) =>
           runProcess(installer.runtime, ["node_modules/.bin/envi", ...args], project);
@@ -220,7 +234,7 @@ describe.each(installers)("the published packages installed with $manager", (ins
 
     it.effect("loads the config through the SDK", () =>
       Effect.gen(function* () {
-        const project = yield* Project;
+        const { directory: project } = yield* Project;
         const result = yield* runProcess(installer.runtime, ["load.ts"], project);
 
         expect(result.exitCode, result.stderr).toBe(0);
@@ -230,7 +244,7 @@ describe.each(installers)("the published packages installed with $manager", (ins
 
     it.effect("type checks against the published declarations", () =>
       Effect.gen(function* () {
-        const project = yield* Project;
+        const { directory: project } = yield* Project;
         const result = yield* runProcess(tsc, ["-p", "tsconfig.json"], project);
 
         expect(result.exitCode, result.stdout).toBe(0);

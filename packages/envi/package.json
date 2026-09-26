@@ -32,13 +32,13 @@
     "prepack": "bun ../../scripts/prepack.ts LICENSE README.md"
   },
   "dependencies": {
-    "@effect/platform-node": "catalog:"
+    "@effect/platform-node-shared": "catalog:"
   },
   "devDependencies": {
     "effect": "catalog:"
   },
   "peerDependencies": {
-    "effect": "^4.0.0-rc.116"
+    "effect": "catalog:"
   },
   "engines": {
     "node": ">=22.19.0"

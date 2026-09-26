@@ -1,4 +1,3 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
@@ -7,6 +6,7 @@ import * as DefaultCache from "./core/DefaultCache.ts";
 import * as Envi from "./core/Envi.ts";
 import * as Keychain from "./core/Keychain.ts";
 import type { Provider } from "./core/Provider.ts";
+import * as Platform from "./platform.ts";
 import * as Signals from "./signals.ts";
 
 /** The settings of a client or a layer. They win over the config. */
@@ -30,7 +30,7 @@ export const keyStoreOf = (platform: string): Keychain.Store => {
 };
 
 /** The services of the `Envi` layer. `run` needs the environment and the platform services. */
-export type Services = Envi.Envi | Envi.ParentEnvironment | NodeServices.NodeServices;
+export type Services = Envi.Envi | Envi.ParentEnvironment | Platform.Services;
 
 /**
  * The `Envi` service on Node or Bun: the default cache with its key from `ENVI_CACHE_KEY` or
@@ -53,5 +53,5 @@ export const layer = (options: EnviOptions = {}): Layer.Layer<Services> => {
     Envi.layer(options).pipe(Layer.provide(cache)),
     Signals.layer,
     Layer.succeed(Envi.ParentEnvironment, process.env),
-  ).pipe(Layer.provideMerge(NodeServices.layer));
+  ).pipe(Layer.provideMerge(Platform.layer));
 };

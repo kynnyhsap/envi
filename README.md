@@ -32,7 +32,7 @@ Envi runs on Node 22.19.0 or later and on Bun, on macOS and Linux. Windows is no
 ## Install
 
 ```sh
-bun add @kynnyhsap/envi @kynnyhsap/envi-1password "effect@^4.0.0-rc.116"
+bun add @kynnyhsap/envi @kynnyhsap/envi-1password "effect@^4.0.0-rc.117"
 ```
 
 The package is `@kynnyhsap/envi`, and its command is `envi`. `effect` is a peer dependency, so the
