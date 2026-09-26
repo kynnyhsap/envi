@@ -1,7 +1,8 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
+import type { PlatformError } from "effect/PlatformError";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import type * as ChildProcess from "effect/unstable/process/ChildProcess";
@@ -34,16 +35,32 @@ export const Signals = Context.Reference<Stream.Stream<Received>>("envi/Signals"
 });
 
 /**
+ * The signal that ended a child. The spawner reports it only in the message of the cause of the
+ * exit code error, such as `Process interrupted due to receipt of signal: 'SIGINT'`.
+ */
+const endingSignal = (error: PlatformError): Option.Option<SignalName> => {
+  const cause = error.reason.cause;
+  const message = Predicate.isError(cause) ? cause.message : "";
+
+  return Option.flatMap(
+    Option.fromNullishOr(/receipt of signal: '(\w+)'/u.exec(message)?.[1]),
+    Schema.decodeUnknownOption(SignalNameSchema),
+  );
+};
+
+/**
  * Runs a child to its end and forwards each received signal to it. The command must set
  * `detached: false`, so that the child keeps the terminal of Envi.
  *
- * @returns The exit code. A child that a received signal ended gives `128 + number`, as a shell
- *   does. Nothing when another signal ended the child.
+ * The exit code comes from the child alone. A terminal sends Ctrl-C to the child and to Envi at
+ * once, so the child can end before Envi sees the signal.
+ *
+ * @returns The exit code. A child that `SIGHUP`, `SIGINT`, or `SIGTERM` ended gives
+ *   `128 + number`, as a shell does. Nothing when another signal ended the child.
  */
 export const supervise = Effect.fn("Signals.supervise")(function* (command: ChildProcess.Command) {
   const spawner = yield* ChildProcessSpawner;
   const signals = yield* Signals;
-  const received = yield* Ref.make(Option.none<SignalName>());
 
   return yield* Effect.scoped(
     Effect.gen(function* () {
@@ -53,23 +70,17 @@ export const supervise = Effect.fn("Signals.supervise")(function* (command: Chil
       // reaches the child while it still runs.
       yield* Effect.forkScoped(
         Stream.runForEach(signals, (signal) =>
-          Effect.andThen(
-            Ref.set(received, Option.some(signal.name)),
-            signal.forward
-              ? Effect.forkScoped(Effect.ignore(handle.kill({ killSignal: signal.name })))
-              : Effect.void,
-          ),
+          signal.forward
+            ? Effect.forkScoped(Effect.ignore(handle.kill({ killSignal: signal.name })))
+            : Effect.void,
         ),
       );
 
       // A child that a signal ended has no exit code.
       return yield* Effect.catch(
         Effect.map(handle.exitCode, (code): Option.Option<number> => Option.some(code)),
-        () =>
-          Effect.map(
-            Ref.get(received),
-            Option.map((name) => 128 + SignalNumber[name]),
-          ),
+        (error) =>
+          Effect.succeed(Option.map(endingSignal(error), (name) => 128 + SignalNumber[name])),
       );
     }),
   );

@@ -108,7 +108,10 @@ const pressControlC = [
  * Starts `envi run` under a pseudo terminal through the BSD `script` command, and types Ctrl-C.
  * The terminal sends SIGINT to the whole foreground process group: to Envi and to the child.
  */
-const runAndPressControlC = Effect.fn("runAndPressControlC")(function* (runtime: string) {
+const runAndPressControlC = Effect.fn("runAndPressControlC")(function* (
+  runtime: string,
+  handled: "SIGINT" | undefined,
+) {
   const path = yield* Path.Path;
   const sandbox = yield* makeSandbox("none");
   const readyFile = path.join(sandbox.directory, "ready");
@@ -127,7 +130,7 @@ const runAndPressControlC = Effect.fn("runAndPressControlC")(function* (runtime:
       "--",
       "node",
       "-e",
-      waitingChild("SIGINT"),
+      waitingChild(handled),
     ],
     {
       cwd: app,
@@ -324,10 +327,22 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
       "gives the child one SIGINT for Ctrl-C in a real terminal",
       () =>
         Effect.gen(function* () {
-          const result = yield* runAndPressControlC(runtime);
+          const result = yield* runAndPressControlC(runtime, "SIGINT");
 
           expect(result.stdout).toContain("child-got-SIGINT=1");
           expect(result.exitCode).toBe(7);
+        }),
+    );
+
+    // The terminal sends SIGINT to the child and to Envi at once. The unit tests of
+    // `Signals.supervise` cover a child that ends before Envi sees the signal.
+    it.effect.skipIf(process.platform !== "darwin")(
+      "returns 130 for Ctrl-C in a real terminal when the child has no handler",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* runAndPressControlC(runtime, undefined);
+
+          expect(result.exitCode).toBe(130);
         }),
     );
   });

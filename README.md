@@ -216,6 +216,9 @@ search or the flags give several.
 - Envi resolves and validates every var before it starts the child. A failure starts no child.
 - Envi forwards `SIGTERM` and `SIGHUP` to the child, and `SIGINT` when no terminal is attached. A
   terminal sends `SIGINT` to the child on its own. Envi exits with the exit code of the child.
+- When `SIGHUP`, `SIGINT`, or `SIGTERM` ends the child, Envi exits with 128 plus the number of the
+  signal, as a shell does: 129, 130, or 143. Ctrl-C gives 130. Another signal gives
+  `RunError KilledBySignal`.
 - The arguments after `--` belong to the child. `envi run -- node app.js --json` passes `--json` to
   the child.
 
@@ -578,9 +581,9 @@ Next action: Check the command, its arguments, and the working directory.
 
 ### RunError KilledBySignal
 
-A signal ended the command of `envi run`.
+A signal other than `SIGHUP`, `SIGINT`, or `SIGTERM` ended the command of `envi run`.
 
-Next action: A signal ended the command. Run the command without Envi to see whether it fails on its own.
+Next action: A signal such as `SIGKILL` or `SIGSEGV` ended the command. Run the command without Envi to see whether it fails on its own.
 
 <a id="error-config-load-not-found"></a>
 
