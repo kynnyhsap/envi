@@ -1,7 +1,10 @@
 # The Linux test images. `bun run test:linux` builds and runs each target.
 # - linux-secret-service: GNOME Keyring holds the cache key, as on a Linux desktop.
 # - linux-bare: no keychain, as on a CI runner. The cache is off unless ENVI_CACHE_KEY is set.
-FROM oven/bun:1.4.2-debian AS base
+# run.sh passes the Bun of `packageManager` in the root manifest.
+ARG BUN_VERSION
+
+FROM oven/bun:${BUN_VERSION}-debian AS base
 
 COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
 COPY --from=node:22-bookworm-slim /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm

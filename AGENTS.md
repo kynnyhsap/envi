@@ -80,15 +80,17 @@ This repository is public. These rules have no exception.
 - **One version for every package.** Envi and every provider package share one version, the way
   the Effect v4 packages do. A release bumps every package together. A provider asks for `^` that
   version of Envi as its peer. A user never matches a provider version to an Envi version.
-- **One place for every version.** The root `package.json` holds the version of the packages, and
-  its `workspaces.catalog` holds every dependency version. Nothing copies a version by hand.
+- **One place for every version.** The root `package.json` holds the version of the packages, the
+  runtime floors in `engines`, and the Bun of the workspace in `packageManager`. Its
+  `workspaces.catalog` holds every dependency version. Nothing copies a version by hand.
 - **Stage.** A named set of env values is a stage. Use "stage" in code, flags, and docs. Do not
   use "env" or "environment" for this concept. `NODE_ENV` never selects the stage.
 - **Platforms.** macOS and Linux. Windows is not supported in v1.
 - **Flags follow the command.** `envi check --stage production`. Only `--debug` and
   `--log-format` are shared flags of the root. A command gets only the flags that it uses.
 - **No transpiler.** Envi loads a config with a plain dynamic `import()` of the file URL, the way
-  oxlint and oxfmt do. Node strips the types. The Node floor is `>=22.19.0`.
+  oxlint and oxfmt do. Node strips the types. The `engines` of the root manifest hold the floors
+  of Node and Bun, and the `floors` job of CI tests them.
 - **The core owns the cache key:** `<provider id>:<scope hash>:<reference key>`. `scope` holds
   everything outside a reference that selects its value, such as the account or the token. The
   core hashes it. The encryption binds an entry to its cache key.
@@ -134,13 +136,14 @@ This repository is public. These rules have no exception.
 One Bun workspace with two packages. They share the version of the root `package.json`, which is
 not published yet. `scripts/versions.ts` enforces the version rules:
 
-- Every package has the version of the root manifest.
+- Every package has the version and the `engines` of the root manifest.
 - A package manifest uses only `catalog:` and `workspace:` specs. A provider asks for
   `workspace:^` Envi as its peer. The root manifest uses `catalog:` for every dependency that a
   package also uses.
 - `effect` and every `@effect/*` entry of the catalog share one version. The `effect` entry is a
   caret range, and it is the peer range of the packages.
-- Each README asks for the `effect` range of the catalog in its install command.
+- Each README asks for the `effect` range of the catalog in its install command, and names the
+  floors of `engines`.
 
 - Every change goes through a pull request against `main`. Do not commit to `main` directly.
   CI must pass before a merge.
@@ -159,6 +162,9 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 - `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/build.ts`
   builds one package: `poof` removes `dist`, then `tsc` compiles `src`.
 - `.github/workflows/ci.yml` runs `bun run verify` on macOS and on Linux, and the Linux images.
+  Its `floors` job runs the unit and end-to-end tests on the Node and the Bun of `engines`. The
+  Bun of `packageManager` installs, builds, and packs there, because an older Bun cannot read the
+  lockfile. CI and the Linux images read both Bun versions from the root manifest.
 - `tests/e2e/` holds the end-to-end tests of the CLI and the SDK. They run the built CLI on Node
   and on Bun on real files in scoped temp folders. `fixtures/file-provider.ts` logs each batch
   to a file, so a test counts the provider calls of several processes. `package.test.ts` packs
@@ -179,8 +185,9 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 - `bun run build` builds every package into its `dist` folder.
 - `bun run rename` writes the names of `scripts/packages.ts` into every manifest, import, and doc.
   `bun run check` fails while a manifest differs from that file.
-- `bun run versions` writes the root version into every package manifest and the `effect` range
-  of the catalog into every README. To release, change the root version and run it.
+- `bun run versions` writes the root version and `engines` into every package manifest, and the
+  `effect` range and the floors into every README. To release, change the root version and run
+  it.
   `bun run check` fails while a file differs or a rule breaks.
 - `bun run verify` runs format check, lint, typecheck, the unit tests on Node and on Bun, and the
   end-to-end tests, all in parallel.

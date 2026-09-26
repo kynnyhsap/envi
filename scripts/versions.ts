@@ -2,11 +2,14 @@
 //
 // - The root manifest holds the version. Every package has that version, the way the Effect v4
 //   packages share one version. A provider asks for `workspace:^` Envi as its peer.
+// - The `engines` of the root manifest hold the runtime floors. Every package has those `engines`,
+//   the READMEs name the floors, and the `floors` job of CI tests them.
 // - `workspaces.catalog` holds every dependency version. A package manifest uses only `catalog:`
 //   and `workspace:` specs. `effect` and every `@effect/*` entry share one version.
 // - The READMEs ask for the `effect` range of the catalog.
 //
-//   bun run versions           writes the root version into every package, and the range into the READMEs
+//   bun run versions           writes the root version and engines into every package, and the
+//                              range and the floors into the READMEs
 //   bun run versions --check   fails when a file differs or a rule breaks, without a change
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -27,6 +30,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 
 const Dependencies = Schema.optional(Schema.Record(Schema.String, Schema.String));
 
+const Engines = Schema.Struct({ bun: Schema.String, node: Schema.String });
+
 const PackageManifest = Schema.fromJsonString(
   Schema.Struct({
     name: Schema.String,
@@ -34,6 +39,7 @@ const PackageManifest = Schema.fromJsonString(
     dependencies: Dependencies,
     devDependencies: Dependencies,
     peerDependencies: Dependencies,
+    engines: Engines,
   }),
 );
 
@@ -41,6 +47,7 @@ const RootManifest = Schema.fromJsonString(
   Schema.Struct({
     version: Schema.String,
     devDependencies: Dependencies,
+    engines: Engines,
     workspaces: Schema.Struct({ catalog: Schema.Record(Schema.String, Schema.String) }),
   }),
 );
@@ -57,6 +64,13 @@ const Spec = {
 
 /** An `effect` spec in a README, such as `effect@^4.0.0-rc.117`. */
 const effectSpec = /(?<![\w@/-])effect@[^\s"'`]+/gu;
+
+/** A runtime floor in a README, such as `Node 22.19.0`. */
+const floor = (runtime: string) => new RegExp(`\\b${runtime} \\d+\\.\\d+\\.\\d+`, "gu");
+
+/** The `engines` block of a manifest, formatted the way oxfmt formats a manifest. */
+const enginesBlock = (engines: typeof Engines.Type): string =>
+  `"engines": ${JSON.stringify(engines, null, 2).replaceAll("\n", "\n  ")}`;
 
 class VersionsError extends Data.TaggedError("VersionsError")<{ readonly detail: string }> {
   override get message(): string {
@@ -193,13 +207,18 @@ const command = Command.make("versions", { check }, (input) =>
     );
 
     const effectRange = rootManifest.workspaces.catalog["effect"] ?? "";
+    const { engines } = rootManifest;
 
     const manifestRewrites: ReadonlyArray<Rewrite> = packages
-      .filter((item) => item.manifest.version !== rootManifest.version)
       .map((item) => ({
         file: item.file,
-        text: item.text.replace(/"version": "[^"]*"/u, `"version": "${rootManifest.version}"`),
-      }));
+        text: item.text,
+        rewritten: item.text
+          .replace(/"version": "[^"]*"/u, `"version": "${rootManifest.version}"`)
+          .replace(/"engines": \{[^}]*\}/u, enginesBlock(engines)),
+      }))
+      .filter((item) => item.rewritten !== item.text)
+      .map((item) => ({ file: item.file, text: item.rewritten }));
 
     const readmes = yield* trackedReadmes;
 
@@ -207,7 +226,10 @@ const command = Command.make("versions", { check }, (input) =>
       Effect.map(fs.readFileString(path.join(root, file)), (text) => ({
         file,
         text,
-        rewritten: text.replace(effectSpec, `effect@${effectRange}`),
+        rewritten: text
+          .replace(effectSpec, `effect@${effectRange}`)
+          .replace(floor("Node"), `Node ${engines.node.replace(">=", "")}`)
+          .replace(floor("Bun"), `Bun ${engines.bun.replace(">=", "")}`),
       })),
     );
 
@@ -223,7 +245,7 @@ const command = Command.make("versions", { check }, (input) =>
         ...problems,
         ...rewrites.map(
           (rewrite) =>
-            `${rewrite.file}: differs from the root version or the catalog. Run \`bun run versions\`.`,
+            `${rewrite.file}: differs from the root manifest or the catalog. Run \`bun run versions\`.`,
         ),
       ];
 
