@@ -30,7 +30,7 @@
     "effect": "catalog:"
   },
   "peerDependencies": {
-    "@kynnyhsap/envi": "workspace:*",
+    "@kynnyhsap/envi": "workspace:^",
     "effect": "^4.0.0-rc.116"
   },
   "engines": {

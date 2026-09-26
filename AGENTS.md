@@ -138,13 +138,17 @@ yet. Shared dependency versions come from `workspaces.catalog` in the root `pack
   `@kynnyhsap/envi/testing`. Every other module of `src/core` is internal.
 - A published package holds `dist`, and `src` for the declaration maps. `@kynnyhsap/envi-1password` has its
   own `README.md`. `scripts/prepack.ts` copies the root `LICENSE` into each package, and the root
-  `README.md` into `envi`. The peer range of `effect` is `^4.0.0-rc.116`.
+  `README.md` into `envi`. The peer range of `effect` is `^4.0.0-rc.116`, and the README install
+  command asks for it. `bun publish` publishes, because npm does not resolve `workspace:` and
+  `catalog:`.
 - `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/build.ts`
   builds one package: `poof` removes `dist`, then `tsc` compiles `src`.
 - `.github/workflows/ci.yml` runs `bun run verify` on macOS and on Linux, and the Linux images.
 - `tests/e2e/` holds the end-to-end tests of the CLI and the SDK. They run the built CLI on Node
   and on Bun on real files in scoped temp folders. `fixtures/file-provider.ts` logs each batch
-  to a file, so a test counts the provider calls of several processes.
+  to a file, so a test counts the provider calls of several processes. `package.test.ts` packs
+  both packages the way `bun publish` does, installs the tarballs into a fresh project with npm
+  and with Bun, and runs the command, the SDK, and `tsc` there. It needs the npm registry.
 - `tests/linux/` holds two Docker images: `linux-secret-service` with GNOME Keyring, and
   `linux-bare` without a keychain. Each runs the unit tests and the end-to-end tests.
 - `packages/onepassword/e2e/` holds the tests against real 1Password, with fake public vaults.

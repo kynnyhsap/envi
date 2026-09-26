@@ -125,14 +125,14 @@ export interface CliResult {
   readonly stderr: string;
 }
 
-/** Runs the built CLI to its end. */
-export const runCli = Effect.fn("runCli")(function* (
-  runtime: string,
-  cwd: string,
+/** Runs a command to its end. The variables of `cleared` do not reach it. */
+export const runProcess = Effect.fn("runProcess")(function* (
+  command: string,
   args: ReadonlyArray<string>,
+  cwd: string,
   env: Readonly<Record<string, string | undefined>> = {},
 ) {
-  const handle = yield* ChildProcess.make(runtime, [cliPath, ...args], {
+  const handle = yield* ChildProcess.make(command, args, {
     cwd,
     env: { ...cleared, ...env },
     extendEnv: true,
@@ -151,3 +151,11 @@ export const runCli = Effect.fn("runCli")(function* (
 
   return result;
 });
+
+/** Runs the built CLI to its end. */
+export const runCli = (
+  runtime: string,
+  cwd: string,
+  args: ReadonlyArray<string>,
+  env: Readonly<Record<string, string | undefined>> = {},
+) => runProcess(runtime, [cliPath, ...args], cwd, env);
