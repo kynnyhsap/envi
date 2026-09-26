@@ -16,12 +16,9 @@ const node = (script: string) =>
     stderr: "ignore",
   });
 
-const endsItself = "process.kill(process.pid, 'SIGTERM'); setInterval(() => {}, 1000);";
-
-// Envi records a received signal before the child ends. The delay keeps that order in a test,
-// where the child sends the signal to itself.
-const endsItselfLater =
-  "setTimeout(() => process.kill(process.pid, 'SIGTERM'), 300); setInterval(() => {}, 1000);";
+/** A child that sends a signal to itself, the way a terminal sends Ctrl-C to it before Envi. */
+const endsItselfWith = (name: string) =>
+  `process.kill(process.pid, '${name}'); setInterval(() => {}, 1000);`;
 
 const handlesSigterm = "process.on('SIGTERM', () => process.exit(7)); setInterval(() => {}, 1000);";
 
@@ -42,19 +39,21 @@ layer(Platform.layer, { excludeTestServices: true })("Signals.supervise", (it) =
       }),
     );
 
-    it.effect("returns nothing when a signal that Envi did not receive ends the child", () =>
-      Effect.gen(function* () {
-        expect(yield* Signals.supervise(node(endsItself))).toEqual(Option.none());
-      }),
+    it.effect.each([
+      ["SIGHUP", 129],
+      ["SIGINT", 130],
+      ["SIGTERM", 143],
+    ] as const)(
+      "returns 128 plus the number when %s ends the child before Envi sees it",
+      ([name, code]) =>
+        Effect.gen(function* () {
+          expect(yield* Signals.supervise(node(endsItselfWith(name)))).toEqual(Option.some(code));
+        }),
     );
 
-    it.effect("returns 128 plus the number of the received signal", () =>
+    it.effect("returns nothing when another signal ends the child", () =>
       Effect.gen(function* () {
-        const code = yield* Signals.supervise(node(endsItselfLater)).pipe(
-          withSignals(Stream.make({ name: "SIGTERM", forward: false })),
-        );
-
-        expect(code).toEqual(Option.some(143));
+        expect(yield* Signals.supervise(node(endsItselfWith("SIGKILL")))).toEqual(Option.none());
       }),
     );
 

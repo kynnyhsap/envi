@@ -207,7 +207,7 @@ export const hints: Catalog = {
       "Make the file executable with `chmod +x`, or check the permissions of the folders on `PATH`.",
     SpawnFailed: "Check the command, its arguments, and the working directory.",
     KilledBySignal:
-      "A signal ended the command. Run the command without Envi to see whether it fails on its own.",
+      "A signal such as `SIGKILL` or `SIGSEGV` ended the command. Run the command without Envi to see whether it fails on its own.",
   },
   ConfigLoadError: {
     NotFound: "Check the path in `--config` or `ENVI_CONFIG`.",
