@@ -1,4 +1,4 @@
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";

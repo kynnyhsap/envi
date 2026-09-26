@@ -1,4 +1,3 @@
-import type * as NodeServices from "@effect/platform-node/NodeServices";
 import type * as Effect from "effect/Effect";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
@@ -16,6 +15,7 @@ import type {
 } from "./core/Reports.ts";
 import * as Source from "./core/Source.ts";
 import { type EnviOptions, layer, type Services } from "./layer.ts";
+import type * as Platform from "./platform.ts";
 
 const configOf: unique symbol = Symbol.for("envi/client/config");
 
@@ -92,9 +92,7 @@ export const createEnvi = <C extends Config.Config>(
   const runtime = makeRuntime(config, overrides);
 
   const run = <A, E>(
-    use: (
-      envi: Envi.Interface,
-    ) => Effect.Effect<A, E, Envi.ParentEnvironment | NodeServices.NodeServices>,
+    use: (envi: Envi.Interface) => Effect.Effect<A, E, Envi.ParentEnvironment | Platform.Services>,
   ): Promise<A> => runtime.runPromise(Envi.Envi.use(use));
 
   function resolve<A, Optional extends boolean>(

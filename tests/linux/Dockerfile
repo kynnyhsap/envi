@@ -4,6 +4,10 @@
 FROM oven/bun:1.4.2-debian AS base
 
 COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:22-bookworm-slim /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+
+# The package test installs the tarballs with npm.
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends git ca-certificates \

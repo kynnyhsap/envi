@@ -8,7 +8,7 @@ provider agnostic.
 Envi works as a CLI (`envi`) and as an SDK with a plain TypeScript API and an Effect API. The npm
 names are `@kynnyhsap/envi` and `@kynnyhsap/envi-1password` for now. The command stays `envi`.
 `scripts/packages.ts` holds the names. To change them, edit that file and run `bun run rename`.
-Code never spells a package name: each package reads its own name from its manifest.
+Code never spells a package name or a version: each package reads them from its manifest.
 
 Reasons for Envi:
 
@@ -73,7 +73,15 @@ This repository is public. These rules have no exception.
 - **One precedence order for every setting:** CLI flag or call option, client option,
   environment variable, config key, default.
 - **One copy of `effect`.** `effect` is a required peer dependency. The build never bundles. A
-  global `envi` starts the local `envi` of the project.
+  global `envi` starts the local `envi` of the project. `envi` depends on
+  `@effect/platform-node-shared`, pinned to the Effect version of the catalog. It does not depend
+  on `@effect/platform-node`, because that package asks for `redis` as a peer, and npm installs
+  every peer.
+- **One version for every package.** Envi and every provider package share one version, the way
+  the Effect v4 packages do. A release bumps every package together. A provider asks for `^` that
+  version of Envi as its peer. A user never matches a provider version to an Envi version.
+- **One place for every version.** The root `package.json` holds the version of the packages, and
+  its `workspaces.catalog` holds every dependency version. Nothing copies a version by hand.
 - **Stage.** A named set of env values is a stage. Use "stage" in code, flags, and docs. Do not
   use "env" or "environment" for this concept. `NODE_ENV` never selects the stage.
 - **Platforms.** macOS and Linux. Windows is not supported in v1.
@@ -116,15 +124,23 @@ This repository is public. These rules have no exception.
 - All code runs on both Node and Bun. The core (`packages/envi/src/core`) depends only on Effect
   platform services. It never imports `@effect/platform-*` or `node:`, and it never reads `Bun` or
   `process`. A lint rule enforces this. Only the entry points of `envi` outside `core` provide the
-  platform layer and read `process`.
+  platform layer of `src/platform.ts` and read `process`.
 - Write the test first. Tests use Effect through `@effect/vitest`. Unit tests use the in-memory
   provider. End-to-end tests work on real files and run the built CLI on Node and on Bun.
 - Run `bun run verify` before you report work as done.
 
 ## Repository
 
-One Bun workspace with two packages. Both share one version, `1.0.0`, which is not published
-yet. Shared dependency versions come from `workspaces.catalog` in the root `package.json`.
+One Bun workspace with two packages. They share the version of the root `package.json`, which is
+not published yet. `scripts/versions.ts` enforces the version rules:
+
+- Every package has the version of the root manifest.
+- A package manifest uses only `catalog:` and `workspace:` specs. A provider asks for
+  `workspace:^` Envi as its peer. The root manifest uses `catalog:` for every dependency that a
+  package also uses.
+- `effect` and every `@effect/*` entry of the catalog share one version. The `effect` entry is a
+  caret range, and it is the peer range of the packages.
+- Each README asks for the `effect` range of the catalog in its install command.
 
 - Every change goes through a pull request against `main`. Do not commit to `main` directly.
   CI must pass before a merge.
@@ -138,13 +154,16 @@ yet. Shared dependency versions come from `workspaces.catalog` in the root `pack
   `@kynnyhsap/envi/testing`. Every other module of `src/core` is internal.
 - A published package holds `dist`, and `src` for the declaration maps. `@kynnyhsap/envi-1password` has its
   own `README.md`. `scripts/prepack.ts` copies the root `LICENSE` into each package, and the root
-  `README.md` into `envi`. The peer range of `effect` is `^4.0.0-rc.116`.
+  `README.md` into `envi`. `bun publish` publishes, because npm does not resolve `workspace:` and
+  `catalog:`.
 - `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/build.ts`
   builds one package: `poof` removes `dist`, then `tsc` compiles `src`.
 - `.github/workflows/ci.yml` runs `bun run verify` on macOS and on Linux, and the Linux images.
 - `tests/e2e/` holds the end-to-end tests of the CLI and the SDK. They run the built CLI on Node
   and on Bun on real files in scoped temp folders. `fixtures/file-provider.ts` logs each batch
-  to a file, so a test counts the provider calls of several processes.
+  to a file, so a test counts the provider calls of several processes. `package.test.ts` packs
+  both packages the way `bun publish` does, installs the tarballs into a fresh project with npm
+  and with Bun, and runs the command, the SDK, and `tsc` there. It needs the npm registry.
 - `tests/linux/` holds two Docker images: `linux-secret-service` with GNOME Keyring, and
   `linux-bare` without a keychain. Each runs the unit tests and the end-to-end tests.
 - `packages/onepassword/e2e/` holds the tests against real 1Password, with fake public vaults.
@@ -160,6 +179,9 @@ yet. Shared dependency versions come from `workspaces.catalog` in the root `pack
 - `bun run build` builds every package into its `dist` folder.
 - `bun run rename` writes the names of `scripts/packages.ts` into every manifest, import, and doc.
   `bun run check` fails while a manifest differs from that file.
+- `bun run versions` writes the root version into every package manifest and the `effect` range
+  of the catalog into every README. To release, change the root version and run it.
+  `bun run check` fails while a file differs or a rule breaks.
 - `bun run verify` runs format check, lint, typecheck, the unit tests on Node and on Bun, and the
   end-to-end tests, all in parallel.
 - `bun run test:onepassword` runs the tests against real 1Password. It needs

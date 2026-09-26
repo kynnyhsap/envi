@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -10,6 +9,7 @@ import { ExitCode, KeyStore, main } from "./cli.ts";
 import { Envi } from "./core/index.ts";
 import { delegatedVariable, findLocalBin, runLocal } from "./delegate.ts";
 import { keyStoreOf } from "./layer.ts";
+import * as Platform from "./platform.ts";
 import * as Signals from "./signals.ts";
 
 // The entry point is the only place that reads the process: arguments, environment, platform.
@@ -18,7 +18,7 @@ import * as Signals from "./signals.ts";
 const { [delegatedVariable]: _delegated, ...parentEnvironment } = process.env;
 
 const MainLayer = Layer.mergeAll(
-  NodeServices.layer,
+  Platform.layer,
   Signals.layer,
   Layer.succeed(Envi.ParentEnvironment, parentEnvironment),
   Layer.succeed(KeyStore, keyStoreOf(process.platform)),

@@ -1,4 +1,3 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -6,6 +5,7 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { ChildProcess } from "effect/unstable/process";
 
+import * as Platform from "../platform.ts";
 import * as Signals from "./Signals.ts";
 
 const node = (script: string) =>
@@ -34,7 +34,7 @@ const withSignals = (signals: Stream.Stream<Signals.Received>) =>
 const after = (delay: Duration.Input, name: Signals.SignalName) =>
   Stream.fromEffect(Effect.as(Effect.sleep(delay), { name, forward: true }));
 
-layer(NodeServices.layer, { excludeTestServices: true })("Signals.supervise", (it) => {
+layer(Platform.layer, { excludeTestServices: true })("Signals.supervise", (it) => {
   describe("with real child processes", () => {
     it.effect("returns the exit code of the child", () =>
       Effect.gen(function* () {

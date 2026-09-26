@@ -14,7 +14,8 @@ import * as Predicate from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
 import * as Result from "effect/Result";
 
-// The npm name of this package comes from its manifest, so a rename changes only the manifest.
+// The npm name and the version of this package come from its manifest, so a rename or a release
+// changes only the manifest.
 import manifest from "../package.json" with { type: "json" };
 import {
   describeReference,
@@ -95,7 +96,7 @@ const rejectedToken = /invalid|unauthori[sz]ed|forbidden|revoked|expired|\b40[13
 
 const integrationName = "envi";
 
-const integrationVersion = "1.0.0";
+const integrationVersion = manifest.version;
 
 /** The SDK error types that mean that a vault, an item, a section, or a field does not exist. */
 const notFoundTypes: ReadonlyArray<string> = [

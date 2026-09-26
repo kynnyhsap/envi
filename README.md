@@ -32,12 +32,13 @@ Envi runs on Node 22.19.0 or later and on Bun, on macOS and Linux. Windows is no
 ## Install
 
 ```sh
-bun add @kynnyhsap/envi @kynnyhsap/envi-1password effect
+bun add @kynnyhsap/envi @kynnyhsap/envi-1password "effect@^4.0.0-rc.117"
 ```
 
 The package is `@kynnyhsap/envi`, and its command is `envi`. `effect` is a peer dependency, so the
-project has one copy of it. `@kynnyhsap/envi-1password` installs `@1password/sdk`. A global `envi`
-starts the local `envi` of the project.
+project has one copy of it. Envi needs `effect` 4. A bare `effect` installs version 3 until version
+4 becomes the `latest` tag on npm. `@kynnyhsap/envi-1password` installs `@1password/sdk`. A global
+`envi` starts the local `envi` of the project.
 
 ## Quick start
 
