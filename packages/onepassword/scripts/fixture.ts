@@ -8,16 +8,14 @@
 // approval. The service account needs the permission to create vaults. Without the token, the
 // script uses desktop authentication: the 1Password app asks for one approval per run.
 // `setup` is idempotent. It creates what is missing and replaces an item that differs.
-import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Config from "effect/Config";
 import * as Console from "effect/Console";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import { Argument, Command } from "effect/unstable/cli";
 
+import { runCommand, ScriptError, version } from "../../../scripts/Workspace.ts";
 import {
   accountVariable,
   type FixtureItem,
@@ -27,17 +25,11 @@ import {
   tokenVariable,
 } from "../e2e/fixture.ts";
 
-class FixtureError extends Data.TaggedError("FixtureError")<{ readonly detail: string }> {
-  override get message(): string {
-    return `Envi fixture failed: ${this.detail}`;
-  }
-}
-
 const Action = { Status: "status", Setup: "setup", Teardown: "teardown" } as const;
 
 const sdk = Effect.tryPromise({
   try: () => import("@1password/sdk"),
-  catch: () => new FixtureError({ detail: "The package @1password/sdk does not load." }),
+  catch: () => new ScriptError({ detail: "The package @1password/sdk does not load." }),
 });
 
 /** Runs one SDK call. The error holds the step and the SDK message, which holds no secret. */
@@ -45,11 +37,11 @@ const call = <A>(step: string, run: () => Promise<A>) =>
   Effect.tryPromise({
     try: run,
     catch: (cause) =>
-      new FixtureError({ detail: `${step}: ${cause instanceof Error ? cause.message : "failed"}` }),
+      new ScriptError({ detail: `${step}: ${cause instanceof Error ? cause.message : "failed"}` }),
   });
 
 const missingCredential = () =>
-  new FixtureError({
+  new ScriptError({
     detail: `Set ${tokenVariable} to a service account token, or ${accountVariable} to the name of the 1Password account.`,
   });
 
@@ -66,7 +58,7 @@ const connect = Effect.gen(function* () {
     : new DesktopAuth(yield* Effect.mapError(Config.String(accountVariable), missingCredential));
 
   return yield* call("create the client", () =>
-    createClient({ auth, integrationName: "envi-e2e-fixture", integrationVersion: "0.0.0" }),
+    createClient({ auth, integrationName: "envi-e2e-fixture", integrationVersion: version }),
   );
 });
 
@@ -167,7 +159,7 @@ const reconcile = (client: Client, repair: boolean) =>
         const found = existing.filter((candidate) => candidate.title === vault.title);
 
         if (found.length > 1) {
-          return yield* new FixtureError({
+          return yield* new ScriptError({
             detail: `Several vaults have the title ${vault.title}. Delete the extra vaults by hand.`,
           });
         }
@@ -175,7 +167,7 @@ const reconcile = (client: Client, repair: boolean) =>
         const [overview] = found;
 
         if (overview !== undefined && overview.description !== fixtureMarker) {
-          return yield* new FixtureError({
+          return yield* new ScriptError({
             detail: `The vault ${vault.title} exists, and the fixture script does not own it.`,
           });
         }
@@ -246,11 +238,8 @@ const command = Command.make("onepassword-fixture", { action }, (input) =>
 
     return differences.length === 0
       ? yield* Console.log("The fixture is complete.")
-      : yield* new FixtureError({ detail: "The fixture is incomplete. Run `setup`." });
+      : yield* new ScriptError({ detail: "The fixture is incomplete. Run `setup`." });
   }),
 );
 
-Command.run(command, { version: "0.0.0" }).pipe(
-  Effect.provide(NodeServices.layer),
-  NodeRuntime.runMain,
-);
+runCommand(command);

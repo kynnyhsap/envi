@@ -48,4 +48,5 @@ const config = defineConfig({
 const env = await createEnvi(config).load();
 
 assertType<Equal<typeof env.API_KEY, string>>();
+
 assertType<Equal<typeof env.REGION, string | undefined>>();

@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 declare const fetchBuildNumber: () => Promise<string>;
+
 declare const exchangeToken: (clientSecret: string) => Effect.Effect<string, Error>;
 
 export default defineConfig({

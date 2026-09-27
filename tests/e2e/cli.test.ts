@@ -1,46 +1,11 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as Stream from "effect/Stream";
-import { ChildProcess } from "effect/unstable/process";
-import { fileURLToPath } from "node:url";
 
-import { enviVersion } from "./helpers.ts";
-
-const cliPath = fileURLToPath(new URL("../../packages/envi/dist/bin.js", import.meta.url));
-
-const fixture = (name: string): string =>
-  fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
-
-/**
- * Runs the built CLI. `CI` is unset, so the run behaves like a run on a developer machine. The
- * fixtures live in the Envi repo, so the search goes up only: `repo` would find every fixture.
- */
-const runCli = Effect.fn("runCli")(function* (
-  runtime: string,
-  cwd: string,
-  args: ReadonlyArray<string>,
-) {
-  const handle = yield* ChildProcess.make(runtime, [cliPath, ...args], {
-    cwd,
-    env: { CI: undefined, ENVI_STAGE: undefined, ENVI_CONFIG: undefined, ENVI_CONFIG_SEARCH: "up" },
-    extendEnv: true,
-  });
-
-  const [exitCode, stdout, stderr] = yield* Effect.all(
-    [
-      handle.exitCode,
-      Stream.mkString(Stream.decodeText(handle.stdout)),
-      Stream.mkString(Stream.decodeText(handle.stderr)),
-    ],
-    { concurrency: "unbounded" },
-  );
-
-  return { exitCode, stdout, stderr };
-});
+import { enviVersion, fixture, runCli, runtimes } from "./helpers.ts";
 
 layer(NodeServices.layer)("envi CLI", (it) => {
-  describe.each(["node", "bun"])("on %s", (runtime) => {
+  describe.each(runtimes)("on %s", (runtime) => {
     it.effect("prints the package version", () =>
       Effect.gen(function* () {
         const result = yield* runCli(runtime, fixture("app"), ["--version"]);

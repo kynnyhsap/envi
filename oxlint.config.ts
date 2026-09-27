@@ -59,11 +59,47 @@ export default defineConfig({
     "import/no-duplicates": "error",
     "import/no-empty-named-blocks": "error",
     "import/no-self-import": "error",
+    "import/no-cycle": "error",
+    // A module names what it exports. Only the configs of tools export a default.
+    "import/no-default-export": "error",
+    // Type-aware rules. Some of them are also in the categories above; the list names each one.
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/no-base-to-string": "error",
+    "typescript/unbound-method": "error",
+    "typescript/restrict-template-expressions": "error",
+    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/strict-boolean-expressions": "error",
+    "typescript/prefer-nullish-coalescing": "error",
+    "typescript/return-await": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/prefer-readonly": "error",
+    "typescript/no-confusing-void-expression": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-unnecessary-condition": ["error", { allowConstantLoopConditions: true }],
+    "eslint/eqeqeq": "error",
+    "eslint/no-nested-ternary": "error",
+    "eslint/no-param-reassign": "error",
+    "eslint/no-console": "error",
+    "unicorn/prefer-string-replace-all": "error",
+    "unicorn/prefer-import-meta-properties": "error",
+    // Size limits. `max-lines` is a ratchet: lower it as the large modules split.
+    "eslint/complexity": ["error", 10],
+    "eslint/max-depth": ["error", 3],
+    "eslint/max-lines": ["error", { max: 650, skipBlankLines: true, skipComments: true }],
     // `_tag` is Effect's discriminant on tagged errors, `Exit`, and `Cause`.
     // It is read constantly and is not a private-member convention.
     "eslint/no-underscore-dangle": ["error", { allow: ["_tag"] }],
   },
   overrides: [
+    {
+      // The configs of tools and the Envi configs export a default, because the tools ask for it.
+      files: ["*.config.ts", "**/envi.config.ts", "examples/config-*.ts"],
+      rules: { "import/no-default-export": "off" },
+    },
     {
       // The core depends only on Effect platform services. It runs on Node and on Bun alike, and
       // only the entry points of `envi` provide the platform layer and read the process.
@@ -77,6 +113,11 @@ export default defineConfig({
                 group: ["node:*", "@effect/platform-*"],
                 message: "The core uses only Effect platform services.",
               },
+              {
+                group: ["../**", "!../../package.json", "@kynnyhsap/*"],
+                message:
+                  "The core imports only the core. The entry points outside it use the core.",
+              },
             ],
           },
         ],
@@ -88,8 +129,66 @@ export default defineConfig({
       },
     },
     {
+      // Envi never imports a provider, and a module of Envi imports its own files, not its package.
+      files: ["packages/envi/src/**/*.ts"],
+      excludeFiles: ["packages/envi/src/core/**/*.ts"],
+      rules: {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                group: ["@kynnyhsap/*"],
+                message: "Envi imports its own files, and never a provider.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      // A provider uses only the public entry points of Envi, and runs on Node and on Bun alike.
+      files: ["packages/onepassword/src/**/*.ts"],
+      rules: {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                group: ["**/envi/src/**", "@kynnyhsap/envi/*", "!@kynnyhsap/envi/testing"],
+                message: "A provider imports only the public entry points of Envi.",
+              },
+              { group: ["node:*"], message: "A provider runs on Node and on Bun alike." },
+            ],
+          },
+        ],
+        "eslint/no-restricted-globals": [
+          "error",
+          { name: "Bun", message: "A provider runs on Node and on Bun alike." },
+          { name: "process", message: "A provider reads settings through Effect Config." },
+        ],
+      },
+    },
+    {
+      // A test uses a package through its public entry points, as a user does.
+      files: ["tests/**/*.ts"],
+      rules: {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            patterns: [
+              {
+                group: ["**/packages/*/src/**"],
+                message: "A test imports a package through its public entry points.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
       // A test provides the platform layer of Node itself.
-      files: ["packages/envi/src/core/**/*.test.ts"],
+      files: ["packages/envi/src/core/**/*.test.ts", "packages/envi/src/core/fixtures/**"],
       rules: {
         "eslint/no-restricted-imports": "off",
         "eslint/no-restricted-globals": "off",
@@ -107,10 +206,7 @@ export default defineConfig({
     "**/coverage",
     "**/bun.lock",
     // Installed agent assets and third-party plugin source are not application source.
-    ".agents/**",
     ".claude/**",
     "tools/oxlint/anti-slop/**",
-    // Type-only API sketches and examples. `tsc` checks them through `examples/tsconfig.json`.
-    "examples/**",
   ],
 });

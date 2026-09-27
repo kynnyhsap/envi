@@ -12,7 +12,6 @@ export default defineConfig({
     newlinesBetween: true,
   },
   ignorePatterns: [
-    ".agents/**",
     ".claude/**",
     "tools/oxlint/anti-slop/**",
     "**/node_modules",

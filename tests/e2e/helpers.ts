@@ -3,11 +3,10 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
-import { ChildProcess } from "effect/unstable/process";
 import { fileURLToPath } from "node:url";
 
 import enviPackage from "../../packages/envi/package.json" with { type: "json" };
+import { capture } from "../../scripts/Workspace.ts";
 
 /** The version of the local `envi`. `envi --version` prints it. */
 export const enviVersion = enviPackage.version;
@@ -119,38 +118,13 @@ export const cacheFiles = Effect.fn("cacheFiles")(function* (directory: string) 
   );
 });
 
-export interface CliResult {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
 /** Runs a command to its end. The variables of `cleared` do not reach it. */
-export const runProcess = Effect.fn("runProcess")(function* (
+export const runProcess = (
   command: string,
   args: ReadonlyArray<string>,
   cwd: string,
   env: Readonly<Record<string, string | undefined>> = {},
-) {
-  const handle = yield* ChildProcess.make(command, args, {
-    cwd,
-    env: { ...cleared, ...env },
-    extendEnv: true,
-  });
-
-  const [exitCode, stdout, stderr] = yield* Effect.all(
-    [
-      handle.exitCode,
-      Stream.mkString(Stream.decodeText(handle.stdout)),
-      Stream.mkString(Stream.decodeText(handle.stderr)),
-    ],
-    { concurrency: "unbounded" },
-  );
-
-  const result: CliResult = { exitCode, stdout, stderr };
-
-  return result;
-});
+) => capture(command, args, cwd, { ...cleared, ...env });
 
 /** Runs the built CLI to its end. */
 export const runCli = (

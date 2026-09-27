@@ -1,0 +1,8 @@
+# Dependabot proposes updates of the pinned GitHub Actions. The catalog of the root manifest holds
+# every package version, and a person updates it.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
