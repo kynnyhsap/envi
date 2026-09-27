@@ -99,7 +99,9 @@ This repository is public. These rules have no exception.
   second file. A new lock protocol needs a new lock file name.
 - **Explicit batches in the resolver.** One resolution has five ordered steps that share state:
   collect the references, read the cache, select the misses, fetch under the lock, and evaluate
-  each descriptor.
+  each descriptor. `Resolver.ts` runs the steps. `ResolverPlan.ts`, `ResolverFetch.ts`, and
+  `ResolverEvaluate.ts` hold them, and `Freshness.ts` holds the cache rules. Each step gets the
+  state of the earlier steps as a plain record.
 - **Error docs.** Each error has `summary`, `hint`, and `docs`. Each error class comes from
   `EnviError` or `ReasonError` of `ErrorClass.ts`. A class gives its fields, its summary, and its
   hints. The factory derives `docs` and `message`. The hint catalog lives in `Errors.ts`. `docs`

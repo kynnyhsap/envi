@@ -48,7 +48,7 @@ export type CacheSettings = typeof CacheSettings.Type;
 export type CacheKey = false | CacheSettings;
 
 /** What each field of `CacheSettings` expects. `SettingsError` names it. */
-const expected: Readonly<Record<keyof typeof CacheSettings.fields, string>> = {
+export const expected: Readonly<Record<keyof typeof CacheSettings.fields, string>> = {
   directory: "a folder path",
   encryption: `"${Encryption.Keychain}" or "${Encryption.None}"`,
   ttl: 'a duration, such as "24 hours"',
