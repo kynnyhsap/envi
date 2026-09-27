@@ -13,6 +13,7 @@ import * as Redacted from "effect/Redacted";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as Cache from "./Cache.ts";
+import * as CacheLock from "./CacheLock.ts";
 import { CacheError, CacheFailure } from "./Errors.ts";
 import * as FileCache from "./FileCache.ts";
 
@@ -332,7 +333,7 @@ describe("FileCache", () => {
       const directory = yield* tempDirectory;
 
       // The lock of an owner that crashed at the time 0 and never released it.
-      yield* fs.writeFileString(`${directory}/${FileCache.lockFileName}`, "0");
+      yield* fs.writeFileString(`${directory}/${CacheLock.lockFileName}`, "0");
       yield* TestClock.setTime(120_000);
 
       const result = yield* withCache(
@@ -341,7 +342,7 @@ describe("FileCache", () => {
       );
 
       expect(result).toBe("ran");
-      expect(yield* fs.exists(`${directory}/${FileCache.lockFileName}`)).toBe(false);
+      expect(yield* fs.exists(`${directory}/${CacheLock.lockFileName}`)).toBe(false);
     }).pipe(Effect.provide(platform)),
   );
 
@@ -356,7 +357,7 @@ describe("FileCache", () => {
           Effect.flatMap(Cache.Cache, (cache) => cache.withResolveLock(Effect.void)),
         );
 
-        expect(yield* fs.exists(`${directory}/${FileCache.lockFileName}`)).toBe(false);
+        expect(yield* fs.exists(`${directory}/${CacheLock.lockFileName}`)).toBe(false);
       }
     }).pipe(Effect.provide(platform)),
   );
@@ -365,7 +366,7 @@ describe("FileCache", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const directory = yield* tempDirectory;
-      const lockFile = `${directory}/${FileCache.lockFileName}`;
+      const lockFile = `${directory}/${CacheLock.lockFileName}`;
 
       // Another process stole the lock while this one ran, and wrote its own time.
       yield* withCache(
@@ -383,7 +384,7 @@ describe("FileCache", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const directory = yield* tempDirectory;
-      const lockFile = `${directory}/${FileCache.lockFileName}`;
+      const lockFile = `${directory}/${CacheLock.lockFileName}`;
       const entered = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
 
