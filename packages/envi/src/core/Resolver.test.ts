@@ -1,5 +1,6 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -20,6 +21,7 @@ import {
   ProviderFailure,
   SecretReferenceError,
   ReferenceFailure,
+  SettingsError,
 } from "./Errors.ts";
 import { mem, memoryProvider, type MemoryProvider } from "./Memory.ts";
 import * as Provider from "./Provider.ts";
@@ -32,8 +34,8 @@ const options: Resolver.Options = {
   refresh: false,
   strict: false,
   interactive: true,
-  ttl: "24 hours",
-  maxStale: "7 days",
+  ttl: Duration.hours(24),
+  maxStale: Duration.days(7),
 };
 
 const layerWith = (...providers: ReadonlyArray<Provider.Provider>) =>
@@ -165,6 +167,39 @@ describe("Resolver", () => {
       expect(memory.calls()).toHaveLength(2);
     }).pipe(Effect.provide(layerWith(memory)));
   });
+
+  it.effect.each([
+    {
+      name: "a var",
+      sources: { A: mem("a").cache({ ttl: "1e3 hours" }) },
+      setting: "vars.A.cache.ttl",
+      expected: 'a duration, such as "24 hours"',
+    },
+    {
+      name: "an input",
+      sources: {
+        A: Source.custom({
+          id: "a",
+          from: { token: mem("a").cache({ maxStale: "1e3 days" }) },
+          resolve: ({ token }) => token,
+        }),
+      },
+      setting: "vars.A.token.cache.maxStale",
+      expected: 'a duration, such as "7 days"',
+    },
+  ])(
+    "fails without a provider call on an invalid duration of $name",
+    ({ sources, setting, expected }) => {
+      const memory = memoryProvider({ a: "1" });
+
+      return Effect.gen(function* () {
+        const error = yield* Effect.flip(Resolver.resolve(sources, options));
+
+        expect(error).toEqual(new SettingsError({ name: setting, expected }));
+        expect(memory.calls()).toEqual([]);
+      }).pipe(Effect.provide(layerWith(memory)));
+    },
+  );
 
   it.effect("applies optional and default only to a missing reference", () =>
     Effect.gen(function* () {
