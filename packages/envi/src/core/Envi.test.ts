@@ -9,11 +9,11 @@ import * as Schema from "effect/Schema";
 import * as Cache from "./Cache.ts";
 import { defineConfig } from "./Config.ts";
 import * as Envi from "./Envi.ts";
+import { docsBase } from "./ErrorClass.ts";
 import {
   ConfigLoadError,
   ConfigLoadFailure,
   DecodeError,
-  docsBase,
   ExportError,
   hints,
   SecretReferenceError,
