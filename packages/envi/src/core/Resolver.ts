@@ -68,7 +68,7 @@ export interface Resolution {
 }
 
 /** The id under which `fromEnv` values appear in reports and errors. */
-export const environmentProviderId = "environment";
+const environmentProviderId = "environment";
 
 interface Leaf {
   readonly fullKey: string;
@@ -291,7 +291,7 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
 
   const cached = yield* cache
     .getMany(cacheKeys)
-    .pipe(Timing.measure("cache.read", { references: cacheKeys.length }));
+    .pipe(Timing.measure(Timing.Step.CacheRead, { references: cacheKeys.length }));
 
   const durations = (source: Source.AnySource) =>
     Source.CachePolicy.$match(source.cachePolicy, {
@@ -377,7 +377,10 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
             Effect.annotateLogs({ provider: provider.id, error: error.message }),
           ),
         ),
-        Timing.measure("provider.resolve", { provider: provider.id, references: wanted.length }),
+        Timing.measure(Timing.Step.ProviderResolve, {
+          provider: provider.id,
+          references: wanted.length,
+        }),
         Effect.result,
         Effect.map((outcome) => {
           for (const leaf of wanted) {
@@ -482,10 +485,12 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
 
           yield* cache
             .setMany(written)
-            .pipe(Timing.measure("cache.write", { references: Object.keys(written).length }));
+            .pipe(
+              Timing.measure(Timing.Step.CacheWrite, { references: Object.keys(written).length }),
+            );
         }),
       )
-      .pipe(Timing.measure("resolve.lock"));
+      .pipe(Timing.measure(Timing.Step.ResolveLock));
   }
 
   // 5. Evaluate each descriptor once. The memo holds lazy effects, so the order is free.
@@ -669,7 +674,7 @@ export const resolve = Effect.fn("Resolver.resolve")(function* (
           const outcome = yield* Effect.result(
             origin
               .call(inputs.decoded)
-              .pipe(Timing.measure("custom.resolve", { reference: description })),
+              .pipe(Timing.measure(Timing.Step.CustomResolve, { reference: description })),
           );
 
           if (Result.isFailure(outcome)) {

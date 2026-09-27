@@ -6,6 +6,9 @@ import manifest from "../../package.json" with { type: "json" };
 /** The npm name of Envi, such as in an install hint. */
 export const name: string = manifest.name;
 
+/** The command of Envi. The type checks it against the `bin` entry of the manifest. */
+export const command: keyof typeof manifest.bin = "envi";
+
 /** The version of Envi. `envi --version` prints it. */
 export const version: string = manifest.version;
 

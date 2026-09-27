@@ -15,17 +15,7 @@ export const ValueOrigin = {
   Unset: "unset",
 } as const;
 
-export const ValueOriginSchema = Schema.Literals([
-  ValueOrigin.Literal,
-  ValueOrigin.Environment,
-  ValueOrigin.Cache,
-  ValueOrigin.StaleCache,
-  ValueOrigin.Provider,
-  ValueOrigin.Derived,
-  ValueOrigin.Custom,
-  ValueOrigin.Default,
-  ValueOrigin.Unset,
-]);
+export const ValueOriginSchema = Schema.Enum(ValueOrigin);
 
 export type ValueOrigin = typeof ValueOriginSchema.Type;
 
@@ -147,6 +137,6 @@ export const ExportFormat = {
 } as const;
 
 /** The schema of `ExportFormat`. The CLI decodes `--format` with it. */
-export const ExportFormatSchema = Schema.Literals([ExportFormat.Dotenv, ExportFormat.Json]);
+export const ExportFormatSchema = Schema.Enum(ExportFormat);
 
 export type ExportFormat = typeof ExportFormatSchema.Type;

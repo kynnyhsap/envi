@@ -31,7 +31,7 @@ export const locationOf = (stack: string): string | undefined =>
     .at(0);
 
 /** The class name of an error, or a neutral text for a name that could hold anything. */
-export const nameOf = (error: Error): string =>
+const nameOf = (error: Error): string =>
   /^[\w$.]{1,64}$/u.test(error.name) ? error.name : "an Error";
 
 /** The class name and the location of a thrown value. They never hold the message. */

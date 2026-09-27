@@ -14,11 +14,7 @@ export const ReferenceFailure = {
 } as const;
 
 /** The schema of `ReferenceFailure`. */
-export const ReferenceFailureSchema = Schema.Literals([
-  ReferenceFailure.NotFound,
-  ReferenceFailure.Invalid,
-  ReferenceFailure.AccessDenied,
-]);
+export const ReferenceFailureSchema = Schema.Enum(ReferenceFailure);
 
 export type ReferenceFailure = typeof ReferenceFailureSchema.Type;
 
@@ -32,13 +28,7 @@ export const ProviderFailure = {
 } as const;
 
 /** The schema of `ProviderFailure`. */
-export const ProviderFailureSchema = Schema.Literals([
-  ProviderFailure.AuthenticationFailed,
-  ProviderFailure.Unavailable,
-  ProviderFailure.Misconfigured,
-  ProviderFailure.UnknownProvider,
-  ProviderFailure.InvalidResponse,
-]);
+export const ProviderFailureSchema = Schema.Enum(ProviderFailure);
 
 export type ProviderFailure = typeof ProviderFailureSchema.Type;
 
@@ -51,7 +41,7 @@ export const CustomReason = {
 } as const;
 
 /** The schema of `CustomReason`. */
-export const CustomReasonSchema = Schema.Literals([CustomReason.Threw, CustomReason.Failed]);
+export const CustomReasonSchema = Schema.Enum(CustomReason);
 
 export type CustomReason = typeof CustomReasonSchema.Type;
 
@@ -64,12 +54,7 @@ export const CacheFailure = {
 } as const;
 
 /** The schema of `CacheFailure`. */
-export const CacheFailureSchema = Schema.Literals([
-  CacheFailure.Unreadable,
-  CacheFailure.Unwritable,
-  CacheFailure.KeyUnavailable,
-  CacheFailure.LockTimeout,
-]);
+export const CacheFailureSchema = Schema.Enum(CacheFailure);
 
 export type CacheFailure = typeof CacheFailureSchema.Type;
 
@@ -79,7 +64,7 @@ export const ExportFileFailure = {
 } as const;
 
 /** The schema of `ExportFileFailure`. */
-export const ExportFileFailureSchema = Schema.Literals([ExportFileFailure.WriteFailed]);
+export const ExportFileFailureSchema = Schema.Enum(ExportFileFailure);
 
 export type ExportFileFailure = typeof ExportFileFailureSchema.Type;
 
@@ -93,12 +78,7 @@ export const RunFailure = {
 } as const;
 
 /** The schema of `RunFailure`. */
-export const RunFailureSchema = Schema.Literals([
-  RunFailure.CommandNotFound,
-  RunFailure.CommandNotExecutable,
-  RunFailure.SpawnFailed,
-  RunFailure.KilledBySignal,
-]);
+export const RunFailureSchema = Schema.Enum(RunFailure);
 
 export type RunFailure = typeof RunFailureSchema.Type;
 
@@ -120,17 +100,7 @@ export const ConfigLoadFailure = {
 } as const;
 
 /** The schema of `ConfigLoadFailure`. */
-export const ConfigLoadFailureSchema = Schema.Literals([
-  ConfigLoadFailure.NotFound,
-  ConfigLoadFailure.NoConfig,
-  ConfigLoadFailure.ManyConfigs,
-  ConfigLoadFailure.ImportFailed,
-  ConfigLoadFailure.ConfigSyntax,
-  ConfigLoadFailure.VarsThrew,
-  ConfigLoadFailure.MissingDependency,
-  ConfigLoadFailure.UnsupportedRuntime,
-  ConfigLoadFailure.InvalidConfig,
-]);
+export const ConfigLoadFailureSchema = Schema.Enum(ConfigLoadFailure);
 
 export type ConfigLoadFailure = typeof ConfigLoadFailureSchema.Type;
 

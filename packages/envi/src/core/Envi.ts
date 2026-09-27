@@ -1,6 +1,5 @@
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
-import * as EffectConfig from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -18,6 +17,7 @@ import {
   type AnyEnviError,
   type CacheError,
   type ConfigLoadError,
+  CustomReason,
   DecodeError,
   ExportError,
   type ProviderError,
@@ -210,17 +210,9 @@ export const providerVariablePrefix = "ENVI_PROVIDER_";
 
 const strictVariable = "ENVI_STRICT";
 
-const readStage = Settings.read(
-  stageVariable,
-  "a stage name",
-  EffectConfig.option(EffectConfig.String(stageVariable)),
-);
+const readStage = Settings.readString(stageVariable, "a stage name");
 
-const readStrict = Settings.read(
-  strictVariable,
-  "true or false",
-  EffectConfig.option(EffectConfig.Boolean(strictVariable)),
-);
+const readStrict = Settings.readBoolean(strictVariable);
 
 /** The reference text and the reason code of one failure. It never holds a value. */
 const referenceAndReason = (
@@ -230,7 +222,7 @@ const referenceAndReason = (
     DecodeError: (failure) => ({ reference: null, reason: failure.expected }),
     ProviderError: (failure) => ({ reference: null, reason: failure.reason }),
     CustomError: (failure) => ({ reference: `custom(${failure.id})`, reason: failure.reason }),
-    DeriveError: () => ({ reference: null, reason: "Threw" }),
+    DeriveError: () => ({ reference: null, reason: CustomReason.Threw }),
     SecretReferenceError: (failure) => ({ reference: failure.reference, reason: failure.reason }),
   });
 
@@ -740,7 +732,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     const failure = (reason: RunFailure) => new RunError({ reason, command });
 
     const exitCode = yield* Signals.supervise(child).pipe(
-      Timing.measure("run.child", { command }),
+      Timing.measure(Timing.Step.RunChild, { command }),
       Effect.mapError((error) =>
         failure(
           Match.value(error.reason).pipe(

@@ -1,15 +1,35 @@
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Schema from "effect/Schema";
 
 /** The message of every timing line. The `step` annotation tells which step the line is for. */
 export const message = "Envi finished a step.";
+
+/** The steps that `--debug` times. A provider names its own steps, such as `onepassword.client`. */
+export const Step = {
+  Startup: "startup",
+  Command: "command",
+  ConfigImport: "config.import",
+  KeychainKey: "keychain.key",
+  CacheRead: "cache.read",
+  ResolveLock: "resolve.lock",
+  ProviderResolve: "provider.resolve",
+  CustomResolve: "custom.resolve",
+  CacheWrite: "cache.write",
+  RunChild: "run.child",
+} as const;
 
 /** How a measured step ended. */
 export const Outcome = {
   Success: "success",
   Failure: "failure",
 } as const;
+
+/** The schema of `Outcome`. */
+export const OutcomeSchema = Schema.Enum(Outcome);
+
+export type Outcome = typeof OutcomeSchema.Type;
 
 /** The extra fields of a timing line. A value is safe text or a count, never a secret. */
 export type Annotations = Readonly<Record<string, string | number>>;
@@ -18,7 +38,7 @@ export type Annotations = Readonly<Record<string, string | number>>;
 export const report = (
   step: string,
   durationMs: number,
-  outcome: (typeof Outcome)[keyof typeof Outcome],
+  outcome: Outcome,
   annotations: Annotations = {},
 ) =>
   Effect.logDebug(message).pipe(Effect.annotateLogs({ step, durationMs, outcome, ...annotations }));

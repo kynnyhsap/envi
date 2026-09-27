@@ -1,4 +1,5 @@
 // The text form of each report. `--json` prints the encoded report instead.
+import { redactedText } from "./core/Envi.ts";
 import {
   type CacheClearReport,
   type CacheListReport,
@@ -7,11 +8,9 @@ import {
   type SyncReport,
   ValueOrigin,
   type VarFailure,
-} from "./core/index.ts";
+} from "./core/Reports.ts";
 
-/** The text that stands for a redacted value, and for an absent cell. */
-const redacted = "<redacted>";
-
+/** The text that stands for an absent cell. */
 const absent = "-";
 
 /** Aligns rows as columns with two spaces between them. The last column has no padding. */
@@ -73,7 +72,9 @@ export const inspect = (report: InspectReport): string =>
         entry.key,
         entry.origin,
         entry.reference ?? absent,
-        entry.origin !== ValueOrigin.Unset && entry.redacted ? redacted : (entry.value ?? absent),
+        entry.origin !== ValueOrigin.Unset && entry.redacted
+          ? redactedText
+          : (entry.value ?? absent),
       ]),
     ]),
   ]);

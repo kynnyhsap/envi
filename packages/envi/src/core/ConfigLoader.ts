@@ -19,10 +19,10 @@ import * as Thrown from "./Thrown.ts";
 import * as Timing from "./Timing.ts";
 
 /** The base name of a config file that Envi finds on its own. */
-export const configBaseName = "envi.config";
+const configBaseName = "envi.config";
 
 /** The extensions of a config file, in the order of the search. */
-export const configExtensions: ReadonlyArray<string> = [".ts", ".mts", ".js", ".mjs"];
+const configExtensions: ReadonlyArray<string> = [".ts", ".mts", ".js", ".mjs"];
 
 /**
  * The directions of the config search. The project root is the nearest folder with `.git`.
@@ -37,11 +37,7 @@ export const ConfigSearch = {
 } as const;
 
 /** The schema of `ConfigSearch`. */
-export const ConfigSearchSchema = Schema.Literals([
-  ConfigSearch.Up,
-  ConfigSearch.Down,
-  ConfigSearch.Repo,
-]);
+export const ConfigSearchSchema = Schema.Enum(ConfigSearch);
 
 export type ConfigSearch = typeof ConfigSearchSchema.Type;
 
@@ -202,7 +198,7 @@ const make = Effect.gen(function* () {
     const module: unknown = yield* Effect.tryPromise({
       try: () => import(url.href),
       catch: (cause) => importFailure(absolute, cause),
-    }).pipe(Timing.measure("config.import", { file: absolute }));
+    }).pipe(Timing.measure(Timing.Step.ConfigImport, { file: absolute }));
 
     const exported = Predicate.hasProperty(module, "default") ? module.default : undefined;
 

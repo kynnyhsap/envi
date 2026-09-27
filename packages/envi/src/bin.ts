@@ -5,7 +5,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 
 import { ExitCode, KeyStore, main } from "./cli.ts";
-import { Envi } from "./core/index.ts";
+import * as Envi from "./core/Envi.ts";
 import { delegatedVariable, findLocalBin, runLocal } from "./delegate.ts";
 import { keyStoreOf } from "./layer.ts";
 import * as Platform from "./platform.ts";

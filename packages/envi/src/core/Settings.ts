@@ -6,13 +6,13 @@ import * as Option from "effect/Option";
 import { SettingsError } from "./Errors.ts";
 
 /** The variable that CI systems set. */
-export const ciVariable = "CI";
+const ciVariable = "CI";
 
 /** The home folder of the OS user. */
-export const homeVariable = "HOME";
+const homeVariable = "HOME";
 
 /** The variable that allows or forbids a prompt, such as a desktop app approval. */
-export const interactiveVariable = "ENVI_INTERACTIVE";
+const interactiveVariable = "ENVI_INTERACTIVE";
 
 /** The values of `CI` that mean "not CI". CI systems set `CI` to `true`, `1`, or their name. */
 const notCi: ReadonlyArray<string> = ["", "false", "0"];
@@ -24,6 +24,17 @@ export const read = <A>(
   setting: EffectConfig.Config<A>,
 ): Effect.Effect<A, SettingsError> =>
   Effect.mapError(setting, () => new SettingsError({ name, expected }));
+
+/** Reads one optional variable that holds `true` or `false`. */
+export const readBoolean = (name: string): Effect.Effect<Option.Option<boolean>, SettingsError> =>
+  read(name, "true or false", EffectConfig.option(EffectConfig.Boolean(name)));
+
+/** Reads one optional variable that holds text. `expected` names the text in the error. */
+export const readString = (
+  name: string,
+  expected: string,
+): Effect.Effect<Option.Option<string>, SettingsError> =>
+  read(name, expected, EffectConfig.option(EffectConfig.String(name)));
 
 /** `true` when `CI` is set to a value other than empty, `false`, or `0`. */
 export const isCi: Effect.Effect<boolean> = Effect.map(
@@ -40,8 +51,6 @@ export const home: Effect.Effect<Option.Option<string>> = Effect.orElseSucceed(
 );
 
 /** `ENVI_INTERACTIVE`. None when the variable is absent. */
-export const interactive: Effect.Effect<Option.Option<boolean>, SettingsError> = read(
+export const interactive: Effect.Effect<Option.Option<boolean>, SettingsError> = readBoolean(
   interactiveVariable,
-  "true or false",
-  EffectConfig.option(EffectConfig.Boolean(interactiveVariable)),
 );

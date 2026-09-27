@@ -1,6 +1,5 @@
 // The cache settings: the schema of the `cache` key, and the one precedence order that selects the
 // cache of a run. The cache layer and the `Envi` service both select through this module.
-import * as EffectConfig from "effect/Config";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -21,12 +20,12 @@ export const Encryption = {
 } as const;
 
 /** The schema of `Encryption`. */
-export const EncryptionSchema = Schema.Enum(Encryption);
+const EncryptionSchema = Schema.Enum(Encryption);
 
 export type Encryption = typeof EncryptionSchema.Type;
 
 /** A duration, such as `"24 hours"`, or a number of milliseconds. */
-export const DurationInput = Schema.declare((input: unknown): input is Duration.Input =>
+const DurationInput = Schema.declare((input: unknown): input is Duration.Input =>
   // SAFETY: `fromInput` returns none for any input that is not a duration.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   Option.isSome(Duration.fromInput(input as Duration.Input)),
@@ -57,16 +56,16 @@ const expected: Readonly<Record<keyof typeof CacheSettings.fields, string>> = {
 };
 
 /** The default refresh interval of a cache entry. */
-export const defaultTtl: Duration.Duration = Duration.hours(24);
+const defaultTtl: Duration.Duration = Duration.hours(24);
 
 /** The default limit of the stale fallback. */
 export const defaultMaxStale: Duration.Duration = Duration.days(7);
 
 /** The variable that turns the cache on or off. */
-export const enabledVariable = "ENVI_CACHE_ENABLED";
+const enabledVariable = "ENVI_CACHE_ENABLED";
 
 /** The variable of the cache directory. */
-export const directoryVariable = "ENVI_CACHE_DIR";
+const directoryVariable = "ENVI_CACHE_DIR";
 
 /** The settings above the config: the flags of the CLI, and the `cache` option. */
 export interface Overrides {
@@ -168,11 +167,7 @@ const decide = Effect.fn("CacheSettings.decide")(function* (
   const option = yield* decodeKey("option cache", overrides.option);
   const config = Option.isSome(option) ? Option.none() : yield* decodeKey("cache", configKey);
 
-  const enabledFromVariable = yield* Settings.read(
-    enabledVariable,
-    "true or false",
-    EffectConfig.option(EffectConfig.Boolean(enabledVariable)),
-  );
+  const enabledFromVariable = yield* Settings.readBoolean(enabledVariable);
 
   const decided = Option.firstSomeOf([
     overrides.enabled,
@@ -217,11 +212,7 @@ export const select = Effect.fn("CacheSettings.select")(function* (
   const { option, config, decided, policy } = yield* decide(overrides, configKey);
   const isCi = yield* Settings.isCi;
 
-  const directoryFromVariable = yield* Settings.read(
-    directoryVariable,
-    "a folder path",
-    EffectConfig.option(EffectConfig.String(directoryVariable)),
-  );
+  const directoryFromVariable = yield* Settings.readString(directoryVariable, expected.directory);
 
   const home = yield* Settings.home;
 
