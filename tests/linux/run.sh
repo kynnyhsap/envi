@@ -10,10 +10,12 @@ cd "$(dirname "$0")/../.."
 
 targets="${*:-linux-secret-service linux-bare}"
 
-# The Bun of the images is the Bun of `packageManager` in the root manifest.
+# The Bun of the images is the Bun of `packageManager`, and the Node is the major of the Node floor
+# in `engines`, both from the root manifest.
 bun_version=$(sed -n 's/.*"packageManager": "bun@\([^"]*\)".*/\1/p' package.json)
+node_major=$(sed -n 's/.*"node": ">=\([0-9]*\)\..*/\1/p' package.json)
 
 for target in $targets; do
-  docker build --build-arg "BUN_VERSION=$bun_version" --target "$target" --tag "envi-test:$target" --file tests/linux/Dockerfile .
+  docker build --build-arg "BUN_VERSION=$bun_version" --build-arg "NODE_MAJOR=$node_major" --target "$target" --tag "envi-test:$target" --file tests/linux/Dockerfile .
   docker run --rm "envi-test:$target"
 done

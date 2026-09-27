@@ -11,22 +11,15 @@
 //   bun run versions           writes the root version and engines into every package, and the
 //                              range and the floors into the READMEs
 //   bun run versions --check   fails when a file differs or a rule breaks, without a change
-import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Console from "effect/Console";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
 import { Command, Flag } from "effect/unstable/cli";
-import { ChildProcess } from "effect/unstable/process";
-import { fileURLToPath } from "node:url";
 
 import { packageNames } from "./packages.ts";
-
-const root = fileURLToPath(new URL("..", import.meta.url));
+import { exec, root, runCommand, ScriptError, trackedFiles } from "./Workspace.ts";
 
 const Dependencies = Schema.optional(Schema.Record(Schema.String, Schema.String));
 
@@ -71,12 +64,6 @@ const floor = (runtime: string) => new RegExp(`\\b${runtime} \\d+\\.\\d+\\.\\d+`
 /** The `engines` block of a manifest, formatted the way oxfmt formats a manifest. */
 const enginesBlock = (engines: typeof Engines.Type): string =>
   `"engines": ${JSON.stringify(engines, null, 2).replaceAll("\n", "\n  ")}`;
-
-class VersionsError extends Data.TaggedError("VersionsError")<{ readonly detail: string }> {
-  override get message(): string {
-    return `The version check failed:\n${this.detail}`;
-  }
-}
 
 interface Dependency {
   readonly file: string;
@@ -142,36 +129,11 @@ interface Rewrite {
   readonly text: string;
 }
 
-/** Runs a command in the repo root with the output of this process. */
-const exec = (command: string, args: ReadonlyArray<string>) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const handle = yield* ChildProcess.make(command, args, {
-        cwd: root,
-        stdin: "ignore",
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-
-      const exitCode = yield* handle.exitCode;
-
-      return yield* exitCode === 0
-        ? Effect.void
-        : Effect.fail(new VersionsError({ detail: `${command} exited with ${exitCode}.` }));
-    }),
-  );
-
 /** The READMEs in git. The prepack copy of the root README in `packages/envi` is ignored. */
-const trackedReadmes = Effect.scoped(
-  Effect.gen(function* () {
-    const handle = yield* ChildProcess.make("git", ["ls-files", "-z", "README.md", "*/README.md"], {
-      cwd: root,
-    });
-
-    const output = yield* Stream.mkString(Stream.decodeText(handle.stdout));
-
-    return output.split("\0").filter((file) => file !== "");
-  }),
+const trackedReadmes = Effect.flatMap(trackedFiles(["README.md", "*/README.md"]), (files) =>
+  files.length === 0
+    ? Effect.fail(new ScriptError({ detail: "git lists no README. Run the script in a checkout." }))
+    : Effect.succeed(files),
 );
 
 const check = Flag.Boolean("check").pipe(
@@ -206,7 +168,12 @@ const command = Command.make("versions", { check }, (input) =>
       rootManifest.workspaces.catalog,
     );
 
-    const effectRange = rootManifest.workspaces.catalog["effect"] ?? "";
+    const effectRange = rootManifest.workspaces.catalog["effect"];
+
+    if (effectRange === undefined) {
+      return yield* new ScriptError({ detail: "The catalog of the root manifest has no effect." });
+    }
+
     const { engines } = rootManifest;
 
     const manifestRewrites: ReadonlyArray<Rewrite> = packages
@@ -251,7 +218,7 @@ const command = Command.make("versions", { check }, (input) =>
 
       return yield* all.length === 0
         ? Console.log("Every version comes from the root manifest and the catalog.")
-        : Effect.fail(new VersionsError({ detail: all.join("\n") }));
+        : Effect.fail(new ScriptError({ detail: `The version check failed:\n${all.join("\n")}` }));
     }
 
     yield* Effect.forEach(rewrites, (rewrite) =>
@@ -266,11 +233,10 @@ const command = Command.make("versions", { check }, (input) =>
 
     return yield* problems.length === 0
       ? Effect.void
-      : Effect.fail(new VersionsError({ detail: problems.join("\n") }));
+      : Effect.fail(
+          new ScriptError({ detail: `The version check failed:\n${problems.join("\n")}` }),
+        );
   }),
 );
 
-Command.run(command, { version: "1.0.0" }).pipe(
-  Effect.provide(NodeServices.layer),
-  NodeRuntime.runMain,
-);
+runCommand(command);

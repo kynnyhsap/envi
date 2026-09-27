@@ -4,11 +4,10 @@ import { describe, expect, layer } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
-import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { fileURLToPath } from "node:url";
 
-import { enviVersion, fixture, makeSandbox, runCli, runtimes } from "./helpers.ts";
+import { enviVersion, fixture, makeSandbox, runCli, runProcess, runtimes } from "./helpers.ts";
 
 const app = fixture("cached");
 
@@ -225,29 +224,15 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
           JSON.stringify({ ...JSON.parse(manifest), version: globalVersion }),
         );
 
-        const runGlobal = (env: Readonly<Record<string, string>>) =>
-          Effect.gen(function* () {
-            const handle = yield* ChildProcess.make(
-              runtime,
-              [path.join(globalCopy, "dist/bin.js"), "--version"],
-              { cwd: app, env, extendEnv: true },
-            );
-
-            return yield* Stream.mkString(Stream.decodeText(handle.stdout));
-          });
-
-        const delegated = yield* runGlobal({});
-        const marked = yield* runGlobal({ ENVI_DELEGATED: "1" });
-
-        const outside = yield* Effect.gen(function* () {
-          const handle = yield* ChildProcess.make(
-            runtime,
-            [path.join(globalCopy, "dist/bin.js"), "--version"],
-            { cwd: "/", extendEnv: true },
+        const runGlobal = (cwd: string, env: Readonly<Record<string, string>>) =>
+          Effect.map(
+            runProcess(runtime, [path.join(globalCopy, "dist/bin.js"), "--version"], cwd, env),
+            (result) => result.stdout,
           );
 
-          return yield* Stream.mkString(Stream.decodeText(handle.stdout));
-        });
+        const delegated = yield* runGlobal(app, {});
+        const marked = yield* runGlobal(app, { ENVI_DELEGATED: "1" });
+        const outside = yield* runGlobal("/", {});
 
         // In the project, the global Envi starts the local Envi. The marker stops a loop.
         expect(delegated).toContain(enviVersion);

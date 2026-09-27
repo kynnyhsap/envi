@@ -4,10 +4,9 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import * as Stream from "effect/Stream";
-import { ChildProcess } from "effect/unstable/process";
 import { fileURLToPath } from "node:url";
 
+import { cliPath, runProcess } from "../../../tests/e2e/helpers.ts";
 import { expected } from "./expected.ts";
 import { accountVariable, primaryVault, secondaryVault, tokenVariable } from "./fixture.ts";
 
@@ -21,41 +20,19 @@ const credential: Record<string, string> =
     ? { ENVI_PROVIDER_ONEPASSWORD_ACCOUNT: account ?? "" }
     : { ENVI_PROVIDER_ONEPASSWORD_SERVICE_ACCOUNT_TOKEN: token };
 
-const cliPath = fileURLToPath(new URL("../../envi/dist/bin.js", import.meta.url));
-
 const cwd = fileURLToPath(new URL("./fixtures/app", import.meta.url));
 
 const printVars =
   "console.log([process.env.PORT, process.env.API_TOKEN, process.env.STRIPE_KEY, Object.keys(process.env).some((name) => name.startsWith('ENVI_PROVIDER_')) ? 'leaked' : 'removed'].join('|'))";
 
-/**
- * Runs one command of the built CLI. A flag follows the command. `CI` is unset, so the run
- * behaves like a run on a developer machine. The fixture lives in the Envi repo, so the search
- * goes up only: `repo` would find every fixture of the repo.
- */
-const runCli = Effect.fn("runCli")(function* (
+/** Runs one command of the built CLI. A flag follows the command. */
+const runCli = (
   runtime: string,
   cacheDirectory: string,
   command: string,
   args: ReadonlyArray<string>,
-) {
-  const handle = yield* ChildProcess.make(
-    runtime,
-    [cliPath, command, "--cache-dir", cacheDirectory, ...args],
-    {
-      cwd,
-      env: { CI: undefined, ENVI_STAGE: undefined, ENVI_CONFIG_SEARCH: "up", ...credential },
-      extendEnv: true,
-    },
-  );
-
-  const [exitCode, stdout] = yield* Effect.all(
-    [handle.exitCode, Stream.mkString(Stream.decodeText(handle.stdout))],
-    { concurrency: "unbounded" },
-  );
-
-  return { exitCode, stdout };
-});
+) =>
+  runProcess(runtime, [cliPath, command, "--cache-dir", cacheDirectory, ...args], cwd, credential);
 
 describe.skipIf(account === undefined && token === undefined)(
   "envi CLI against a real account",

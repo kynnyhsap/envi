@@ -4,40 +4,27 @@
 //
 //   bun run rename           renames every package whose manifest differs
 //   bun run rename --check   fails when a manifest differs, without a change
-import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Console from "effect/Console";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
 import { Command, Flag } from "effect/unstable/cli";
-import { ChildProcess } from "effect/unstable/process";
-import { fileURLToPath } from "node:url";
 
 import { packageNames } from "./packages.ts";
-
-const root = fileURLToPath(new URL("..", import.meta.url));
+import { exec, root, runCommand, ScriptError, trackedFiles } from "./Workspace.ts";
 
 const Manifest = Schema.fromJsonString(Schema.Struct({ name: Schema.String }));
 
 /** The files that can hold a package name. Bun rewrites `bun.lock` itself. */
 const textFile = /\.(?:ts|mts|js|mjs|json|md|ya?ml)$/u;
 
-class RenameError extends Data.TaggedError("RenameError")<{ readonly detail: string }> {
-  override get message(): string {
-    return `The rename failed: ${this.detail}`;
-  }
-}
-
 interface Rename {
   readonly from: string;
   readonly to: string;
 }
 
-const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\/]/gu, "\\$&");
+const escape = (text: string): string => text.replaceAll(/[.*+?^${}()|[\]\\/]/gu, "\\$&");
 
 /**
  * Replaces every old name in one pass, so one rename never feeds the next. A whole name matches:
@@ -47,38 +34,15 @@ const renameText = (text: string, renames: ReadonlyArray<Rename>): string => {
   const targets = new Map(renames.map((rename) => [rename.from, rename.to]));
   const names = renames.map((rename) => escape(rename.from)).join("|");
 
-  return text.replace(
+  return text.replaceAll(
     new RegExp(`(?<![\\w@/.-])(?:${names})(?![\\w-])`, "gu"),
     (name) => targets.get(name) ?? name,
   );
 };
 
-/** Runs a command in the repo root with the output of this process. */
-const exec = (command: string, args: ReadonlyArray<string>) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const handle = yield* ChildProcess.make(command, args, {
-        cwd: root,
-        stdin: "ignore",
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-
-      const exitCode = yield* handle.exitCode;
-
-      return yield* exitCode === 0
-        ? Effect.void
-        : Effect.fail(new RenameError({ detail: `${command} exited with ${exitCode}.` }));
-    }),
-  );
-
-const trackedFiles = Effect.scoped(
-  Effect.gen(function* () {
-    const handle = yield* ChildProcess.make("git", ["ls-files", "-z"], { cwd: root });
-    const output = yield* Stream.mkString(Stream.decodeText(handle.stdout));
-
-    return output.split("\0").filter((file) => textFile.test(file));
-  }),
+/** The tracked text files that can hold a package name. */
+const textFiles = Effect.map(trackedFiles(), (files) =>
+  files.filter((file) => textFile.test(file)),
 );
 
 /** The packages whose manifest name differs from `scripts/packages.ts`. */
@@ -113,7 +77,7 @@ const command = Command.make("rename", { check }, (input) =>
     }
 
     if (input.check) {
-      return yield* new RenameError({
+      return yield* new ScriptError({
         detail: `The manifests differ from scripts/packages.ts: ${listOf(renames)}. Run \`bun run rename\`.`,
       });
     }
@@ -122,14 +86,14 @@ const command = Command.make("rename", { check }, (input) =>
     const bare = renames.find((rename) => !rename.from.includes("/"));
 
     if (bare !== undefined) {
-      return yield* new RenameError({
+      return yield* new ScriptError({
         detail: `The old name ${bare.from} has no scope, so it matches other words too. Rename it by hand.`,
       });
     }
 
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const files = yield* trackedFiles;
+    const files = yield* textFiles;
 
     const changed = yield* Effect.forEach(files, (file) =>
       Effect.gen(function* () {
@@ -155,7 +119,4 @@ const command = Command.make("rename", { check }, (input) =>
   }),
 );
 
-Command.run(command, { version: "1.0.0" }).pipe(
-  Effect.provide(NodeServices.layer),
-  NodeRuntime.runMain,
-);
+runCommand(command);

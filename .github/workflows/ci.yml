@@ -10,22 +10,29 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels the run of the old push. A run on main always finishes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Format, lint, typecheck, and every test on the newest Node that `engines` allows.
   verify:
     name: verify (${{ matrix.os }})
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: package.json
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22
+          node-version-file: package.json
       - run: bun install --frozen-lockfile
       - run: bun run verify
 
@@ -34,30 +41,31 @@ jobs:
   # read the lockfile.
   floors:
     name: floors (${{ matrix.os }})
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: floors
         run: |
           echo "node=$(jq -r '.engines.node | ltrimstr(">=")' package.json)" >> "$GITHUB_OUTPUT"
           echo "bun=$(jq -r '.engines.bun | ltrimstr(">=")' package.json)" >> "$GITHUB_OUTPUT"
       # setup-bun always installs to ~/.bun/bin, so the floor Bun moves aside first.
       - id: floor-bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ steps.floors.outputs.bun }}
       - run: |
           mkdir -p "$RUNNER_TEMP/floor-bun"
           cp "${{ steps.floor-bun.outputs.bun-path }}" "$RUNNER_TEMP/floor-bun/bun"
       - id: workspace-bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: package.json
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ steps.floors.outputs.node }}
       - run: bun install --frozen-lockfile
@@ -69,17 +77,18 @@ jobs:
           export PATH="$RUNNER_TEMP/floor-bun:$PATH"
           test "$(node --version)" = "v${{ steps.floors.outputs.node }}"
           test "$(bun --version)" = "${{ steps.floors.outputs.bun }}"
-          node node_modules/vitest/vitest.mjs run --project unit
-          bun --bun node_modules/vitest/vitest.mjs run --project unit
-          node node_modules/vitest/vitest.mjs run --project e2e
+          bun run test:unit
+          bun run test:unit:bun
+          bun run test:e2e:built
 
   linux-images:
     name: linux image (${{ matrix.target }})
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         target: [linux-secret-service, linux-bare]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: sh tests/linux/run.sh ${{ matrix.target }}

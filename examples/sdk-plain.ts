@@ -21,11 +21,17 @@ import staticConfig from "./config-static.ts";
 type AppEnv = Env<typeof config>;
 
 assertType<Equal<AppEnv["PORT"], number>>();
+
 assertType<Equal<AppEnv["DATABASE_URL"], URL>>();
+
 assertType<Equal<AppEnv["SENTRY_DSN"], string | undefined>>();
+
 assertType<Equal<AppEnv["LOG_LEVEL"], "debug" | "info">>();
+
 assertType<Equal<AppEnv["FEATURE_SEARCH"], boolean>>();
+
 assertType<Equal<RawEnv<typeof config>["PORT"], string>>();
+
 assertType<Equal<StageOf<typeof config>, "development" | "staging" | "production">>();
 
 // The schema of one stage. A form, a test, or a server can decode with it.
@@ -56,9 +62,13 @@ assertType<Equal<typeof database, { readonly url: URL; readonly replica: string 
 
 // The client mirrors the CLI. Each method returns the report that `--json` prints.
 const syncReport = await envi.sync({ refresh: true });
+
 const checkReport = await envi.check({ stage: "staging" });
+
 const inspectReport = await envi.inspect();
+
 const dotenv = await envi.export(ExportFormat.Dotenv, { redact: true });
+
 const runReport = await envi.run("bun", ["run", "dev"], { cwd: "apps/web" });
 
 export const reports = { syncReport, checkReport, inspectReport, dotenv, runReport };

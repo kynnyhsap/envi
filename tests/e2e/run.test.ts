@@ -9,6 +9,7 @@ import * as Stream from "effect/Stream";
 import { ChildProcess } from "effect/unstable/process";
 
 import {
+  cleared,
   cliPath,
   fixture,
   makeSandbox,
@@ -76,7 +77,7 @@ const runAndSignal = Effect.fn("runAndSignal")(function* (
     ],
     {
       cwd: app,
-      env: { ...sandbox.env, CI: undefined, ENVI_E2E_READY_FILE: readyFile },
+      env: { ...cleared, ...sandbox.env, ENVI_E2E_READY_FILE: readyFile },
       extendEnv: true,
     },
   );
@@ -134,7 +135,7 @@ const runAndPressControlC = Effect.fn("runAndPressControlC")(function* (
     ],
     {
       cwd: app,
-      env: { ...sandbox.env, CI: undefined, ENVI_E2E_READY_FILE: readyFile },
+      env: { ...cleared, ...sandbox.env, ENVI_E2E_READY_FILE: readyFile },
       extendEnv: true,
       stdin: "ignore",
     },

@@ -3,7 +3,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
-import { fileURLToPath } from "node:url";
 
 import { ExitCode, KeyStore, main } from "./cli.ts";
 import { Envi } from "./core/index.ts";
@@ -37,7 +36,7 @@ const runHere = Effect.gen(function* () {
 const program = Effect.gen(function* () {
   const local =
     process.env[delegatedVariable] === undefined
-      ? yield* findLocalBin(process.cwd(), fileURLToPath(import.meta.url))
+      ? yield* findLocalBin(process.cwd(), import.meta.filename)
       : Option.none<string>();
 
   const code = yield* Option.match(local, {

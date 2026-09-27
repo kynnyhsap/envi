@@ -127,9 +127,36 @@ This repository is public. These rules have no exception.
   platform services. It never imports `@effect/platform-*` or `node:`, and it never reads `Bun` or
   `process`. A lint rule enforces this. Only the entry points of `envi` outside `core` provide the
   platform layer of `src/platform.ts` and read `process`.
+- Each package has one responsibility, and lint rules in `oxlint.config.ts` enforce the borders:
+  - The core imports nothing outside `core`, except the manifest of `envi`.
+  - Code of `envi` never imports itself by its package name.
+  - A provider imports Envi only through the public exports of `envi` and
+    `@kynnyhsap/envi/testing`. It never imports `node:`, and it never reads `Bun` or `process`.
+  - A test outside a package imports the package, never its `src`.
+- Lint is strict, and it covers the examples and the scripts. Do not disable a rule to pass a
+  check. Fix the code. A disable comment names the one line, and only a type idiom that the
+  rule cannot read needs one. `max-lines` is a ratchet: lower it when a big file splits, and
+  never raise it.
+- Run `bun run verify` before you report work as done.
+
+## Tests
+
 - Write the test first. Tests use Effect through `@effect/vitest`. Unit tests use the in-memory
   provider. End-to-end tests work on real files and run the built CLI on Node and on Bun.
-- Run `bun run verify` before you report work as done.
+- Test a scenario of a user through the surface that the user uses: the CLI, the plain client,
+  or the Effect layer. Name the test after the scenario.
+- Assert what the user sees: the result, the error tag and its reason, the output, and the state
+  that a second call reads back. Never assert an internal call, a private field, or the prose of
+  a message.
+- Compute each expected value from the input of the case. Do not copy a value from the output.
+- A rejection test sends input that is valid except for the one rule under test. It checks that
+  nothing changed, and it shows that the same call succeeds when the rule allows it.
+- Write a unit test of an internal module only for a named bug or for an algorithm.
+- Do not write a test of a constant, a test of what TypeScript or a `Schema` guarantees, a mock
+  of our own logic, or a second test of the same behavior.
+- Never sleep in a test. Use `TestClock`, or wait for an observable result with a deadline.
+- Before you commit a test for a bug, make the test fail for that bug once.
+- Never skip a test or loosen an assertion to hide a failure. Fix the code, or ask.
 
 ## Repository
 
@@ -160,12 +187,17 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   `README.md` into `envi`. `scripts/release.ts` publishes: the Bun of the workspace packs each
   package, because npm does not resolve `workspace:` and `catalog:`. npm publishes each tarball,
   because `bun publish` signs no provenance and supports no trusted publishing.
-- `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/build.ts`
-  builds one package: `poof` removes `dist`, then `tsc` compiles `src`.
+- `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/Workspace.ts`
+  holds their shared parts: the root, the version, `ScriptError`, the child process helpers, and
+  the entry points `runScript` and `runCommand`. The end-to-end tests use its `capture`.
+  `scripts/build.ts` builds one package: `poof` removes `dist`, then `tsc` compiles `src`.
 - `.github/workflows/ci.yml` runs `bun run verify` on macOS and on Linux, and the Linux images.
-  Its `floors` job runs the unit and end-to-end tests on the Node and the Bun of `engines`. The
-  Bun of `packageManager` installs, builds, and packs there, because an older Bun cannot read the
-  lockfile. CI and the Linux images read both Bun versions from the root manifest.
+  The `verify` job uses the newest Node that `engines` allows. Its `floors` job runs the unit and
+  end-to-end tests on the Node and the Bun of `engines`. The Bun of `packageManager` installs,
+  builds, and packs there, because an older Bun cannot read the lockfile. CI and the Linux images
+  read both Bun versions and the Node floor from the root manifest.
+- Each workflow pins every action to a commit SHA, with the version in a comment. Dependabot
+  proposes the updates of the actions.
 - `.github/workflows/release.yml` runs when a tag `v<version>` arrives. It runs every job of CI,
   checks that the tag is on `main`, and runs `bun run release` with provenance. Its `publish` job
   uses the GitHub environment `npm`, and only a `v*` tag can use that environment. The first
