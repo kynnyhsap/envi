@@ -157,18 +157,24 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   `@kynnyhsap/envi/testing`. Every other module of `src/core` is internal.
 - A published package holds `dist`, and `src` for the declaration maps. `@kynnyhsap/envi-1password` has its
   own `README.md`. `scripts/prepack.ts` copies the root `LICENSE` into each package, and the root
-  `README.md` into `envi`. `bun publish` publishes, because npm does not resolve `workspace:` and
-  `catalog:`.
+  `README.md` into `envi`. `scripts/release.ts` publishes: the Bun of the workspace packs each
+  package, because npm does not resolve `workspace:` and `catalog:`. npm publishes each tarball,
+  because `bun publish` signs no provenance and supports no trusted publishing.
 - `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/build.ts`
   builds one package: `poof` removes `dist`, then `tsc` compiles `src`.
 - `.github/workflows/ci.yml` runs `bun run verify` on macOS and on Linux, and the Linux images.
   Its `floors` job runs the unit and end-to-end tests on the Node and the Bun of `engines`. The
   Bun of `packageManager` installs, builds, and packs there, because an older Bun cannot read the
   lockfile. CI and the Linux images read both Bun versions from the root manifest.
+- `.github/workflows/release.yml` runs when a tag `v<version>` arrives. It runs every job of CI,
+  checks that the tag is on `main`, and runs `bun run release` with provenance. Its `publish` job
+  uses the GitHub environment `npm`, and only a `v*` tag can use that environment. The first
+  publish needs the secret `NPM_TOKEN` in that environment. After it, configure trusted
+  publishing on npm for `release.yml` and the environment `npm`, and delete the token.
 - `tests/e2e/` holds the end-to-end tests of the CLI and the SDK. They run the built CLI on Node
   and on Bun on real files in scoped temp folders. `fixtures/file-provider.ts` logs each batch
   to a file, so a test counts the provider calls of several processes. `package.test.ts` packs
-  both packages the way `bun publish` does, installs the tarballs into a fresh project with npm
+  both packages the way `bun run release` does, installs the tarballs into a fresh project with npm
   and with Bun, and runs the command, the SDK, and `tsc` there. It needs the npm registry.
 - `tests/linux/` holds two Docker images: `linux-secret-service` with GNOME Keyring, and
   `linux-bare` without a keychain. Each runs the unit tests and the end-to-end tests.
@@ -186,9 +192,12 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 - `bun run rename` writes the names of `scripts/packages.ts` into every manifest, import, and doc.
   `bun run check` fails while a manifest differs from that file.
 - `bun run versions` writes the root version and `engines` into every package manifest, and the
-  `effect` range and the floors into every README. To release, change the root version and run
-  it.
-  `bun run check` fails while a file differs or a rule breaks.
+  `effect` range and the floors into every README. `bun run check` fails while a file differs or
+  a rule breaks.
+- To release, change the root version, run `bun run versions`, and merge the change. Then tag
+  the merge commit on `main` with `v<version>`, and push the tag.
+- `bun run release --tag v<version> --dry-run` packs both packages and checks them with
+  `npm publish --dry-run`.
 - `bun run verify` runs format check, lint, typecheck, the unit tests on Node and on Bun, and the
   end-to-end tests, all in parallel.
 - `bun run test:onepassword` runs the tests against real 1Password. It needs
