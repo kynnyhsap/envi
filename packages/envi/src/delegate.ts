@@ -5,11 +5,11 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 
+import * as Package from "./core/Package.ts";
 // A global `envi` starts the local `envi` of the project. The config file imports the local
 // packages, and the CLI must use the same copy of `effect` as the config file. Two copies of
 // `effect` in one process break `Schema` decoding and `Redacted`.
-import { Signals } from "./core/index.ts";
-import * as Package from "./core/Package.ts";
+import * as Signals from "./core/Signals.ts";
 
 /** The variable that marks a delegated run. It prevents a loop. */
 export const delegatedVariable = "ENVI_DELEGATED";

@@ -41,7 +41,7 @@ export const Encryption = {
 } as const;
 
 /** The schema of `Encryption`. */
-export const EncryptionSchema = Schema.Literals([Encryption.Aes256Gcm, Encryption.None]);
+export const EncryptionSchema = Schema.Enum(Encryption);
 
 export type Encryption = typeof EncryptionSchema.Type;
 

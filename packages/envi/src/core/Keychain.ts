@@ -16,13 +16,13 @@ import { EncryptionKey } from "./FileCache.ts";
 import * as Timing from "./Timing.ts";
 
 /** The service name of the keychain item. */
-export const keychainService = "envi";
+const keychainService = "envi";
 
 /** The account name of the keychain item. */
-export const keychainAccount = "cache-encryption-key";
+const keychainAccount = "cache-encryption-key";
 
 /** The variable of a key from outside, for a system without a keychain, such as a CI runner. */
-export const keyVariable = "ENVI_CACHE_KEY";
+const keyVariable = "ENVI_CACHE_KEY";
 
 /** The keychains that Envi can use. The entry point selects one from the platform. */
 export const Store = {
@@ -35,7 +35,7 @@ export const Store = {
 } as const;
 
 /** The schema of `Store`. */
-export const StoreSchema = Schema.Literals([Store.MacOs, Store.SecretService, Store.None]);
+const StoreSchema = Schema.Enum(Store);
 
 export type Store = typeof StoreSchema.Type;
 
@@ -197,6 +197,6 @@ export const layer = (store: Store): Layer.Layer<EncryptionKey, never, ChildProc
 
       return Effect.flatMap(fromVariable, (key) =>
         Option.match(key, { onNone: () => fromStore, onSome: Effect.succeed }),
-      ).pipe(Timing.measure("keychain.key"));
+      ).pipe(Timing.measure(Timing.Step.KeychainKey));
     }),
   );

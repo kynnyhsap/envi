@@ -6,34 +6,37 @@ import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Record from "effect/Record";
 import * as Ref from "effect/Ref";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 
+import * as CacheSettings from "./core/CacheSettings.ts";
+import type * as Config from "./core/Config.ts";
+import * as ConfigLoader from "./core/ConfigLoader.ts";
+import * as DefaultCache from "./core/DefaultCache.ts";
+import * as Envi from "./core/Envi.ts";
 import {
   type AnyEnviError,
-  CacheClearReport,
-  CacheSettings,
-  CacheListReport,
-  CheckReport,
-  type Config,
-  ConfigLoader,
   ConfigLoadError,
   ConfigLoadFailure,
-  DefaultCache,
-  Envi,
+  isEnviError,
+} from "./core/Errors.ts";
+import * as ExportFile from "./core/ExportFile.ts";
+import * as Keychain from "./core/Keychain.ts";
+import * as Package from "./core/Package.ts";
+import {
+  CacheClearReport,
+  CacheListReport,
+  CheckReport,
   ErrorReport,
-  ExportFile,
   ExportFormat,
   InspectReport,
-  isEnviError,
-  Keychain,
-  Settings,
   SyncReport,
-  Timing,
-} from "./core/index.ts";
-import * as Package from "./core/Package.ts";
+} from "./core/Reports.ts";
+import * as Settings from "./core/Settings.ts";
+import * as Timing from "./core/Timing.ts";
 import * as Render from "./render.ts";
 
 /** The exit code of the process. `run` sets the exit code of the child. */
@@ -44,28 +47,54 @@ export class KeyStore extends Context.Service<KeyStore, Keychain.Store>()("envi/
 
 const LogFormat = { Pretty: "pretty", Json: "json" } as const;
 
+/** The names of the commands. The timing line of a command names it too. */
+const CommandName = {
+  Root: Package.command,
+  Run: "run",
+  Sync: "sync",
+  Check: "check",
+  Inspect: "inspect",
+  Export: "export",
+  Cache: "cache",
+  CachePath: "path",
+  CacheList: "list",
+  CacheClear: "clear",
+} as const;
+
+/** The flags that `loggerLayer` and `report` read from the arguments before the CLI parses them. */
+const FlagName = { Debug: "debug", LogFormat: "log-format", Json: "json" } as const;
+
+/** The argument that ends the options of Envi. The arguments after it belong to the child. */
+const endOfOptions = "--";
+
+const longFlag = (name: string): string => `--${name}`;
+
+/** Times one command. */
+const measureCommand = (...names: ReadonlyArray<string>) =>
+  Timing.measure(Timing.Step.Command, { command: names.join(" ") });
+
 /** The variable that holds a comma-separated list of config files. */
-export const configVariable = "ENVI_CONFIG";
+const configVariable = "ENVI_CONFIG";
 
 const failureExitCode = 1;
 
-const root = Command.make("envi").pipe(
+const root = Command.make(CommandName.Root).pipe(
   Command.withDescription(
     "Resolve the env of a project once from a secret provider, cache it, and inject it.",
   ),
   Command.withSharedFlags({
-    debug: Flag.Boolean("debug").pipe(
+    debug: Flag.Boolean(FlagName.Debug).pipe(
       Flag.withDescription("Show debug logs."),
       Flag.withDefault(false),
     ),
-    logFormat: Flag.Literals("log-format", [LogFormat.Pretty, LogFormat.Json]).pipe(
+    logFormat: Flag.Literals(FlagName.LogFormat, Record.values(LogFormat)).pipe(
       Flag.withDescription("The format of the logs on stderr."),
       Flag.optional,
     ),
   }),
 );
 
-const jsonFlag = Flag.Boolean("json").pipe(
+const jsonFlag = Flag.Boolean(FlagName.Json).pipe(
   Flag.withDescription("Print the report as JSON on stdout."),
   Flag.withDefault(false),
 );
@@ -81,11 +110,7 @@ const resolveFlags = {
     Flag.withDescription("A config file. Repeat the flag for several files."),
     Flag.atLeast(0),
   ),
-  configSearch: Flag.Literals("config-search", [
-    ConfigLoader.ConfigSearch.Up,
-    ConfigLoader.ConfigSearch.Down,
-    ConfigLoader.ConfigSearch.Repo,
-  ]).pipe(
+  configSearch: Flag.Literals("config-search", Record.values(ConfigLoader.ConfigSearch)).pipe(
     Flag.withDescription(
       "Where Envi looks for configs: up to the project root, down from here, or the whole repo.",
     ),
@@ -130,10 +155,7 @@ const readConfigSearch = Settings.read(
   ConfigLoader.configSearchVariable,
   "up, down, or repo",
   EffectConfig.option(
-    EffectConfig.Literals(
-      ConfigLoader.ConfigSearchSchema.literals,
-      ConfigLoader.configSearchVariable,
-    ),
+    EffectConfig.schema(ConfigLoader.ConfigSearchSchema, ConfigLoader.configSearchVariable),
   ),
 );
 
@@ -234,7 +256,7 @@ const writeStdout = (text: string) => Console.log(text.replace(/\n$/u, ""));
 
 const fail = Effect.flatMap(ExitCode, (code) => Ref.set(code, failureExitCode));
 
-const sync = Command.make("sync", { ...resolveFlags, json: jsonFlag }, (flags) =>
+const sync = Command.make(CommandName.Sync, { ...resolveFlags, json: jsonFlag }, (flags) =>
   Effect.gen(function* () {
     const configs = yield* loadConfigs(flags, ConfigLoader.ConfigSearch.Repo);
 
@@ -247,12 +269,12 @@ const sync = Command.make("sync", { ...resolveFlags, json: jsonFlag }, (flags) =
     if (report.failures.length > 0) {
       yield* fail;
     }
-  }).pipe(Timing.measure("command", { command: "sync" })),
+  }).pipe(measureCommand(CommandName.Sync)),
 ).pipe(
   Command.withDescription("Resolve every var of every config in the repo and fill the cache."),
 );
 
-const check = Command.make("check", { ...resolveFlags, json: jsonFlag }, (flags) =>
+const check = Command.make(CommandName.Check, { ...resolveFlags, json: jsonFlag }, (flags) =>
   Effect.gen(function* () {
     const config = yield* loadOneConfig(flags);
 
@@ -265,7 +287,7 @@ const check = Command.make("check", { ...resolveFlags, json: jsonFlag }, (flags)
     if (report.failures.length > 0) {
       yield* fail;
     }
-  }).pipe(Timing.measure("command", { command: "check" })),
+  }).pipe(measureCommand(CommandName.Check)),
 ).pipe(Command.withDescription("Resolve and validate every var. Show no value."));
 
 const redactFlag = Flag.Boolean("redact").pipe(
@@ -274,7 +296,7 @@ const redactFlag = Flag.Boolean("redact").pipe(
 );
 
 const inspect = Command.make(
-  "inspect",
+  CommandName.Inspect,
   { ...resolveFlags, json: jsonFlag, redact: redactFlag },
   (flags) =>
     Effect.gen(function* () {
@@ -288,15 +310,15 @@ const inspect = Command.make(
       ).pipe(Effect.provide(enviLayer(flags, config.cache)));
 
       yield* print(flags.json, InspectReport, report, Render.inspect);
-    }).pipe(Timing.measure("command", { command: "inspect" })),
+    }).pipe(measureCommand(CommandName.Inspect)),
 ).pipe(Command.withDescription("Show where each var comes from. Secrets are hidden by default."));
 
 const exportCommand = Command.make(
-  "export",
+  CommandName.Export,
   {
     ...resolveFlags,
     json: jsonFlag,
-    format: Flag.Literals("format", [ExportFormat.Dotenv, ExportFormat.Json]).pipe(
+    format: Flag.Literals("format", Record.values(ExportFormat)).pipe(
       Flag.withDescription("The output format."),
       Flag.withDefault(ExportFormat.Dotenv),
     ),
@@ -321,14 +343,14 @@ const exportCommand = Command.make(
         onNone: () => writeStdout(text),
         onSome: (file) => ExportFile.write(file, text),
       });
-    }).pipe(Timing.measure("command", { command: "export" })),
+    }).pipe(measureCommand(CommandName.Export)),
 ).pipe(
   Command.withDescription("Print the resolved vars with real values, or write them to a file."),
 );
 
 // `run` has no `--json`: the child owns stdout.
 const run = Command.make(
-  "run",
+  CommandName.Run,
   {
     ...resolveFlags,
     command: Argument.String("command").pipe(
@@ -346,7 +368,7 @@ const run = Command.make(
       ).pipe(Effect.provide(enviLayer(flags, config.cache)));
 
       yield* Effect.flatMap(ExitCode, (code) => Ref.set(code, report.exitCode));
-    }).pipe(Timing.measure("command", { command: "run" })),
+    }).pipe(measureCommand(CommandName.Run)),
 ).pipe(Command.withDescription("Run a command with the resolved vars: envi run -- bun dev"));
 
 /**
@@ -371,7 +393,7 @@ const cacheLayer = (cacheDir: Option.Option<string>) =>
 
 const cacheFlags = { cacheDir: cacheDirFlag, json: jsonFlag };
 
-const cachePath = Command.make("path", cacheFlags, (flags) =>
+const cachePath = Command.make(CommandName.CachePath, cacheFlags, (flags) =>
   Effect.gen(function* () {
     const directory = yield* Envi.Envi.use((envi) => envi.cache.path).pipe(
       Effect.provide(cacheLayer(flags.cacheDir)),
@@ -385,42 +407,42 @@ const cachePath = Command.make("path", cacheFlags, (flags) =>
             () => "The cache has no directory. Set HOME, ENVI_CACHE_DIR, or --cache-dir.",
           ),
         );
-  }).pipe(Timing.measure("command", { command: "cache path" })),
+  }).pipe(measureCommand(CommandName.Cache, CommandName.CachePath)),
 ).pipe(Command.withDescription("Print the directory of the cache."));
 
-const cacheList = Command.make("list", cacheFlags, (flags) =>
+const cacheList = Command.make(CommandName.CacheList, cacheFlags, (flags) =>
   Effect.gen(function* () {
     const report = yield* Envi.Envi.use((envi) => envi.cache.list).pipe(
       Effect.provide(cacheLayer(flags.cacheDir)),
     );
 
     yield* print(flags.json, CacheListReport, report, Render.cacheList);
-  }).pipe(Timing.measure("command", { command: "cache list" })),
+  }).pipe(measureCommand(CommandName.Cache, CommandName.CacheList)),
 ).pipe(Command.withDescription("List the cache entries. Show no value."));
 
-const cacheClear = Command.make("clear", cacheFlags, (flags) =>
+const cacheClear = Command.make(CommandName.CacheClear, cacheFlags, (flags) =>
   Effect.gen(function* () {
     const report = yield* Envi.Envi.use((envi) => envi.cache.clear).pipe(
       Effect.provide(cacheLayer(flags.cacheDir)),
     );
 
     yield* print(flags.json, CacheClearReport, report, Render.cacheClear);
-  }).pipe(Timing.measure("command", { command: "cache clear" })),
+  }).pipe(measureCommand(CommandName.Cache, CommandName.CacheClear)),
 ).pipe(Command.withDescription("Remove every cache entry."));
 
-const cache = Command.make("cache").pipe(
+const cache = Command.make(CommandName.Cache).pipe(
   Command.withDescription("Inspect and clear the cache."),
   Command.withSubcommands([cachePath, cacheList, cacheClear]),
 );
 
 /** The `envi` command with all subcommands. */
-export const command = root.pipe(
+const command = root.pipe(
   Command.withSubcommands([run, sync, inspect, check, exportCommand, cache]),
 );
 
 /** The arguments of Envi. The arguments after `--` belong to the child of `run`. */
 const ownArguments = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
-  const end = argv.indexOf("--");
+  const end = argv.indexOf(endOfOptions);
 
   return end === -1 ? argv : argv.slice(0, end);
 };
@@ -430,13 +452,18 @@ const loggerLayer = (argv: ReadonlyArray<string>) => {
   const own = ownArguments(argv);
 
   const isJson =
-    own.includes("--json") ||
-    own.some((arg, index) => arg === "--log-format" && own[index + 1] === LogFormat.Json) ||
-    own.includes(`--log-format=${LogFormat.Json}`);
+    own.includes(longFlag(FlagName.Json)) ||
+    own.some(
+      (arg, index) => arg === longFlag(FlagName.LogFormat) && own[index + 1] === LogFormat.Json,
+    ) ||
+    own.includes(`${longFlag(FlagName.LogFormat)}=${LogFormat.Json}`);
 
   return Layer.mergeAll(
     Logger.layer([Logger.withConsoleError(isJson ? Logger.formatJson : Logger.formatLogFmt)]),
-    Layer.succeed(References.MinimumLogLevel, own.includes("--debug") ? "Debug" : "Info"),
+    Layer.succeed(
+      References.MinimumLogLevel,
+      own.includes(longFlag(FlagName.Debug)) ? "Debug" : "Info",
+    ),
   );
 };
 
@@ -446,7 +473,7 @@ const loggerLayer = (argv: ReadonlyArray<string>) => {
  */
 const report = (argv: ReadonlyArray<string>) => (error: AnyEnviError) =>
   Effect.andThen(
-    ownArguments(argv).includes("--json")
+    ownArguments(argv).includes(longFlag(FlagName.Json))
       ? Effect.flatMap(
           Effect.orDie(Schema.encodeEffect(ErrorReport)(Envi.errorReport(error))),
           (encoded) => Console.log(JSON.stringify(encoded, null, 2)),
@@ -462,7 +489,7 @@ const report = (argv: ReadonlyArray<string>) => (error: AnyEnviError) =>
  * @param startupMs - The age of the process. It covers the start of the runtime and the imports.
  */
 export const main = (argv: ReadonlyArray<string>, startupMs: number) =>
-  Timing.report("startup", startupMs, Timing.Outcome.Success).pipe(
+  Timing.report(Timing.Step.Startup, startupMs, Timing.Outcome.Success).pipe(
     Effect.andThen(Command.runWith(command, { version: Package.version })(argv)),
     Effect.catchIf(isEnviError, report(argv)),
     Effect.provide(ConfigLoader.layer),

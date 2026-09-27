@@ -3,16 +3,22 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type { PlatformError } from "effect/PlatformError";
 import * as Predicate from "effect/Predicate";
+import * as Record from "effect/Record";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import type * as ChildProcess from "effect/unstable/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
-/** The signals that `run` handles, with their numbers. A shell reports `128 + number`. */
-export const SignalNumber = { SIGHUP: 1, SIGINT: 2, SIGTERM: 15 } as const;
+/** The signals that `run` handles, with their numbers. */
+const signalNumbers = { SIGHUP: 1, SIGINT: 2, SIGTERM: 15 } as const;
 
-/** The schema of a signal name. */
-export const SignalNameSchema = Schema.Literals(["SIGHUP", "SIGINT", "SIGTERM"]);
+/** A shell reports a child that a signal ended with this base plus the number of the signal. */
+const signalExitBase = 128;
+
+/** The names of the signals that `run` handles. */
+export const signalNames = Record.keys(signalNumbers);
+
+const SignalNameSchema = Schema.Literals(signalNames);
 
 export type SignalName = typeof SignalNameSchema.Type;
 
@@ -80,7 +86,9 @@ export const supervise = Effect.fn("Signals.supervise")(function* (command: Chil
       return yield* Effect.catch(
         Effect.map(handle.exitCode, (code): Option.Option<number> => Option.some(code)),
         (error) =>
-          Effect.succeed(Option.map(endingSignal(error), (name) => 128 + SignalNumber[name])),
+          Effect.succeed(
+            Option.map(endingSignal(error), (name) => signalExitBase + signalNumbers[name]),
+          ),
       );
     }),
   );
