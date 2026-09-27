@@ -100,10 +100,12 @@ This repository is public. These rules have no exception.
 - **Explicit batches in the resolver.** One resolution has five ordered steps that share state:
   collect the references, read the cache, select the misses, fetch under the lock, and evaluate
   each descriptor.
-- **Error docs.** Each error has `summary`, `hint`, and `docs`. The hint catalog lives in
-  `Errors.ts`. `docs` links to `https://github.com/kynnyhsap/envi#error-<tag>-<reason>`. A unit
-  test checks that the README has a section and the hint for each catalog entry. Update the
-  README section in the same change as the catalog.
+- **Error docs.** Each error has `summary`, `hint`, and `docs`. Each error class comes from
+  `EnviError` or `ReasonError` of `ErrorClass.ts`. A class gives its fields, its summary, and its
+  hints. The factory derives `docs` and `message`. The hint catalog lives in `Errors.ts`. `docs`
+  links to `https://github.com/kynnyhsap/envi#error-<tag>-<reason>`. A unit test checks that the
+  README has a section and the hint for each catalog entry. Update the README section in the same
+  change as the catalog.
 - **A throw in user code hides its message.** `derive()`, `custom()`, and `vars` show only the
   class name and the location of the throw. `CustomFailure` carries a safe message.
 

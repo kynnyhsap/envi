@@ -4,6 +4,7 @@
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
+import { anchorOf, EnviError, ReasonError } from "./ErrorClass.ts";
 import * as Package from "./Package.ts";
 
 /** The reasons why a provider cannot resolve one reference. */
@@ -196,102 +197,43 @@ export const hints: Catalog = {
   },
 };
 
-/** The base of every docs link. Each error links to its section in the README. */
-export const docsBase = "https://github.com/kynnyhsap/envi#";
-
-const kebab = (text: string): string =>
-  text.replaceAll(/([a-z0-9])([A-Z])/gu, "$1-$2").toLowerCase();
-
-/** The README anchor of an error, such as `error-secret-reference-not-found`. */
-export const anchorOf = (tag: string, reason?: string): string =>
-  [
-    "error",
-    kebab(tag.replace(/Error$/u, "")),
-    ...(reason === undefined ? [] : [kebab(reason)]),
-  ].join("-");
-
-const docsOf = (tag: string, reason?: string): string => `${docsBase}${anchorOf(tag, reason)}`;
-
-/** The text of an error: what failed, what to do next, and where the docs explain it. */
-const explain = (error: {
-  readonly summary: string;
-  readonly hint: string;
-  readonly docs: string;
-}) => `${error.summary}\n  hint: ${error.hint}\n  docs: ${error.docs}`;
-
 /** One reference failed. `reference` holds the `describe()` text and never a secret. */
-export class SecretReferenceError extends Schema.TaggedError<SecretReferenceError>()(
+export class SecretReferenceError extends ReasonError<SecretReferenceError>()(
   "SecretReferenceError",
+  ReferenceFailureSchema,
+  { provider: Schema.String, reference: Schema.String },
   {
-    reason: ReferenceFailureSchema,
-    provider: Schema.String,
-    reference: Schema.String,
+    summary: (error) =>
+      `Envi reference failed: ${error.reason} for ${error.reference} (provider ${error.provider})`,
+    hints: hints.SecretReferenceError,
   },
-) {
-  get summary(): string {
-    return `Envi reference failed: ${this.reason} for ${this.reference} (provider ${this.provider})`;
-  }
-
-  get hint(): string {
-    return hints.SecretReferenceError[this.reason];
-  }
-
-  get docs(): string {
-    return docsOf(this._tag, this.reason);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+) {}
 
 /** A whole provider call failed. `detail` is safe text and never holds a secret. */
-export class ProviderError extends Schema.TaggedError<ProviderError>()("ProviderError", {
-  reason: ProviderFailureSchema,
-  provider: Schema.String,
-  detail: Schema.String,
-}) {
-  get summary(): string {
-    return `Envi provider failed: ${this.reason} for provider ${this.provider}. ${this.detail}`;
-  }
-
-  get hint(): string {
-    return hints.ProviderError[this.reason];
-  }
-
-  get docs(): string {
-    return docsOf(this._tag, this.reason);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+export class ProviderError extends ReasonError<ProviderError>()(
+  "ProviderError",
+  ProviderFailureSchema,
+  { provider: Schema.String, detail: Schema.String },
+  {
+    summary: (error) =>
+      `Envi provider failed: ${error.reason} for provider ${error.provider}. ${error.detail}`,
+    hints: hints.ProviderError,
+  },
+) {}
 
 /**
  * A value does not match its schema. The error names the var and the expected type from the
  * schema, and never holds the value.
  */
-export class DecodeError extends Schema.TaggedError<DecodeError>()("DecodeError", {
-  key: Schema.String,
-  expected: Schema.String,
-}) {
-  get summary(): string {
-    return `Envi value does not match its schema: ${this.key} expects ${this.expected}`;
-  }
-
-  get hint(): string {
-    return hints.DecodeError;
-  }
-
-  get docs(): string {
-    return docsOf(this._tag);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+export class DecodeError extends EnviError<DecodeError>()(
+  "DecodeError",
+  { key: Schema.String, expected: Schema.String },
+  {
+    summary: (error) =>
+      `Envi value does not match its schema: ${error.key} expects ${error.expected}`,
+    hint: hints.DecodeError,
+  },
+) {}
 
 /**
  * The failure that user code in `custom()` throws or returns to show a safe message. Envi hides
@@ -304,66 +246,45 @@ export class CustomFailure extends Schema.TaggedError<CustomFailure>()("CustomFa
   transient: Schema.optional(Schema.Boolean),
 }) {}
 
-const thrownText = (thrown: string | undefined, location: string | undefined): string =>
-  `threw ${thrown ?? "an error"}${location === undefined ? "" : ` at ${location}`}. Envi hides the error message, because it can hold a secret`;
+/** The class name and the location of a throw in user code. Envi never keeps its message. */
+const throwFields = {
+  /** The class name of the thrown error, such as `TypeError`. */
+  thrown: Schema.optional(Schema.String),
+  /** The file, line, and column of the throw in user code. */
+  location: Schema.optional(Schema.String),
+};
+
+const thrownText = (error: Schema.Struct.Type<typeof throwFields>): string =>
+  `threw ${error.thrown ?? "an error"}${error.location === undefined ? "" : ` at ${error.location}`}. Envi hides the error message, because it can hold a secret`;
 
 /**
  * A `custom()` value failed. `id` names the value. The error never holds the message of a thrown
  * error, only its class name and the location of the throw.
  */
-export class CustomError extends Schema.TaggedError<CustomError>()("CustomError", {
-  reason: CustomReasonSchema,
-  id: Schema.String,
-  /** The message of a `CustomFailure`. */
-  detail: Schema.optional(Schema.String),
-  /** The class name of a thrown error, such as `TypeError`. */
-  thrown: Schema.optional(Schema.String),
-  /** The file, line, and column of the throw in user code. */
-  location: Schema.optional(Schema.String),
-  transient: Schema.Boolean,
-}) {
-  get summary(): string {
-    return this.reason === CustomReason.Failed
-      ? `Envi custom("${this.id}") failed: ${this.detail ?? "no detail"}`
-      : `Envi custom("${this.id}") ${thrownText(this.thrown, this.location)}`;
-  }
-
-  get hint(): string {
-    return hints.CustomError[this.reason];
-  }
-
-  get docs(): string {
-    return docsOf(this._tag, this.reason);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+export class CustomError extends ReasonError<CustomError>()(
+  "CustomError",
+  CustomReasonSchema,
+  {
+    id: Schema.String,
+    /** The message of a `CustomFailure`. */
+    detail: Schema.optional(Schema.String),
+    ...throwFields,
+    transient: Schema.Boolean,
+  },
+  {
+    summary: (error) =>
+      error.reason === CustomReason.Failed
+        ? `Envi custom("${error.id}") failed: ${error.detail ?? "no detail"}`
+        : `Envi custom("${error.id}") ${thrownText(error)}`,
+    hints: hints.CustomError,
+  },
+) {}
 
 /** A `derive()` function threw. The error never holds the message of the thrown error. */
-export class DeriveError extends Schema.TaggedError<DeriveError>()("DeriveError", {
-  /** The class name of the thrown error, such as `TypeError`. */
-  thrown: Schema.optional(Schema.String),
-  /** The file, line, and column of the throw in user code. */
-  location: Schema.optional(Schema.String),
-}) {
-  get summary(): string {
-    return `Envi derive() ${thrownText(this.thrown, this.location)}`;
-  }
-
-  get hint(): string {
-    return hints.DeriveError;
-  }
-
-  get docs(): string {
-    return docsOf(this._tag);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+export class DeriveError extends EnviError<DeriveError>()("DeriveError", throwFields, {
+  summary: (error) => `Envi derive() ${thrownText(error)}`,
+  hint: hints.DeriveError,
+}) {}
 
 /** The schema of the failure of one var. */
 export const VarErrorSchema = Schema.Union([
@@ -383,27 +304,24 @@ export const VarFailureEntry = Schema.Struct({ key: Schema.String, error: VarErr
 export type VarFailureEntry = typeof VarFailureEntry.Type;
 
 /** One or more vars failed. The error lists every failure, not only the first one. */
-export class VarsError extends Schema.TaggedError<VarsError>()("VarsError", {
-  stage: Schema.String,
-  /** The path of the config file, when Envi loaded the config from a file. */
-  config: Schema.optional(Schema.String),
-  failures: Schema.Array(VarFailureEntry),
-}) {
-  get summary(): string {
-    const count = this.failures.length;
-    const place = this.config === undefined ? "" : ` in ${this.config}`;
+export class VarsError extends EnviError<VarsError>()(
+  "VarsError",
+  {
+    stage: Schema.String,
+    /** The path of the config file, when Envi loaded the config from a file. */
+    config: Schema.optional(Schema.String),
+    failures: Schema.Array(VarFailureEntry),
+  },
+  {
+    summary: (error) => {
+      const count = error.failures.length;
+      const place = error.config === undefined ? "" : ` in ${error.config}`;
 
-    return `Envi failed to resolve ${count} ${count === 1 ? "var" : "vars"} of the stage ${this.stage}${place}: ${this.failures.map((failure) => failure.key).join(", ")}`;
-  }
-
-  get hint(): string {
-    return hints.VarsError;
-  }
-
-  get docs(): string {
-    return docsOf(this._tag);
-  }
-
+      return `Envi failed to resolve ${count} ${count === 1 ? "var" : "vars"} of the stage ${error.stage}${place}: ${error.failures.map((failure) => failure.key).join(", ")}`;
+    },
+    hint: hints.VarsError,
+  },
+) {
   override get message(): string {
     return [
       this.summary,
@@ -416,166 +334,84 @@ export class VarsError extends Schema.TaggedError<VarsError>()("VarsError", {
 }
 
 /** A stage is not in the `stages` list of the config. */
-export class UnknownStageError extends Schema.TaggedError<UnknownStageError>()(
+export class UnknownStageError extends EnviError<UnknownStageError>()(
   "UnknownStageError",
+  { stage: Schema.String, stages: Schema.Array(Schema.String) },
   {
-    stage: Schema.String,
-    stages: Schema.Array(Schema.String),
+    summary: (error) =>
+      `Envi stage is not declared: "${error.stage}". Declared stages: ${error.stages.join(", ")}`,
+    hint: hints.UnknownStageError,
   },
-) {
-  get summary(): string {
-    return `Envi stage is not declared: "${this.stage}". Declared stages: ${this.stages.join(", ")}`;
-  }
-
-  get hint(): string {
-    return hints.UnknownStageError;
-  }
-
-  get docs(): string {
-    return docsOf(this._tag);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+) {}
 
 /** The cache failed as a whole. One corrupt entry is not a failure: Envi treats it as a miss. */
-export class CacheError extends Schema.TaggedError<CacheError>()("CacheError", {
-  reason: CacheFailureSchema,
-  detail: Schema.String,
-}) {
-  get summary(): string {
-    return `Envi cache failed: ${this.reason}. ${this.detail}`;
-  }
-
-  get hint(): string {
-    return hints.CacheError[this.reason];
-  }
-
-  get docs(): string {
-    return docsOf(this._tag, this.reason);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+export class CacheError extends ReasonError<CacheError>()(
+  "CacheError",
+  CacheFailureSchema,
+  { detail: Schema.String },
+  {
+    summary: (error) => `Envi cache failed: ${error.reason}. ${error.detail}`,
+    hints: hints.CacheError,
+  },
+) {}
 
 /** An export format cannot represent the value of one var. The error never holds the value. */
-export class ExportError extends Schema.TaggedError<ExportError>()("ExportError", {
-  key: Schema.String,
-  format: Schema.String,
-}) {
-  get summary(): string {
-    return `Envi export cannot represent a value: ${this.key} does not fit the ${this.format} format`;
-  }
-
-  get hint(): string {
-    return hints.ExportError;
-  }
-
-  get docs(): string {
-    return docsOf(this._tag);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+export class ExportError extends EnviError<ExportError>()(
+  "ExportError",
+  { key: Schema.String, format: Schema.String },
+  {
+    summary: (error) =>
+      `Envi export cannot represent a value: ${error.key} does not fit the ${error.format} format`,
+    hint: hints.ExportError,
+  },
+) {}
 
 /** Envi wrote no export file. `path` is the target file. */
-export class ExportFileError extends Schema.TaggedError<ExportFileError>()("ExportFileError", {
-  reason: ExportFileFailureSchema,
-  path: Schema.String,
-}) {
-  get summary(): string {
-    return `Envi export wrote no file: ${this.reason} at ${this.path}`;
-  }
-
-  get hint(): string {
-    return hints.ExportFileError[this.reason];
-  }
-
-  get docs(): string {
-    return docsOf(this._tag, this.reason);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+export class ExportFileError extends ReasonError<ExportFileError>()(
+  "ExportFileError",
+  ExportFileFailureSchema,
+  { path: Schema.String },
+  {
+    summary: (error) => `Envi export wrote no file: ${error.reason} at ${error.path}`,
+    hints: hints.ExportFileError,
+  },
+) {}
 
 /** A setting holds a value that Envi cannot read: an `ENVI_*` variable, a config key, or an option. */
-export class SettingsError extends Schema.TaggedError<SettingsError>()("SettingsError", {
-  name: Schema.String,
-  expected: Schema.String,
-}) {
-  get summary(): string {
-    return `Envi setting is not valid: ${this.name} expects ${this.expected}`;
-  }
-
-  get hint(): string {
-    return hints.SettingsError;
-  }
-
-  get docs(): string {
-    return docsOf(this._tag);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+export class SettingsError extends EnviError<SettingsError>()(
+  "SettingsError",
+  { name: Schema.String, expected: Schema.String },
+  {
+    summary: (error) => `Envi setting is not valid: ${error.name} expects ${error.expected}`,
+    hint: hints.SettingsError,
+  },
+) {}
 
 /** `run` has no exit code of the child process. `command` holds the command name and no argument. */
-export class RunError extends Schema.TaggedError<RunError>()("RunError", {
-  reason: RunFailureSchema,
-  command: Schema.String,
-}) {
-  get summary(): string {
-    return `Envi run failed: ${this.reason} for the command "${this.command}"`;
-  }
-
-  get hint(): string {
-    return hints.RunError[this.reason];
-  }
-
-  get docs(): string {
-    return docsOf(this._tag, this.reason);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+export class RunError extends ReasonError<RunError>()(
+  "RunError",
+  RunFailureSchema,
+  { command: Schema.String },
+  {
+    summary: (error) => `Envi run failed: ${error.reason} for the command "${error.command}"`,
+    hints: hints.RunError,
+  },
+) {}
 
 /**
  * A config file failed to load, or its `vars` threw. `path` is the file path, or the directory of
  * a failed search. `location` is the file, line, and column of a syntax error or a throw.
  */
-export class ConfigLoadError extends Schema.TaggedError<ConfigLoadError>()("ConfigLoadError", {
-  reason: ConfigLoadFailureSchema,
-  path: Schema.String,
-  detail: Schema.String,
-  location: Schema.optional(Schema.String),
-}) {
-  get summary(): string {
-    return `Envi config failed to load: ${this.reason} at ${this.location ?? this.path}. ${this.detail}`;
-  }
-
-  get hint(): string {
-    return hints.ConfigLoadError[this.reason];
-  }
-
-  get docs(): string {
-    return docsOf(this._tag, this.reason);
-  }
-
-  override get message(): string {
-    return explain(this);
-  }
-}
+export class ConfigLoadError extends ReasonError<ConfigLoadError>()(
+  "ConfigLoadError",
+  ConfigLoadFailureSchema,
+  { path: Schema.String, detail: Schema.String, location: Schema.optional(Schema.String) },
+  {
+    summary: (error) =>
+      `Envi config failed to load: ${error.reason} at ${error.location ?? error.path}. ${error.detail}`,
+    hints: hints.ConfigLoadError,
+  },
+) {}
 
 /** Every error that an Envi operation can fail with. Each one has a summary, a hint, and docs. */
 export const AnyEnviErrorSchema = Schema.Union([
