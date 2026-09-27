@@ -11,6 +11,9 @@ const ciVariable = "CI";
 /** The home folder of the OS user. */
 const homeVariable = "HOME";
 
+/** The variable that selects the stage. `run` sets it for the child. */
+export const stageVariable = "ENVI_STAGE";
+
 /** The variable that allows or forbids a prompt, such as a desktop app approval. */
 const interactiveVariable = "ENVI_INTERACTIVE";
 
@@ -53,4 +56,10 @@ export const home: Effect.Effect<Option.Option<string>> = Effect.orElseSucceed(
 /** `ENVI_INTERACTIVE`. None when the variable is absent. */
 export const interactive: Effect.Effect<Option.Option<boolean>, SettingsError> = readBoolean(
   interactiveVariable,
+);
+
+/** `ENVI_STAGE`. None when the variable is absent. */
+export const stage: Effect.Effect<Option.Option<string>, SettingsError> = readString(
+  stageVariable,
+  "a stage name",
 );

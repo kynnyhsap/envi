@@ -25,6 +25,7 @@ import {
 } from "./core/Errors.ts";
 import * as ExportFile from "./core/ExportFile.ts";
 import * as Keychain from "./core/Keychain.ts";
+import * as Outcomes from "./core/Outcomes.ts";
 import * as Package from "./core/Package.ts";
 import {
   CacheClearReport,
@@ -475,7 +476,7 @@ const report = (argv: ReadonlyArray<string>) => (error: AnyEnviError) =>
   Effect.andThen(
     ownArguments(argv).includes(longFlag(FlagName.Json))
       ? Effect.flatMap(
-          Effect.orDie(Schema.encodeEffect(ErrorReport)(Envi.errorReport(error))),
+          Effect.orDie(Schema.encodeEffect(ErrorReport)(Outcomes.errorReport(error))),
           (encoded) => Console.log(JSON.stringify(encoded, null, 2)),
         )
       : Console.error(error.message),

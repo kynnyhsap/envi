@@ -5,41 +5,40 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
-import * as Redacted from "effect/Redacted";
-import * as Result from "effect/Result";
+import * as Tuple from "effect/Tuple";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
 import * as Cache from "./Cache.ts";
 import * as CacheSettings from "./CacheSettings.ts";
+import * as ChildEnvironment from "./ChildEnvironment.ts";
 import * as Config from "./Config.ts";
+import * as Dotenv from "./Dotenv.ts";
 import {
-  type AnyEnviError,
   type CacheError,
   type ConfigLoadError,
-  CustomReason,
-  DecodeError,
-  ExportError,
+  type ExportError,
   type ProviderError,
   RunError,
   RunFailure,
   type SettingsError,
   type UnknownStageError,
-  VarsError,
+  type VarsError,
 } from "./Errors.ts";
+import * as Groups from "./Groups.ts";
+import * as Outcomes from "./Outcomes.ts";
 import * as Provider from "./Provider.ts";
-import {
-  type CacheClearReport,
-  type CacheListReport,
-  type CheckReport,
-  type ErrorReport,
+import type {
+  CacheClearReport,
+  CacheListReport,
+  CheckReport,
   ExportFormat,
-  type InspectReport,
-  type RunReport,
-  type SyncReport,
-  type VarFailure,
+  InspectReport,
+  RunReport,
+  SyncReport,
 } from "./Reports.ts";
 import * as Resolver from "./Resolver.ts";
+import * as ResolveSettings from "./ResolveSettings.ts";
 import * as Settings from "./Settings.ts";
 import * as Signals from "./Signals.ts";
 import * as Source from "./Source.ts";
@@ -199,141 +198,14 @@ export interface Interface {
 /** The Envi service. */
 export class Envi extends Context.Service<Envi, Interface>()("envi/Envi") {}
 
-/** The text that a redacted export shows in place of a secret. */
-export const redactedText = "<redacted>";
-
-/** The variable that selects the stage. `run` sets it for the child. */
-export const stageVariable = "ENVI_STAGE";
-
-/** `run` removes every variable with this prefix from the child, because it can hold a credential. */
-export const providerVariablePrefix = "ENVI_PROVIDER_";
-
-const strictVariable = "ENVI_STRICT";
-
-const readStage = Settings.readString(stageVariable, "a stage name");
-
-const readStrict = Settings.readBoolean(strictVariable);
-
-/** The reference text and the reason code of one failure. It never holds a value. */
-const referenceAndReason = (
-  error: Resolver.VarError,
-): { readonly reference: string | null; readonly reason: string } =>
-  Match.valueTags(error, {
-    DecodeError: (failure) => ({ reference: null, reason: failure.expected }),
-    ProviderError: (failure) => ({ reference: null, reason: failure.reason }),
-    CustomError: (failure) => ({ reference: `custom(${failure.id})`, reason: failure.reason }),
-    DeriveError: () => ({ reference: null, reason: CustomReason.Threw }),
-    SecretReferenceError: (failure) => ({ reference: failure.reference, reason: failure.reason }),
-  });
-
-const failureOf = (
-  key: string,
-  config: Option.Option<string>,
-  error: Resolver.VarError,
-): VarFailure => ({
-  key,
-  config: Option.getOrNull(config),
-  ...referenceAndReason(error),
-  error: error._tag,
-  summary: error.summary,
-  hint: error.hint,
-  docs: error.docs,
-});
-
-/** The report of a failed operation. A `VarsError` lists each failed var. */
-export const errorReport = (error: AnyEnviError): ErrorReport => {
-  const report = {
-    error: error._tag,
-    reason: "reason" in error ? error.reason : null,
-    summary: error.summary,
-    hint: error.hint,
-    docs: error.docs,
-  };
-
-  if (!(error instanceof VarsError)) {
-    return { error: report };
-  }
-
-  const config = Option.fromUndefinedOr(error.config);
-
-  return {
-    error: {
-      ...report,
-      failures: error.failures.map((failure) => failureOf(failure.key, config, failure.error)),
-    },
-  };
-};
-
-const safeDotenv = /^[\w./:@+=,-]*$/u;
-
-const dotenvLine = (key: string, raw: string): Effect.Effect<string, ExportError> => {
-  if (safeDotenv.test(raw)) {
-    return Effect.succeed(`${key}=${raw}`);
-  }
-
-  if (!/['\n\r]/u.test(raw)) {
-    return Effect.succeed(`${key}='${raw}'`);
-  }
-
-  // Parsers disagree about escapes and expansion inside double quotes. Envi writes only `\n`.
-  return /["$\\`\r]/u.test(raw)
-    ? Effect.fail(new ExportError({ key, format: ExportFormat.Dotenv }))
-    : Effect.succeed(`${key}="${raw.replaceAll("\n", "\\n")}"`);
-};
-
-/** Every var in the order of the config, or one `VarsError` with every failed var. */
-const allOrVarsError = (
-  config: Config.Config,
-  stage: string,
-  resolution: Resolver.Resolution,
-): Effect.Effect<ReadonlyArray<readonly [string, Resolver.Resolved]>, VarsError> => {
-  const entries = Object.entries(resolution.vars);
-
-  const failures = entries.flatMap(([key, outcome]) =>
-    Result.isFailure(outcome) ? [{ key, error: outcome.failure }] : [],
-  );
-
-  return failures.length > 0
-    ? Effect.fail(new VarsError({ stage, config: Option.getOrUndefined(config.path), failures }))
-    : Effect.succeed(
-        entries.flatMap(([key, outcome]) =>
-          Result.isSuccess(outcome) ? [[key, outcome.success] as const] : [],
-        ),
-      );
-};
-
-const rawOf = (resolved: Resolver.Resolved): string | undefined =>
-  Option.getOrUndefined(Option.map(resolved.raw, Redacted.value));
-
-const parseOne = (
-  key: string,
-  source: Source.AnySource,
-  found: string | undefined,
-): Effect.Effect<unknown, DecodeError> => {
-  const raw = Option.fromUndefinedOr(found).pipe(
-    Option.orElse(() =>
-      Source.Origin.$is("Literal")(source.origin)
-        ? Option.some(source.origin.value)
-        : source.fallback,
+/** The stage of a config: the option, then `ENVI_STAGE`, then the default stage of the config. */
+const stageOf = (config: Config.Config, requested: string | undefined) =>
+  Effect.flatMap(Settings.stage, (fromEnvironment) =>
+    Config.selectStage(
+      config,
+      Option.orElse(Option.fromUndefinedOr(requested), () => fromEnvironment),
     ),
   );
-
-  if (Option.isSome(raw)) {
-    return Source.decode(source, key, raw.value);
-  }
-
-  return source.isOptional
-    ? Effect.void
-    : Effect.fail(new DecodeError({ key, expected: "a value. The variable is not set" }));
-};
-
-interface Group {
-  /** The config of the first member. Its cache settings apply to the group. */
-  readonly config: Config.Config;
-  readonly stage: string;
-  readonly providers: Map<string, Provider.Provider>;
-  readonly sources: Record<string, Source.AnySource>;
-}
 
 /** The status of a cache layer that reports none: a cache without files that stores values. */
 const activeWithoutFiles: Cache.StatusInterface = {
@@ -355,40 +227,26 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
   const policyOf = (config: Config.Config) =>
     CacheSettings.selectPolicy(cacheOverrides, config.cache);
 
-  const stageOf = (config: Config.Config, requested: string | undefined) =>
-    Effect.flatMap(readStage, (fromEnvironment) =>
-      Config.selectStage(
-        config,
-        Option.orElse(Option.fromUndefinedOr(requested), () => fromEnvironment),
-      ),
-    );
-
   const resolverOptions = Effect.fn("Envi.resolverOptions")(function* (
     policy: CacheSettings.Policy,
     config: Config.Config,
     stage: string,
     options: ResolveOptions | undefined,
   ) {
-    const isCi = yield* Settings.isCi;
-    const strictFromEnvironment = yield* readStrict;
-    const interactiveFromEnvironment = yield* Settings.interactive;
-
-    const strict = Option.fromUndefinedOr(options?.strict).pipe(
-      Option.orElse(() => Option.fromUndefinedOr(layerOptions.strict)),
-      Option.orElse(() => strictFromEnvironment),
-      Option.orElse(() => config.strict),
-      Option.getOrElse(() => false),
+    const { strict, interactive } = yield* ResolveSettings.select(
+      {
+        callStrict: Option.fromUndefinedOr(options?.strict),
+        strict: Option.fromUndefinedOr(layerOptions.strict),
+        interactive: Option.fromUndefinedOr(layerOptions.interactive),
+      },
+      config.strict,
     );
 
     return {
       stage,
       refresh: options?.refresh ?? false,
-      // CI is always strict.
-      strict: isCi || strict,
-      interactive: Option.fromUndefinedOr(layerOptions.interactive).pipe(
-        Option.orElse(() => interactiveFromEnvironment),
-        Option.getOrElse(() => !isCi),
-      ),
+      strict,
+      interactive,
       ttl: policy.ttl,
       maxStale: policy.maxStale,
     } satisfies Resolver.Options;
@@ -428,20 +286,14 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     return { stage, sources, resolution };
   });
 
-  const failuresOf = (
-    config: Config.Config,
-    resolution: Resolver.Resolution,
-  ): ReadonlyArray<VarFailure> =>
-    Object.entries(resolution.vars).flatMap(([key, outcome]) =>
-      Result.isFailure(outcome) ? [failureOf(key, config.path, outcome.failure)] : [],
-    );
-
   const load: Interface["load"] = <C extends Config.Config>(
     config: C,
     options?: LoadOptions<Config.StageOf<C>>,
   ) =>
     resolveVars(config, options).pipe(
-      Effect.flatMap(({ stage, resolution }) => allOrVarsError(config, stage, resolution)),
+      Effect.flatMap(({ stage, resolution }) =>
+        Outcomes.allOrVarsError(config, stage, resolution.vars),
+      ),
       Effect.map((entries) => {
         const env = Object.fromEntries(entries.map(([key, resolved]) => [key, resolved.decoded]));
 
@@ -457,9 +309,13 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     options?: LoadOptions<Config.StageOf<C>>,
   ) =>
     resolveVars(config, options).pipe(
-      Effect.flatMap(({ stage, resolution }) => allOrVarsError(config, stage, resolution)),
+      Effect.flatMap(({ stage, resolution }) =>
+        Outcomes.allOrVarsError(config, stage, resolution.vars),
+      ),
       Effect.map((entries) => {
-        const raw = Object.fromEntries(entries.map(([key, resolved]) => [key, rawOf(resolved)]));
+        const raw = Object.fromEntries(
+          entries.map(([key, resolved]) => [key, Option.getOrUndefined(Outcomes.rawOf(resolved))]),
+        );
 
         // SAFETY: TypeScript cannot relate the entries to the mapped type. A raw value is a
         // string, and it is absent only for an optional descriptor.
@@ -478,27 +334,12 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
       const sources = yield* Config.varsFor(config, stage);
 
       const outcomes = yield* Effect.forEach(Object.entries(sources), ([key, source]) =>
-        Effect.map(Effect.result(parseOne(key, source, record[key])), (outcome) => ({
-          key,
-          outcome,
-        })),
+        Effect.map(Effect.result(Source.parse(source, key, record[key])), (outcome) =>
+          Tuple.make(key, outcome),
+        ),
       );
 
-      const failures = outcomes.flatMap(({ key, outcome }) =>
-        Result.isFailure(outcome) ? [{ key, error: outcome.failure }] : [],
-      );
-
-      if (failures.length > 0) {
-        return yield* new VarsError({
-          stage,
-          config: Option.getOrUndefined(config.path),
-          failures,
-        });
-      }
-
-      const entries = outcomes.flatMap(({ key, outcome }) =>
-        Result.isSuccess(outcome) ? [[key, outcome.success] as const] : [],
-      );
+      const entries = yield* Outcomes.allOrVarsError(config, stage, Object.fromEntries(outcomes));
 
       // SAFETY: TypeScript cannot relate the entries to the mapped type. Each entry holds the
       // value that the codec of the descriptor under the same key decoded.
@@ -519,7 +360,9 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
           Option.getOrElse(override, () => config.providers),
           sources,
           options,
-        ).pipe(Effect.flatMap((resolution) => allOrVarsError(config, stage, resolution))),
+        ).pipe(
+          Effect.flatMap((resolution) => Outcomes.allOrVarsError(config, stage, resolution.vars)),
+        ),
       ),
       Effect.map((entries) =>
         Object.fromEntries(entries.map(([key, resolved]) => [key, resolved.decoded])),
@@ -557,52 +400,27 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
   const sync: Interface["sync"] = Effect.fn("Envi.sync")(function* (configs, options) {
     const startedAt = yield* Clock.currentTimeMillis;
     const list = Config.isConfig(configs) ? [configs] : configs;
-    const groups: Array<Group> = [];
 
-    // The var key and the config file behind each key of a group.
-    const origins = new Map<
-      string,
-      { readonly key: string; readonly config: Option.Option<string> }
-    >();
+    const members = yield* Effect.forEach(list, (config) =>
+      Effect.gen(function* () {
+        const stage = yield* stageOf(config, options?.stage);
 
-    let firstStage = Option.none<string>();
+        return {
+          config,
+          stage,
+          providers: Option.getOrElse(override, () => config.providers),
+          vars: yield* Config.varsFor(config, stage),
+        } satisfies Groups.Member;
+      }),
+    );
 
-    for (const [index, config] of list.entries()) {
-      const stage = yield* stageOf(config, options?.stage);
-      const providers = Option.getOrElse(override, () => config.providers);
+    const groups = Groups.of(members);
 
-      firstStage = Option.orElse(firstStage, () => Option.some(stage));
-
-      // Configs share a group while they share the stage and no two of them bind one provider
-      // id to two instances.
-      const fitting = groups.find(
-        (group) =>
-          group.stage === stage &&
-          providers.every(
-            (provider) => (group.providers.get(provider.id) ?? provider) === provider,
-          ),
-      );
-
-      const group: Group = fitting ?? { config, stage, providers: new Map(), sources: {} };
-
-      if (fitting === undefined) {
-        groups.push(group);
-      }
-
-      for (const provider of providers) {
-        group.providers.set(provider.id, provider);
-      }
-
-      for (const [key, source] of Object.entries(yield* Config.varsFor(config, stage))) {
-        const groupKey = list.length === 1 ? key : `${index}:${key}`;
-
-        group.sources[groupKey] = source;
-        origins.set(groupKey, { key, config: config.path });
-      }
-    }
-
-    const resolutions = yield* Effect.forEach(groups, (group) =>
-      resolveWith(group.config, group.stage, [...group.providers.values()], group.sources, options),
+    const resolved = yield* Effect.forEach(groups, (group) =>
+      Effect.map(
+        resolveWith(group.config, group.stage, group.providers, group.sources, options),
+        (resolution) => ({ group, resolution }),
+      ),
     );
 
     const policies = yield* Effect.forEach(groups, (group) => policyOf(group.config));
@@ -610,12 +428,12 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     const finishedAt = yield* Clock.currentTimeMillis;
 
     const counts = Arr.groupBy(
-      resolutions.flatMap((resolution) => resolution.providers),
+      resolved.flatMap(({ resolution }) => resolution.providers),
       (entry) => entry.provider,
     );
 
     return {
-      stage: Option.getOrElse(firstStage, () => Config.fallbackStage),
+      stage: members[0]?.stage ?? Config.fallbackStage,
       configs: list.length,
       providers: Object.entries(counts).map(([provider, entries]) => ({
         provider,
@@ -623,14 +441,8 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
         cached: Arr.reduce(entries, 0, (sum, entry) => sum + entry.cached),
         resolved: Arr.reduce(entries, 0, (sum, entry) => sum + entry.resolved),
       })),
-      failures: resolutions.flatMap((resolution) =>
-        Object.entries(resolution.vars).flatMap(([groupKey, outcome]) => {
-          const origin = origins.get(groupKey) ?? { key: groupKey, config: Option.none() };
-
-          return Result.isFailure(outcome)
-            ? [failureOf(origin.key, origin.config, outcome.failure)]
-            : [];
-        }),
+      failures: resolved.flatMap(({ group, resolution }) =>
+        Outcomes.failuresOf(resolution.vars, (groupKey) => Groups.originOf(group, groupKey)),
       ),
       cache: (yield* status.active) && policies.every((policy) => policy.enabled),
       durationMillis: finishedAt - startedAt,
@@ -640,87 +452,48 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
   const check: Interface["check"] = (config, options) =>
     Effect.map(resolveVars(config, options), ({ stage, resolution }) => ({
       stage,
-      passed: Object.entries(resolution.vars).flatMap(([key, outcome]) =>
-        Result.isSuccess(outcome) ? [key] : [],
-      ),
-      failures: failuresOf(config, resolution),
+      passed: Outcomes.passedOf(resolution.vars),
+      failures: Outcomes.failuresOf(resolution.vars, (key) => ({ key, config: config.path })),
     }));
 
   const inspect: Interface["inspect"] = Effect.fn("Envi.inspect")(function* (config, options) {
     const { stage, resolution } = yield* resolveVars(config, options);
-    const entries = yield* allOrVarsError(config, stage, resolution);
+    const entries = yield* Outcomes.allOrVarsError(config, stage, resolution.vars);
     const redact = options?.redact ?? true;
 
     return {
       stage,
-      vars: entries.map(([key, resolved]) => {
-        const redacted = redact && resolved.isRedacted;
-
-        return {
-          key,
-          provider: Option.getOrNull(resolved.provider),
-          reference: Option.getOrNull(resolved.reference),
-          origin: resolved.origin,
-          resolvedAt: Option.getOrNull(
-            Option.map(resolved.resolvedAt, (millis) => new Date(millis).toISOString()),
-          ),
-          redacted,
-          value: redacted ? null : (rawOf(resolved) ?? null),
-        };
-      }),
+      vars: entries.map(([key, resolved]) => Outcomes.varReportOf(key, resolved, redact)),
     };
   });
 
   const exportVars: Interface["export"] = Effect.fn("Envi.export")(
     function* (config, format, options) {
       const { stage, resolution } = yield* resolveVars(config, options);
-      const entries = yield* allOrVarsError(config, stage, resolution);
+      const entries = yield* Outcomes.allOrVarsError(config, stage, resolution.vars);
       const redact = options?.redact ?? false;
 
-      const values = entries.flatMap(([key, resolved]) =>
-        Option.match(resolved.raw, {
-          onNone: () => [],
-          onSome: (raw) => [
-            [key, redact && resolved.isRedacted ? redactedText : Redacted.value(raw)] as const,
-          ],
-        }),
-      );
-
-      if (format === ExportFormat.Json) {
-        return `${JSON.stringify(Object.fromEntries(values), null, 2)}\n`;
-      }
-
-      const lines = yield* Effect.forEach(values, ([key, raw]) => dotenvLine(key, raw));
-
-      return `${lines.join("\n")}\n`;
+      return yield* Dotenv.render(format, Outcomes.rawEntries(entries, redact));
     },
   );
 
   const run: Interface["run"] = Effect.fn("Envi.run")(function* (config, command, args, options) {
     const { stage, resolution } = yield* resolveVars(config, options);
-    const entries = yield* allOrVarsError(config, stage, resolution);
+    const entries = yield* Outcomes.allOrVarsError(config, stage, resolution.vars);
     const parent = yield* ParentEnvironment;
 
-    const withheld = new Set(
-      Option.getOrElse(override, () => config.providers).flatMap(
+    const env = ChildEnvironment.make({
+      parent,
+      credentialVariables: Option.getOrElse(override, () => config.providers).flatMap(
         (provider) => provider.credentialVariables,
       ),
-    );
-
-    const inherited = Object.entries(parent).filter(
-      ([name]) => !name.startsWith(providerVariablePrefix) && !withheld.has(name),
-    );
-
-    const resolved = entries.flatMap(([key, value]) =>
-      Option.match(value.raw, {
-        onNone: () => [],
-        onSome: (raw) => [[key, Redacted.value(raw)] as const],
-      }),
-    );
+      values: Outcomes.rawEntries(entries, false),
+      stage,
+    });
 
     const child = ChildProcess.make(command, args ?? [], {
       cwd: options?.cwd,
-      env: Object.fromEntries([...inherited, ...resolved, [stageVariable, stage]]),
+      env,
       extendEnv: false,
       // The child stays in the process group of Envi, so it keeps the terminal and its signals.
       detached: false,

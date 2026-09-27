@@ -2,6 +2,9 @@
 // `--json` prints the encoded report. This file holds real schemas, because every type comes from one.
 import * as Schema from "effect/Schema";
 
+/** The text that stands for a redacted value in a report and in an export. */
+export const redactedText = "<redacted>";
+
 /** Where the value of one var comes from. */
 export const ValueOrigin = {
   Literal: "literal",
@@ -30,6 +33,8 @@ export const VarReport = Schema.Struct({
   redacted: Schema.Boolean,
   value: Schema.NullOr(Schema.String),
 });
+
+export type VarReport = typeof VarReport.Type;
 
 export const InspectReport = Schema.Struct({
   stage: Schema.String,

@@ -326,6 +326,32 @@ const expectedOf = (issue: SchemaIssue.Issue): string =>
     .join(" ");
 
 /**
+ * Decodes the string of one var from a record of strings, such as `process.env`. Without the
+ * string, it decodes the literal or the default of the descriptor.
+ *
+ * @returns The decoded value, `undefined` for a missing optional var, or a `DecodeError`.
+ */
+export const parse = (
+  source: AnySource,
+  key: string,
+  found: string | undefined,
+): Effect.Effect<unknown, DecodeError> => {
+  const raw = Option.fromUndefinedOr(found).pipe(
+    Option.orElse(() =>
+      Origin.$is("Literal")(source.origin) ? Option.some(source.origin.value) : source.fallback,
+    ),
+  );
+
+  if (Option.isSome(raw)) {
+    return decode(source, key, raw.value);
+  }
+
+  return source.isOptional
+    ? Effect.void
+    : Effect.fail(new DecodeError({ key, expected: "a value. The variable is not set" }));
+};
+
+/**
  * Decodes one raw string with the schema of its descriptor.
  *
  * @param key - The var name. The error holds it instead of the rejected value.

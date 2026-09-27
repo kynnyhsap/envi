@@ -1,11 +1,11 @@
 // The text form of each report. `--json` prints the encoded report instead.
-import { redactedText } from "./core/Envi.ts";
 import {
   type CacheClearReport,
   type CacheListReport,
   type CheckReport,
   type InspectReport,
   type SyncReport,
+  redactedText,
   ValueOrigin,
   type VarFailure,
 } from "./core/Reports.ts";
