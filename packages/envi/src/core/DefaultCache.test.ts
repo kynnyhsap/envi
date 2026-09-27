@@ -138,6 +138,7 @@ describe("DefaultCache", () => {
           const report = yield* Envi.Envi.use((envi) => envi.sync(config)).pipe(
             Effect.provide(Envi.layer()),
             Effect.provide(DefaultCache.layer(CacheSettings.noOverrides, configKey)),
+            Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({}))),
             Effect.provide(Logger.layer([])),
           );
 

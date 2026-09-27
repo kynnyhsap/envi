@@ -87,6 +87,7 @@ export const noOverrides: Overrides = {
 
 /** How a run uses the cache, after the precedence order. The `Envi` service selects it per config. */
 export interface Policy {
+  /** `false` when a setting turns the cache off. */
   readonly enabled: boolean;
   /** A flag or `ENVI_CACHE_ENABLED` asks for the cache. Then a missing key fails the run. */
   readonly explicit: boolean;
@@ -155,27 +156,17 @@ const durationAt = (
     onSome: Duration.fromInputUnsafe,
   });
 
-/** The two `cache` keys. The option replaces the whole config key. */
-const keysOf = Effect.fn("CacheSettings.keysOf")(function* (
+/**
+ * Applies the order of every setting: a flag, the `cache` option, a variable, the `cache` key of
+ * the config, a default. The option replaces the whole config key. `decided` is the first setting
+ * that turns the cache on or off.
+ */
+const decide = Effect.fn("CacheSettings.decide")(function* (
   overrides: Overrides,
   configKey: Option.Option<unknown>,
 ) {
   const option = yield* decodeKey("option cache", overrides.option);
   const config = Option.isSome(option) ? Option.none() : yield* decodeKey("cache", configKey);
-
-  return { option, config };
-});
-
-/**
- * Selects the policy of a run with the order of every setting: a flag, the `cache` option, a
- * variable, the `cache` key of the config, a default. The cache is off in CI by default.
- */
-export const selectPolicy = Effect.fn("CacheSettings.selectPolicy")(function* (
-  overrides: Overrides,
-  configKey: Option.Option<unknown>,
-) {
-  const { option, config } = yield* keysOf(overrides, configKey);
-  const isCi = yield* Settings.isCi;
 
   const enabledFromVariable = yield* Settings.read(
     enabledVariable,
@@ -183,11 +174,15 @@ export const selectPolicy = Effect.fn("CacheSettings.selectPolicy")(function* (
     EffectConfig.option(EffectConfig.Boolean(enabledVariable)),
   );
 
+  const decided = Option.firstSomeOf([
+    overrides.enabled,
+    offAt(option),
+    enabledFromVariable,
+    offAt(config),
+  ]);
+
   const policy: Policy = {
-    enabled: Option.getOrElse(
-      Option.firstSomeOf([overrides.enabled, offAt(option), enabledFromVariable, offAt(config)]),
-      () => !isCi,
-    ),
+    enabled: Option.getOrElse(decided, () => true),
     explicit: Option.isSome(Option.orElse(overrides.enabled, () => enabledFromVariable)),
     encryption: Option.getOrElse(
       Option.firstSomeOf([fieldAt(option, "encryption"), fieldAt(config, "encryption")]),
@@ -197,17 +192,30 @@ export const selectPolicy = Effect.fn("CacheSettings.selectPolicy")(function* (
     maxStale: durationAt(option, config, "maxStale", defaultMaxStale),
   };
 
-  return policy;
+  return { option, config, decided, policy };
 });
 
-/** Selects the policy and the directory of a run, with the same order. */
+/**
+ * Selects the policy of one config. Without a setting that decides, the policy leaves the cache
+ * on, and the cache layer decides: the default cache is off in CI.
+ */
+export const selectPolicy = (
+  overrides: Overrides,
+  configKey: Option.Option<unknown>,
+): Effect.Effect<Policy, SettingsError> =>
+  Effect.map(decide(overrides, configKey), ({ policy }) => policy);
+
+/**
+ * Selects the policy and the directory of the default cache, with the same order. Without a
+ * setting that decides, the cache is off in CI.
+ */
 export const select = Effect.fn("CacheSettings.select")(function* (
   overrides: Overrides,
   configKey: Option.Option<unknown>,
 ) {
   const path = yield* Path.Path;
-  const policy = yield* selectPolicy(overrides, configKey);
-  const { option, config } = yield* keysOf(overrides, configKey);
+  const { option, config, decided, policy } = yield* decide(overrides, configKey);
+  const isCi = yield* Settings.isCi;
 
   const directoryFromVariable = yield* Settings.read(
     directoryVariable,
@@ -219,6 +227,7 @@ export const select = Effect.fn("CacheSettings.select")(function* (
 
   const selection: Selection = {
     ...policy,
+    enabled: Option.getOrElse(decided, () => !isCi),
     directory: Option.firstSomeOf([
       overrides.directory,
       fieldAt(option, "directory"),

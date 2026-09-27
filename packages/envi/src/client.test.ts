@@ -249,7 +249,7 @@ describe("the cache of a sync report", () => {
     expect(report.cache).toBe(reported);
   });
 
-  it("is true for the in-memory cache, and the next load reads it", async () => {
+  it("is true for the in-memory cache in CI, and the next load reads it", async () => {
     const { secrets, oneConfig } = oneSecret();
 
     const program = Effect.gen(function* () {
@@ -262,7 +262,10 @@ describe("the cache of a sync report", () => {
     });
 
     const report = await Effect.runPromise(
-      program.pipe(Effect.provide(Envi.layer().pipe(Layer.provide(Cache.layerMemory)))),
+      program.pipe(
+        Effect.provide(Envi.layer().pipe(Layer.provide(Cache.layerMemory))),
+        Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ CI: "true" }))),
+      ),
     );
 
     expect(report.cache).toBe(true);
