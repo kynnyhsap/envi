@@ -28,14 +28,13 @@ describe("Cache.layerMemory", () => {
     }).pipe(Effect.provide(Cache.layerMemory)),
   );
 
-  it.effect("removes keys, lists entries, and clears", () =>
+  it.effect("lists entries, and clears", () =>
     Effect.gen(function* () {
       const cache = yield* Cache.Cache;
 
-      yield* cache.setMany({ a: record("1"), b: record("2"), c: record("3") });
-      yield* cache.removeMany(["a"]);
+      yield* cache.setMany({ a: record("1"), b: record("2") });
 
-      expect((yield* cache.list()).map((entry) => entry.key)).toEqual(["b", "c"]);
+      expect((yield* cache.list()).map((entry) => entry.key)).toEqual(["a", "b"]);
       expect(yield* cache.clear()).toBe(2);
       expect(yield* cache.list()).toEqual([]);
     }).pipe(Effect.provide(Cache.layerMemory)),

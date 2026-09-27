@@ -465,13 +465,6 @@ const make = Effect.fn("FileCache.make")(function* (
           discard: true,
         }),
       ),
-    removeMany: (keys) =>
-      Effect.forEach(
-        keys,
-        (key) =>
-          Effect.flatMap(fileNameOf(key), (name) => remove(path.join(options.directory, name))),
-        { concurrency: "unbounded", discard: true },
-      ),
     list: () =>
       Effect.flatMap(entryFiles, (files) =>
         Effect.map(Effect.forEach(files, readEntry, { concurrency: "unbounded" }), (entries) =>
@@ -502,7 +495,6 @@ const make = Effect.fn("FileCache.make")(function* (
         (owned) => Effect.raceFirst(effect, Effect.andThen(renewLock(owned), Effect.never)),
         releaseLock,
       ),
-    directory: Option.some(options.directory),
   });
 });
 

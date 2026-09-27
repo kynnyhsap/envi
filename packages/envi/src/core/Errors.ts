@@ -199,7 +199,7 @@ export const hints: Catalog = {
   ExportFileError: {
     WriteFailed: "Check that the folder of the file exists and is writable.",
   },
-  SettingsError: "Fix the value of the environment variable, or unset it.",
+  SettingsError: "Fix the value of the setting that the error names, or remove it.",
   RunError: {
     CommandNotFound:
       "Check the command name and `PATH`. Put `--` before the command: `envi run -- bun dev`.",
@@ -536,7 +536,7 @@ export class ExportFileError extends Schema.TaggedError<ExportFileError>()("Expo
   }
 }
 
-/** An `ENVI_*` environment variable holds a value that Envi cannot read. */
+/** A setting holds a value that Envi cannot read: an `ENVI_*` variable, a config key, or an option. */
 export class SettingsError extends Schema.TaggedError<SettingsError>()("SettingsError", {
   name: Schema.String,
   expected: Schema.String,

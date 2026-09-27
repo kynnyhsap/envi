@@ -1,9 +1,9 @@
-import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
+import type { CacheKey } from "./CacheSettings.ts";
 import { ConfigLoadError, ConfigLoadFailure, UnknownStageError } from "./Errors.ts";
 import type { Provider } from "./Provider.ts";
 import * as Source from "./Source.ts";
@@ -14,17 +14,6 @@ export const TypeId: unique symbol = Symbol.for("envi/Config");
 
 /** The stage that Envi uses when nothing selects one. */
 export const fallbackStage = "development";
-
-/** The cache settings of a config. */
-export interface CacheSettings {
-  readonly directory?: string;
-  /** `"none"` writes plaintext files with the mode `0600`. Envi never selects it on its own. */
-  readonly encryption?: "keychain" | "none";
-  /** The refresh interval. Default: 24 hours. */
-  readonly ttl?: Duration.Input;
-  /** The longest time that Envi uses an expired entry after a transient failure. Default: 7 days. */
-  readonly maxStale?: Duration.Input;
-}
 
 /** The values of `vars`: a plain string is a literal, and everything else is a descriptor. */
 export type Vars = Readonly<Record<string, string | Source.AnySource>>;
@@ -63,7 +52,7 @@ export interface Input<Stage extends string, P extends ReadonlyArray<Provider>, 
   readonly stages?: ReadonlyArray<Stage>;
   readonly defaultStage?: NoInfer<Stage>;
   readonly providers?: P;
-  readonly cache?: false | CacheSettings;
+  readonly cache?: CacheKey;
   readonly strict?: boolean;
   /**
    * A plain object, or a synchronous function of the stage. It never resolves a secret.
@@ -86,7 +75,7 @@ export interface Config<out Stage extends string = string, out V extends Vars = 
   readonly stages: ReadonlyArray<string>;
   readonly defaultStage: Option.Option<string>;
   readonly providers: ReadonlyArray<Provider>;
-  readonly cache: Option.Option<false | CacheSettings>;
+  readonly cache: Option.Option<CacheKey>;
   readonly strict: Option.Option<boolean>;
   /** The config file. The loader sets it. A config from `defineConfig` in code has none. */
   readonly path: Option.Option<string>;
