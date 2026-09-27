@@ -10,27 +10,13 @@ import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 
 import * as Cache from "./Cache.ts";
+import * as CacheSettings from "./CacheSettings.ts";
+import { defineConfig } from "./Config.ts";
 import * as DefaultCache from "./DefaultCache.ts";
+import * as Envi from "./Envi.ts";
 import { CacheError, CacheFailure } from "./Errors.ts";
-import { EncryptionKey, layerEncryptionKey } from "./FileCache.ts";
-
-const platform = Layer.mergeAll(
-  NodeFileSystem.layer,
-  NodePath.layer,
-  layerEncryptionKey(Redacted.make(new Uint8Array(32).fill(7))),
-);
-
-const directoryOf = (options: DefaultCache.Options, env: Readonly<Record<string, string>>) =>
-  Effect.map(Cache.Cache, (cache) => cache.directory).pipe(
-    Effect.provide(DefaultCache.layer(options)),
-    Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(env))),
-  );
-
-const base: DefaultCache.Options = {
-  settings: Option.none(),
-  enabled: Option.none(),
-  directory: Option.none(),
-};
+import { EncryptionKey } from "./FileCache.ts";
+import { mem, memoryProvider } from "./Memory.ts";
 
 const record: Cache.CacheRecord = {
   provider: "memory",
@@ -40,56 +26,6 @@ const record: Cache.CacheRecord = {
 };
 
 describe("DefaultCache", () => {
-  it.effect("uses ~/.cache/envi by default", () =>
-    Effect.gen(function* () {
-      expect(yield* directoryOf(base, { HOME: "/home/dev" })).toEqual(
-        Option.some("/home/dev/.cache/envi"),
-      );
-    }).pipe(Effect.provide(platform)),
-  );
-
-  it.effect("picks the directory from the flag, then the variable, then the config", () =>
-    Effect.gen(function* () {
-      const settings = Option.some({ directory: "/from/config" });
-      const env = { HOME: "/home/dev", ENVI_CACHE_DIR: "/from/env" };
-
-      expect(
-        yield* directoryOf({ ...base, settings, directory: Option.some("/from/flag") }, env),
-      ).toEqual(Option.some("/from/flag"));
-      expect(yield* directoryOf({ ...base, settings }, env)).toEqual(Option.some("/from/env"));
-      expect(yield* directoryOf({ ...base, settings }, { HOME: "/home/dev" })).toEqual(
-        Option.some("/from/config"),
-      );
-    }).pipe(Effect.provide(platform)),
-  );
-
-  it.effect("is off in CI, and the variable or the flag turns it on", () =>
-    Effect.gen(function* () {
-      const ci = { HOME: "/home/dev", CI: "true" };
-
-      expect(yield* directoryOf(base, ci)).toEqual(Option.none());
-      expect(yield* directoryOf(base, { ...ci, ENVI_CACHE_ENABLED: "true" })).toEqual(
-        Option.some("/home/dev/.cache/envi"),
-      );
-      expect(yield* directoryOf({ ...base, enabled: Option.some(true) }, ci)).toEqual(
-        Option.some("/home/dev/.cache/envi"),
-      );
-    }).pipe(Effect.provide(platform)),
-  );
-
-  it.effect("is off with `cache: false` and with the flag", () =>
-    Effect.gen(function* () {
-      const env = { HOME: "/home/dev" };
-
-      expect(yield* directoryOf({ ...base, settings: Option.some(false) }, env)).toEqual(
-        Option.none(),
-      );
-      expect(yield* directoryOf({ ...base, enabled: Option.some(false) }, env)).toEqual(
-        Option.none(),
-      );
-    }).pipe(Effect.provide(platform)),
-  );
-
   describe("without an encryption key", () => {
     const noKey = Layer.mergeAll(
       NodeFileSystem.layer,
@@ -101,7 +37,11 @@ describe("DefaultCache", () => {
     );
 
     /** Writes and reads one record twice, and returns the warnings of the run. */
-    const roundTrip = (options: DefaultCache.Options, directory: string) =>
+    const roundTrip = (
+      overrides: CacheSettings.Overrides,
+      configKey: Option.Option<CacheSettings.CacheKey>,
+      directory: string,
+    ) =>
       Effect.gen(function* () {
         const warnings: Array<string> = [];
 
@@ -119,7 +59,7 @@ describe("DefaultCache", () => {
 
           return yield* cache.getMany(["a"]);
         }).pipe(
-          Effect.provide(DefaultCache.layer(options)),
+          Effect.provide(DefaultCache.layer(overrides, configKey)),
           Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ HOME: directory }))),
           Effect.provide(Logger.layer([logger])),
         );
@@ -131,7 +71,12 @@ describe("DefaultCache", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const directory = yield* fs.makeTempDirectoryScoped({ prefix: "envi-default-cache-" });
-        const { found, warnings } = yield* roundTrip(base, directory);
+
+        const { found, warnings } = yield* roundTrip(
+          CacheSettings.noOverrides,
+          Option.none(),
+          directory,
+        );
 
         expect(found).toEqual({});
         expect(warnings.length).toBe(1);
@@ -145,10 +90,14 @@ describe("DefaultCache", () => {
         const directory = yield* fs.makeTempDirectoryScoped({ prefix: "envi-default-cache-" });
 
         const error = yield* Effect.flip(
-          roundTrip({ ...base, enabled: Option.some(true) }, directory),
+          roundTrip(
+            { ...CacheSettings.noOverrides, enabled: Option.some(true) },
+            Option.none(),
+            directory,
+          ),
         );
 
-        expect(error.reason).toBe(CacheFailure.KeyUnavailable);
+        expect(error).toMatchObject({ reason: CacheFailure.KeyUnavailable });
       }).pipe(Effect.provide(noKey)),
     );
 
@@ -156,12 +105,44 @@ describe("DefaultCache", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const directory = yield* fs.makeTempDirectoryScoped({ prefix: "envi-default-cache-" });
-        const settings = Option.some({ directory, encryption: "none" as const });
-        const { found, warnings } = yield* roundTrip({ ...base, settings }, directory);
+        const configKey = Option.some({ directory, encryption: CacheSettings.Encryption.None });
+
+        const { found, warnings } = yield* roundTrip(
+          CacheSettings.noOverrides,
+          configKey,
+          directory,
+        );
 
         expect(Object.keys(found)).toEqual(["a"]);
         expect(warnings).toEqual([]);
       }).pipe(Effect.provide(noKey)),
+    );
+
+    it.effect.each([
+      { encryption: CacheSettings.Encryption.Keychain, cache: false },
+      { encryption: CacheSettings.Encryption.None, cache: true },
+    ])(
+      "reports the cache as $cache in sync with the encryption $encryption",
+      ({ encryption, cache }) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const directory = yield* fs.makeTempDirectoryScoped({ prefix: "envi-default-cache-" });
+
+          const config = defineConfig({
+            providers: [memoryProvider({ a: "1" })],
+            vars: { A: mem("a") },
+          });
+
+          const configKey = Option.some({ directory, encryption });
+
+          const report = yield* Envi.Envi.use((envi) => envi.sync(config)).pipe(
+            Effect.provide(Envi.layer()),
+            Effect.provide(DefaultCache.layer(CacheSettings.noOverrides, configKey)),
+            Effect.provide(Logger.layer([])),
+          );
+
+          expect(report.cache).toBe(cache);
+        }).pipe(Effect.provide(noKey)),
     );
   });
 });

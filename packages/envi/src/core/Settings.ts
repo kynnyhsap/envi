@@ -8,6 +8,9 @@ import { SettingsError } from "./Errors.ts";
 /** The variable that CI systems set. */
 export const ciVariable = "CI";
 
+/** The home folder of the OS user. */
+export const homeVariable = "HOME";
+
 /** The variable that allows or forbids a prompt, such as a desktop app approval. */
 export const interactiveVariable = "ENVI_INTERACTIVE";
 
@@ -28,6 +31,12 @@ export const isCi: Effect.Effect<boolean> = Effect.map(
     Option.none<string>(),
   ),
   Option.exists((value) => !notCi.includes(value.trim().toLowerCase())),
+);
+
+/** `HOME`. None when the variable is absent. */
+export const home: Effect.Effect<Option.Option<string>> = Effect.orElseSucceed(
+  EffectConfig.option(EffectConfig.String(homeVariable)),
+  () => Option.none<string>(),
 );
 
 /** `ENVI_INTERACTIVE`. None when the variable is absent. */

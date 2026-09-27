@@ -126,12 +126,6 @@ const singleFileCache = (file: string): Layer.Layer<Cache.Cache, never, FileSyst
               ),
             }),
           ),
-        removeMany: (keys) =>
-          Effect.flatMap(read, (current) =>
-            write(
-              Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))),
-            ),
-          ),
         list: () =>
           Effect.map(read, (records) =>
             Object.entries(records).map(([key, record]) => ({
@@ -144,7 +138,6 @@ const singleFileCache = (file: string): Layer.Layer<Cache.Cache, never, FileSyst
         clear: () =>
           Effect.flatMap(read, (current) => Effect.as(write({}), Object.keys(current).length)),
         withResolveLock: (effect) => effect,
-        directory: Option.none(),
       });
     }),
   );

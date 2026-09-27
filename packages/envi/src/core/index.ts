@@ -1,5 +1,7 @@
 export * as Cache from "./Cache.ts";
 
+export * as CacheSettings from "./CacheSettings.ts";
+
 export * as Config from "./Config.ts";
 
 export * as ConfigLoader from "./ConfigLoader.ts";

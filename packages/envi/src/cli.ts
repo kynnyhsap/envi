@@ -14,6 +14,7 @@ import { Argument, Command, Flag } from "effect/unstable/cli";
 import {
   type AnyEnviError,
   CacheClearReport,
+  CacheSettings,
   CacheListReport,
   CheckReport,
   type Config,
@@ -190,23 +191,24 @@ const loadOneConfig = (flags: ResolveFlags) =>
   });
 
 /** The `Envi` service of one run. The cache settings come from the first config. */
-const enviLayer = (flags: ResolveFlags, settings: Config.Config["cache"]) =>
+const enviLayer = (flags: ResolveFlags, configKey: Config.Config["cache"]) =>
   Layer.unwrap(
-    Effect.map(KeyStore, (store) =>
-      Envi.layer({
+    Effect.map(KeyStore, (store) => {
+      const cache: CacheSettings.Overrides = {
+        ...CacheSettings.noOverrides,
+        enabled: flags.cache,
+        directory: flags.cacheDir,
+      };
+
+      return Envi.layer({
         strict: Option.getOrUndefined(flags.strict),
         interactive: Option.getOrUndefined(flags.interactive),
+        cache,
       }).pipe(
-        Layer.provide(
-          DefaultCache.layer({
-            settings,
-            enabled: flags.cache,
-            directory: flags.cacheDir,
-          }),
-        ),
+        Layer.provide(DefaultCache.layer(cache, configKey)),
         Layer.provide(Keychain.layer(store)),
-      ),
-    ),
+      );
+    }),
   );
 
 const loadOptions = (flags: ResolveFlags) => ({
@@ -357,11 +359,10 @@ const cacheLayer = (cacheDir: Option.Option<string>) =>
     Effect.map(KeyStore, (store) =>
       Envi.layer().pipe(
         Layer.provide(
-          DefaultCache.layer({
-            settings: Option.none(),
-            enabled: Option.some(true),
-            directory: cacheDir,
-          }),
+          DefaultCache.layer(
+            { ...CacheSettings.noOverrides, enabled: Option.some(true), directory: cacheDir },
+            Option.none(),
+          ),
         ),
         Layer.provide(Keychain.layer(store)),
       ),

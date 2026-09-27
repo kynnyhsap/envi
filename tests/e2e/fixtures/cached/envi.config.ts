@@ -1,5 +1,6 @@
 import { defineConfig } from "@kynnyhsap/envi";
-// The cache tests. The test selects the encryption and the ttl through the environment.
+// The cache tests. The test selects the encryption and the ttl through the environment, or turns
+// the cache off.
 import * as Schema from "effect/Schema";
 
 import { fileProvider } from "../file-provider.ts";
@@ -7,10 +8,13 @@ import { fileProvider } from "../file-provider.ts";
 export default defineConfig({
   stages: ["development", "production"],
   providers: [fileProvider],
-  cache: {
-    encryption: process.env["ENVI_E2E_ENCRYPTION"] === "none" ? "none" : "keychain",
-    ttl: process.env["ENVI_E2E_TTL"] === "short" ? "1 second" : "24 hours",
-  },
+  cache:
+    process.env["ENVI_E2E_CACHE"] === "off"
+      ? false
+      : {
+          encryption: process.env["ENVI_E2E_ENCRYPTION"] === "none" ? "none" : "keychain",
+          ttl: process.env["ENVI_E2E_TTL"] === "short" ? "1 second" : "24 hours",
+        },
   vars: ({ stage, file, value, derive, custom, fromEnv }) => ({
     NODE_ENV: stage,
     PORT: value("3000").schema(Schema.FiniteFromString),

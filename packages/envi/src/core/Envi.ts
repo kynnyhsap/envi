@@ -2,7 +2,6 @@ import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as EffectConfig from "effect/Config";
 import * as Context from "effect/Context";
-import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
@@ -13,6 +12,7 @@ import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
 import * as Cache from "./Cache.ts";
+import * as CacheSettings from "./CacheSettings.ts";
 import * as Config from "./Config.ts";
 import {
   type AnyEnviError,
@@ -76,6 +76,11 @@ export interface LayerOptions {
    * outside CI and `false` in CI. Without it, a provider fails at once instead of waiting.
    */
   readonly interactive?: boolean | undefined;
+  /**
+   * The cache flags and the `cache` option. The cache layer selects its directory with them, and
+   * the service selects the policy of each config with them.
+   */
+  readonly cache?: CacheSettings.Overrides | undefined;
 }
 
 /** The options of one resolution. */
@@ -193,12 +198,6 @@ export interface Interface {
 
 /** The Envi service. */
 export class Envi extends Context.Service<Envi, Interface>()("envi/Envi") {}
-
-/** The default refresh interval of a cache entry. */
-export const defaultTtl: Duration.Input = "24 hours";
-
-/** The default limit of the stale fallback. */
-export const defaultMaxStale: Duration.Input = "7 days";
 
 /** The text that a redacted export shows in place of a secret. */
 export const redactedText = "<redacted>";
@@ -344,9 +343,25 @@ interface Group {
   readonly sources: Record<string, Source.AnySource>;
 }
 
+/** The status of a cache layer that reports none: a cache without files that stores values. */
+const activeWithoutFiles: Cache.StatusInterface = {
+  directory: Option.none(),
+  active: Effect.succeed(true),
+};
+
 const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
   const cache = yield* Cache.Cache;
+
+  const status = Option.getOrElse(
+    yield* Effect.serviceOption(Cache.Status),
+    () => activeWithoutFiles,
+  );
+
   const override = Option.fromUndefinedOr(layerOptions.providers);
+  const cacheOverrides = layerOptions.cache ?? CacheSettings.noOverrides;
+
+  const policyOf = (config: Config.Config) =>
+    CacheSettings.selectPolicy(cacheOverrides, config.cache);
 
   const stageOf = (config: Config.Config, requested: string | undefined) =>
     Effect.flatMap(readStage, (fromEnvironment) =>
@@ -357,6 +372,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     );
 
   const resolverOptions = Effect.fn("Envi.resolverOptions")(function* (
+    policy: CacheSettings.Policy,
     config: Config.Config,
     stage: string,
     options: ResolveOptions | undefined,
@@ -372,8 +388,6 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
       Option.getOrElse(() => false),
     );
 
-    const settings = Option.filter(config.cache, (value) => value !== false);
-
     return {
       stage,
       refresh: options?.refresh ?? false,
@@ -383,32 +397,26 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
         Option.orElse(() => interactiveFromEnvironment),
         Option.getOrElse(() => !isCi),
       ),
-      ttl: Option.getOrElse(
-        Option.flatMap(settings, (value) => Option.fromUndefinedOr(value.ttl)),
-        () => defaultTtl,
-      ),
-      maxStale: Option.getOrElse(
-        Option.flatMap(settings, (value) => Option.fromUndefinedOr(value.maxStale)),
-        () => defaultMaxStale,
-      ),
+      ttl: policy.ttl,
+      maxStale: policy.maxStale,
     } satisfies Resolver.Options;
   });
 
-  const resolveWith = (
+  const resolveWith = Effect.fn("Envi.resolveWith")(function* (
     config: Config.Config,
     stage: string,
     providers: ReadonlyArray<Provider.Provider>,
     sources: Readonly<Record<string, Source.AnySource>>,
     options: ResolveOptions | undefined,
-  ) =>
-    Effect.flatMap(resolverOptions(config, stage, options), (settings) =>
-      Resolver.resolve(sources, settings).pipe(
-        Effect.provide(Provider.layer(providers)),
-        Option.contains(config.cache, false)
-          ? Effect.provide(Cache.layerNone)
-          : Effect.provideService(Cache.Cache, cache),
-      ),
+  ) {
+    const policy = yield* policyOf(config);
+    const settings = yield* resolverOptions(policy, config, stage, options);
+
+    return yield* Resolver.resolve(sources, settings).pipe(
+      Effect.provide(Provider.layer(providers)),
+      Effect.provideService(Cache.Cache, policy.enabled ? cache : Cache.none),
     );
+  });
 
   const resolveVars = Effect.fn("Envi.resolveVars")(function* (
     config: Config.Config,
@@ -605,6 +613,8 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
       resolveWith(group.config, group.stage, [...group.providers.values()], group.sources, options),
     );
 
+    const policies = yield* Effect.forEach(groups, (group) => policyOf(group.config));
+
     const finishedAt = yield* Clock.currentTimeMillis;
 
     const counts = Arr.groupBy(
@@ -630,7 +640,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
             : [];
         }),
       ),
-      cache: Option.isSome(cache.directory),
+      cache: (yield* status.active) && policies.every((policy) => policy.enabled),
       durationMillis: finishedAt - startedAt,
     };
   });
@@ -752,7 +762,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
   });
 
   const list: Interface["cache"]["list"] = Effect.map(cache.list(), (entries) => ({
-    directory: Option.getOrNull(cache.directory),
+    directory: Option.getOrNull(status.directory),
     entries: entries
       .toSorted((left, right) => left.reference.localeCompare(right.reference))
       .map((entry) => ({
@@ -773,7 +783,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     export: exportVars,
     run,
     cache: {
-      path: Effect.succeed(cache.directory),
+      path: Effect.succeed(status.directory),
       list,
       clear: Effect.map(cache.clear(), (removed) => ({ removed })),
     },

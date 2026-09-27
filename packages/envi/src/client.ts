@@ -4,6 +4,7 @@ import * as Option from "effect/Option";
 
 import type * as Config from "./core/Config.ts";
 import * as Envi from "./core/Envi.ts";
+import type { SettingsError } from "./core/Errors.ts";
 import type {
   CacheClearReport,
   CacheListReport,
@@ -14,14 +15,14 @@ import type {
   SyncReport,
 } from "./core/Reports.ts";
 import * as Source from "./core/Source.ts";
-import { type EnviOptions, layer, type Services } from "./layer.ts";
+import { type EnviOptions, layerOf, type Services } from "./layer.ts";
 import type * as Platform from "./platform.ts";
 
 const configOf: unique symbol = Symbol.for("envi/client/config");
 
 const runtimeOf: unique symbol = Symbol.for("envi/client/runtime");
 
-type ClientRuntime = ManagedRuntime.ManagedRuntime<Services, never>;
+type ClientRuntime = ManagedRuntime.ManagedRuntime<Services, SettingsError>;
 
 /** The members that do not depend on the type of the config. `syncAll` accepts a list of them. */
 export interface AnyEnvi {
@@ -74,15 +75,7 @@ export interface EnviClient<C extends Config.Config> extends AnyEnvi {
 
 /** The runtime of one client. The cache settings of the config apply unless the overrides replace them. */
 const makeRuntime = (config: Config.Config, overrides: EnviOptions): ClientRuntime =>
-  ManagedRuntime.make(
-    Option.match(
-      Option.orElse(Option.fromUndefinedOr(overrides.cache), () => config.cache),
-      {
-        onNone: () => layer(overrides),
-        onSome: (cache) => layer({ ...overrides, cache }),
-      },
-    ),
-  );
+  ManagedRuntime.make(layerOf(overrides, config.cache));
 
 /** Creates the client of one config. The config is the single source of settings. */
 export const createEnvi = <C extends Config.Config>(

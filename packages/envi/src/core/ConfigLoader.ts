@@ -1,5 +1,4 @@
 import * as Arr from "effect/Array";
-import * as EffectConfig from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -15,6 +14,7 @@ import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner
 import * as Config from "./Config.ts";
 import { ConfigLoadError, ConfigLoadFailure } from "./Errors.ts";
 import * as Package from "./Package.ts";
+import * as Settings from "./Settings.ts";
 import * as Thrown from "./Thrown.ts";
 import * as Timing from "./Timing.ts";
 
@@ -66,8 +66,6 @@ export interface Interface {
 export class ConfigLoader extends Context.Service<ConfigLoader, Interface>()("envi/ConfigLoader") {}
 
 const gitMarker = ".git";
-
-const homeVariable = "HOME";
 
 /** A search down never enters these folders, and no folder whose name starts with a dot. */
 const skippedFolder = "node_modules";
@@ -241,10 +239,7 @@ const make = Effect.gen(function* () {
   };
 
   const up = Effect.fn("ConfigLoader.up")(function* (start: string) {
-    const home = yield* Effect.orElseSucceed(
-      EffectConfig.option(EffectConfig.String(homeVariable)),
-      () => Option.none<string>(),
-    );
+    const home = yield* Settings.home;
 
     const stop = Option.orElse(yield* projectRoot(start), () =>
       Option.filter(home, (folder) => isWithin(start, path.resolve(folder))).pipe(

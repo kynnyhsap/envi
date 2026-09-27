@@ -1,9 +1,10 @@
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
-import type { CacheSettings } from "./core/Config.ts";
+import * as CacheSettings from "./core/CacheSettings.ts";
 import * as DefaultCache from "./core/DefaultCache.ts";
 import * as Envi from "./core/Envi.ts";
+import type { SettingsError } from "./core/Errors.ts";
 import * as Keychain from "./core/Keychain.ts";
 import type { Provider } from "./core/Provider.ts";
 import * as Platform from "./platform.ts";
@@ -14,7 +15,7 @@ export interface EnviOptions {
   /** Replaces the providers of the config. Tests pass an in-memory provider here. */
   readonly providers?: ReadonlyArray<Provider>;
   /** `false` turns the cache off. An object replaces the `cache` key of the config. */
-  readonly cache?: false | CacheSettings;
+  readonly cache?: CacheSettings.CacheKey;
   readonly strict?: boolean;
   /** Allows a prompt, such as a desktop app approval. Default: `ENVI_INTERACTIVE`, then not CI. */
   readonly interactive?: boolean;
@@ -33,25 +34,38 @@ export const keyStoreOf = (platform: string): Keychain.Store => {
 export type Services = Envi.Envi | Envi.ParentEnvironment | Platform.Services;
 
 /**
- * The `Envi` service on Node or Bun: the default cache with its key from `ENVI_CACHE_KEY` or
- * the OS keychain, the environment of the process, the signals of the process, and the platform
- * services.
- * `createEnvi` runs on the same layer. The service serves any config, so the cache settings come
- * from `options.cache`, not from the `cache` key of a config.
- *
- * @example
- * program.pipe(Effect.provide(layer({ strict: true })));
+ * The `Envi` service on Node or Bun of one config: the default cache with its key from
+ * `ENVI_CACHE_KEY` or the OS keychain, the environment of the process, the signals of the
+ * process, and the platform services. The cache directory and the encryption come from
+ * `options.cache`, then from `configKey`. `createEnvi` passes the `cache` key of its config.
  */
-export const layer = (options: EnviOptions = {}): Layer.Layer<Services> => {
-  const cache = DefaultCache.layer({
-    settings: Option.fromUndefinedOr(options.cache),
-    enabled: Option.none(),
-    directory: Option.none(),
-  }).pipe(Layer.provide(Keychain.layer(keyStoreOf(process.platform))));
+export const layerOf = (
+  options: EnviOptions,
+  configKey: Option.Option<CacheSettings.CacheKey>,
+): Layer.Layer<Services, SettingsError> => {
+  const overrides: CacheSettings.Overrides = {
+    ...CacheSettings.noOverrides,
+    option: Option.fromUndefinedOr(options.cache),
+  };
+
+  const cache = DefaultCache.layer(overrides, configKey).pipe(
+    Layer.provide(Keychain.layer(keyStoreOf(process.platform))),
+  );
 
   return Layer.mergeAll(
-    Envi.layer(options).pipe(Layer.provide(cache)),
+    Envi.layer({ ...options, cache: overrides }).pipe(Layer.provide(cache)),
     Signals.layer,
     Layer.succeed(Envi.ParentEnvironment, process.env),
   ).pipe(Layer.provideMerge(Platform.layer));
 };
+
+/**
+ * The `Envi` service on Node or Bun for any config. The cache directory and the encryption come
+ * from `options.cache`. The `cache` key of each config still sets its `ttl`, its `maxStale`, and
+ * `false`, unless `options.cache` replaces it.
+ *
+ * @example
+ * program.pipe(Effect.provide(layer({ strict: true })));
+ */
+export const layer = (options: EnviOptions = {}): Layer.Layer<Services, SettingsError> =>
+  layerOf(options, Option.none());

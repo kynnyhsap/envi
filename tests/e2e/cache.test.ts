@@ -130,6 +130,23 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
       }),
     );
 
+    it.effect("turns on the cache that the config turns off with --cache", () =>
+      Effect.gen(function* () {
+        const sandbox = yield* makeSandbox("none");
+        const args = ["check", "--cache-dir", sandbox.cacheDirectory];
+        const env = { ...sandbox.env, ENVI_E2E_CACHE: "off", ENVI_CACHE_KEY: "an e2e key" };
+
+        yield* runCli(runtime, app, args, env);
+
+        expect(yield* cacheFiles(sandbox.cacheDirectory)).toEqual([]);
+
+        yield* runCli(runtime, app, [...args, "--cache"], env);
+        yield* runCli(runtime, app, [...args, "--cache"], env);
+
+        expect(yield* providerCalls(sandbox)).toEqual([fullBatch, fullBatch, uncachedBatch]);
+      }),
+    );
+
     it.effect("writes plaintext entries only after the explicit opt-in, with private modes", () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;

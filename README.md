@@ -245,7 +245,8 @@ variable, a config key, a default.
 ## Cache
 
 The cache holds one entry for each secret, in `~/.cache/envi` by default. Parallel worktrees share
-the entries. `--cache-dir`, `ENVI_CACHE_DIR`, or `cache.directory` selects another directory.
+the entries. `--cache-dir`, the `cache` option of a client, `ENVI_CACHE_DIR`, or `cache.directory`
+of the config selects another directory, in this order.
 
 - An entry expires after `ttl`, 24 hours by default. When the refresh of an expired entry fails
   because the provider is unavailable, Envi uses the expired value up to `maxStale`, 7 days by
@@ -307,7 +308,9 @@ const key = await envi.resolve(op("payments", "stripe", "secret-key")); // one s
 The client also has `run`, `sync`, `check`, `inspect`, `export`, and `cache.path`, `cache.list`,
 and `cache.clear`. Each returns the report that `--json` prints. `syncAll(clients)` syncs several
 clients with one call for each shared provider. `createEnvi(config, overrides)` takes
-`providers`, `cache`, `strict`, and `interactive`, which win over the config.
+`providers`, `cache`, `strict`, and `interactive`, which win over the config. The `cache` override
+replaces the whole `cache` key of the config: `false` turns the cache off, and an object turns a
+`cache: false` of the config into a cache with these settings.
 
 - Envi never changes `process.env`. The caller assigns the result of `loadRaw`.
 - `Env<typeof config>`, `RawEnv<typeof config>`, and `StageOf<typeof config>` are the types of a
@@ -332,13 +335,17 @@ program.pipe(Effect.provide(layer({ strict: true })));
 ```
 
 `layer(options)` provides the default cache, the environment and the signals of the process, and
-the platform services of Node or Bun.
+the platform services of Node or Bun. The layer serves any config, so the cache directory and the
+encryption come from `options.cache`. The `cache` key of each config still sets its `ttl`, its
+`maxStale`, and `false`, unless `options.cache` replaces it.
 
 ### Custom providers and caches
 
 `Provider.make({ id, Reference, describe, scope, resolveMany, helpers })` builds a provider.
 `resolveMany` resolves a whole batch in one call. `reference(id, ref)` builds a descriptor for it.
-A custom cache is a layer of the `Cache.Cache` service. Both interfaces are public and unstable
+A custom cache is a layer of the `Cache.Cache` service. It can also provide `Cache.Status`, which
+gives `cache path` its directory and tells `sync` whether the cache stores values. Both interfaces
+are public and unstable
 until a second real provider proves them. `examples/sdk-custom-provider.ts` shows a provider.
 
 `@kynnyhsap/envi/testing` exports `memoryProvider` and `mem` for tests.
@@ -549,9 +556,10 @@ Next action: Check that the folder of the file exists and is writable.
 
 ### SettingsError
 
-An `ENVI_*` environment variable holds a value that Envi cannot parse.
+A setting holds a value that Envi cannot read: an `ENVI_*` environment variable, a key of the
+config such as `cache.ttl`, or an option of a client or a layer such as `option cache.ttl`.
 
-Next action: Fix the value of the environment variable, or unset it.
+Next action: Fix the value of the setting that the error names, or remove it.
 
 <a id="error-run-command-not-found"></a>
 

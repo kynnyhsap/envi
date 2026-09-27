@@ -37,7 +37,6 @@ export interface Interface {
   /** Returns the records that exist. A missing or a corrupt entry is absent from the result. */
   readonly getMany: (keys: ReadonlyArray<string>) => Effect.Effect<CacheRecords, CacheError>;
   readonly setMany: (records: CacheRecords) => Effect.Effect<void, CacheError>;
-  readonly removeMany: (keys: ReadonlyArray<string>) => Effect.Effect<void, CacheError>;
   readonly list: () => Effect.Effect<ReadonlyArray<CacheEntry>, CacheError>;
   /** Removes every entry. Returns the number of removed entries. */
   readonly clear: () => Effect.Effect<number, CacheError>;
@@ -45,12 +44,24 @@ export interface Interface {
   readonly withResolveLock: <A, E, R>(
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | CacheError, R>;
-  /** The directory of a file cache. */
-  readonly directory: Option.Option<string>;
 }
 
 /** The service tag of the cache. */
 export class Cache extends Context.Service<Cache, Interface>()("envi/Cache") {}
+
+/**
+ * What a cache layer reports about its cache. `cache path`, `cache list`, and `sync` show it. A
+ * cache layer without it reports no directory and an active cache.
+ */
+export interface StatusInterface {
+  /** The directory of a file cache. */
+  readonly directory: Option.Option<string>;
+  /** `false` when the cache stores nothing, such as a cache without a key. */
+  readonly active: Effect.Effect<boolean>;
+}
+
+/** The service tag of the status of a cache. */
+export class Status extends Context.Service<Status, StatusInterface>()("envi/CacheStatus") {}
 
 /** A cache in the memory of one process. Tests and short-lived SDK clients use it. */
 export const layerMemory: Layer.Layer<Cache> = Layer.effect(
@@ -70,10 +81,6 @@ export const layerMemory: Layer.Layer<Cache> = Layer.effect(
           ),
         ),
       setMany: (records) => Ref.update(store, (current) => ({ ...current, ...records })),
-      removeMany: (keys) =>
-        Ref.update(store, (current) =>
-          Object.fromEntries(Object.entries(current).filter(([key]) => !keys.includes(key))),
-        ),
       list: () =>
         Effect.map(Ref.get(store), (records) =>
           Object.entries(records).map(([key, found]) => ({
@@ -85,7 +92,6 @@ export const layerMemory: Layer.Layer<Cache> = Layer.effect(
         ),
       clear: () => Effect.map(Ref.getAndSet(store, {}), (records) => Object.keys(records).length),
       withResolveLock: (effect) => effect,
-      directory: Option.none(),
     });
   }),
 );
@@ -94,12 +100,19 @@ export const layerMemory: Layer.Layer<Cache> = Layer.effect(
 export const none: Interface = Cache.of({
   getMany: () => Effect.succeed({}),
   setMany: () => Effect.void,
-  removeMany: () => Effect.void,
   list: () => Effect.succeed([]),
   clear: () => Effect.succeed(0),
   withResolveLock: (effect) => effect,
-  directory: Option.none(),
 });
 
-/** The layer of the disabled cache. */
-export const layerNone: Layer.Layer<Cache> = Layer.succeed(Cache, none);
+/** The status of the disabled cache. */
+export const inactive: StatusInterface = {
+  directory: Option.none(),
+  active: Effect.succeed(false),
+};
+
+/** The layer of the disabled cache, with its status. */
+export const layerNone: Layer.Layer<Cache | Status> = Layer.mergeAll(
+  Layer.succeed(Cache, none),
+  Layer.succeed(Status, inactive),
+);

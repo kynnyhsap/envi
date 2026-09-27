@@ -217,7 +217,7 @@ describe("FileCache", () => {
     }).pipe(Effect.provide(platform)),
   );
 
-  it.effect("lists, removes, and clears entries, and reports the directory", () =>
+  it.effect("lists and clears entries", () =>
     Effect.gen(function* () {
       const directory = yield* tempDirectory;
 
@@ -226,21 +226,17 @@ describe("FileCache", () => {
         Effect.gen(function* () {
           const cache = yield* Cache.Cache;
 
-          expect(cache.directory).toEqual(Option.some(directory));
           expect(yield* cache.list()).toEqual([]);
           expect(yield* cache.clear()).toBe(0);
 
           yield* cache.setMany({
             "memory:a": record("a", 1),
             "memory:b": record("b", 2),
-            "memory:c": record("c", 3),
           });
-
-          yield* cache.removeMany(["memory:b", "memory:missing"]);
 
           const entries = yield* cache.list();
 
-          expect(entries.map((entry) => entry.key).toSorted()).toEqual(["memory:a", "memory:c"]);
+          expect(entries.map((entry) => entry.key).toSorted()).toEqual(["memory:a", "memory:b"]);
           expect(JSON.stringify(entries)).not.toContain('"value"');
           expect(yield* cache.clear()).toBe(2);
           expect(yield* cache.list()).toEqual([]);

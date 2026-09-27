@@ -4,7 +4,6 @@
 export {
   defineConfig,
   schemaOf,
-  type CacheSettings,
   type Config,
   type Env,
   type RawEnv,
@@ -21,6 +20,8 @@ export {
   type Decoded,
   type Raw,
 } from "./core/Source.ts";
+
+export type { CacheKey, CacheSettings } from "./core/CacheSettings.ts";
 
 export { BooleanFromString } from "./core/Codecs.ts";
 
