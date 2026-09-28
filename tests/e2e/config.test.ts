@@ -1,16 +1,19 @@
 // Config loading, the global flags, the install hint, and the delegation to a local `envi`.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
+import { CheckReport, ErrorReport, SyncReport } from "@kynnyhsap/envi";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { fileURLToPath } from "node:url";
 
 import {
+  decodeJson,
   docsOf,
   enviVersion,
+  ExportedVars,
   fixture,
+  gitInit,
   makeSandbox,
   runCli,
   runProcess,
@@ -41,7 +44,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         );
 
         expect(result.exitCode).toBe(0);
-        expect(JSON.parse(result.stdout).passed).toContain("API_TOKEN");
+        expect((yield* decodeJson(CheckReport, result.stdout)).passed).toContain("API_TOKEN");
       }),
     );
 
@@ -49,7 +52,6 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
         const sandbox = yield* makeSandbox("none");
         const root = path.join(sandbox.directory, "repo");
         const entry = path.join(enviPackage, "dist/index.js");
@@ -67,7 +69,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         yield* writeConfig("apps/web", config("WEB"));
         yield* writeConfig("ignored", 'throw new Error("git ignores this config");\n');
         yield* fs.writeFileString(path.join(root, ".gitignore"), "ignored/\n");
-        yield* spawner.exitCode(ChildProcess.make("git", ["init", "-q"], { cwd: root }));
+        yield* gitInit(root);
 
         const env = { ...sandbox.env, ENVI_CONFIG_SEARCH: undefined };
         const api = path.join(root, "apps/api");
@@ -86,8 +88,11 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
           ENVI_CONFIG_SEARCH: "down",
         });
 
-        expect(JSON.parse(synced.stdout)).toMatchObject({ configs: 2, failures: [] });
-        expect(JSON.parse(checked.stdout).passed).toEqual(["API"]);
+        expect(yield* decodeJson(SyncReport, synced.stdout)).toMatchObject({
+          configs: 2,
+          failures: [],
+        });
+        expect((yield* decodeJson(CheckReport, checked.stdout)).passed).toEqual(["API"]);
         expect(byFlag.exitCode).toBe(1);
         expect(byFlag.stderr).toContain("ManyConfigs");
         expect(byVariable.stderr).toContain("ManyConfigs");
@@ -115,8 +120,8 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
           { ...sandbox.env, ENVI_CONFIG: `${api}, ${web}` },
         );
 
-        expect(JSON.parse(byFlag.stdout).configs).toBe(2);
-        expect(JSON.parse(byVariable.stdout).configs).toBe(2);
+        expect((yield* decodeJson(SyncReport, byFlag.stdout)).configs).toBe(2);
+        expect((yield* decodeJson(SyncReport, byVariable.stdout)).configs).toBe(2);
       }),
     );
 
@@ -184,7 +189,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         expect(text.stderr).toContain(`docs: ${docsOf("config-load-config-syntax")}`);
         expect(text.stderr + json.stdout).not.toContain("secret-in-source");
         expect(json.exitCode).toBe(1);
-        expect(JSON.parse(json.stdout).error).toMatchObject({
+        expect((yield* decodeJson(ErrorReport, json.stdout)).error).toMatchObject({
           error: "ConfigLoadError",
           reason: "ConfigSyntax",
         });
@@ -293,7 +298,8 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
 
         const firstLog = json.stderr.split("\n").find((line) => line.trim() !== "");
 
-        expect(() => JSON.parse(pretty.stdout)).not.toThrow();
+        // The logs leave stdout clean, so stdout decodes as the export.
+        expect(yield* decodeJson(ExportedVars, pretty.stdout)).toHaveProperty("API_TOKEN");
         expect(pretty.stderr).toContain("level=DEBUG");
         expect(JSON.parse(firstLog ?? "")).toMatchObject({ level: "DEBUG" });
         expect(pretty.stderr + json.stderr).not.toContain("dev-token-value");

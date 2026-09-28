@@ -1,8 +1,9 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
+import { ErrorReport } from "@kynnyhsap/envi";
 import * as Effect from "effect/Effect";
 
-import { docsOf, fixture, runCli, runtimes } from "./helpers.ts";
+import { decodeJson, docsOf, fixture, runCli, runtimes } from "./helpers.ts";
 
 layer(NodeServices.layer)("envi CLI", (it) => {
   describe.each(runtimes)("on %s", (runtime) => {
@@ -54,7 +55,7 @@ layer(NodeServices.layer)("envi CLI", (it) => {
     it.effect("prints an error as one JSON document on stdout with --json", () =>
       Effect.gen(function* () {
         const result = yield* runCli(runtime, fixture("broken"), ["inspect", "--json"]);
-        const report = JSON.parse(result.stdout);
+        const report = yield* decodeJson(ErrorReport, result.stdout);
 
         expect(result.exitCode).toBe(1);
         expect(report.error).toMatchObject({

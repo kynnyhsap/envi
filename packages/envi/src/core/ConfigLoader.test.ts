@@ -1,8 +1,5 @@
 import * as NodeChildProcessSpawner from "@effect/platform-node-shared/NodeChildProcessSpawner";
-import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
-import * as NodePath from "@effect/platform-node-shared/NodePath";
 import { describe, expect, it } from "@effect/vitest";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -10,12 +7,11 @@ import * as Path from "effect/Path";
 
 import * as ConfigLoader from "./ConfigLoader.ts";
 import { ConfigLoadFailure } from "./Errors.ts";
-
-const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+import { nodePlatform, withEnv } from "./fixtures/Support.ts";
 
 const layer = Layer.provideMerge(
   ConfigLoader.layer,
-  Layer.provideMerge(NodeChildProcessSpawner.layer, platform),
+  Layer.provideMerge(NodeChildProcessSpawner.layer, nodePlatform),
 );
 
 const { Down, Up } = ConfigLoader.ConfigSearch;
@@ -50,9 +46,7 @@ const find = (root: string, from: string, search: ConfigLoader.ConfigSearch, hom
     const path = yield* Path.Path;
     const loader = yield* ConfigLoader.ConfigLoader;
 
-    const found = yield* loader
-      .find(path.join(root, from), search)
-      .pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ HOME: home }))));
+    const found = yield* loader.find(path.join(root, from), search).pipe(withEnv({ HOME: home }));
 
     return found.map((file) => path.relative(root, file));
   });

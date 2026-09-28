@@ -30,6 +30,7 @@ import * as Package from "./core/Package.ts";
 import {
   CacheClearReport,
   CacheListReport,
+  CachePathReport,
   CheckReport,
   ErrorReport,
   ExportFormat,
@@ -400,14 +401,13 @@ const cachePath = Command.make(CommandName.CachePath, cacheFlags, (flags) =>
       Effect.provide(cacheLayer(flags.cacheDir)),
     );
 
-    yield* flags.json
-      ? Console.log(JSON.stringify({ directory: Option.getOrNull(directory) }, null, 2))
-      : Console.log(
-          Option.getOrElse(
-            directory,
-            () => "The cache has no directory. Set HOME, ENVI_CACHE_DIR, or --cache-dir.",
-          ),
-        );
+    yield* print(
+      flags.json,
+      CachePathReport,
+      { directory: Option.getOrNull(directory) },
+      (report) =>
+        report.directory ?? "The cache has no directory. Set HOME, ENVI_CACHE_DIR, or --cache-dir.",
+    );
   }).pipe(measureCommand(CommandName.Cache, CommandName.CachePath)),
 ).pipe(Command.withDescription("Print the directory of the cache."));
 

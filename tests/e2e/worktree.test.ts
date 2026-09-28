@@ -2,12 +2,14 @@
 // stack. Two worktrees share one cache, so the new worktree needs no provider call.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
+import { SyncReport } from "@kynnyhsap/envi";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import { fileURLToPath } from "node:url";
 
 import {
+  decodeJson,
   fixture,
   makeSandbox,
   providerCalls,
@@ -61,7 +63,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("a new worktree", (it) 
           ),
         );
 
-        expect(JSON.parse(setUp.stdout).providers).toEqual([
+        expect((yield* decodeJson(SyncReport, setUp.stdout)).providers).toEqual([
           { provider: "file", secrets: 3, cached: 3, resolved: 0 },
         ]);
         expect(runs.map((result) => [result.exitCode, result.stdout.trim()])).toEqual([

@@ -1,12 +1,9 @@
-import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
-import * as NodePath from "@effect/platform-node-shared/NodePath";
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Redacted from "effect/Redacted";
@@ -16,19 +13,11 @@ import * as Cache from "./Cache.ts";
 import * as CacheLock from "./CacheLock.ts";
 import { CacheError, CacheFailure } from "./Errors.ts";
 import * as FileCache from "./FileCache.ts";
-
-const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+import { cacheRecord, nodePlatform } from "./fixtures/Support.ts";
 
 const keyA = Redacted.make(new Uint8Array(32).fill(1));
 
 const keyB = Redacted.make(new Uint8Array(32).fill(2));
-
-const record = (value: string, resolvedAt = 1000): Cache.CacheRecord => ({
-  provider: "memory",
-  reference: "memory://token",
-  value: Option.some(Redacted.make(value)),
-  resolvedAt,
-});
 
 /** Runs one effect against a new instance of the file cache, as a new process does. */
 const withCache = <A, E>(
@@ -79,7 +68,9 @@ describe("FileCache", () => {
 
       yield* withCache(
         directory,
-        Effect.flatMap(Cache.Cache, (cache) => cache.setMany({ "memory:token": record("s3cret") })),
+        Effect.flatMap(Cache.Cache, (cache) =>
+          cache.setMany({ "memory:token": cacheRecord("s3cret") }),
+        ),
       );
 
       const found = yield* withCache(
@@ -102,7 +93,7 @@ describe("FileCache", () => {
       expect(yield* fs.readFileString(file ?? "")).not.toContain("s3cret");
       expect((yield* fs.stat(file ?? "")).mode & 0o777).toBe(0o600);
       expect((yield* fs.stat(directory)).mode & 0o777).toBe(0o700);
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.effect("treats an entry with another key, a moved entry, and an edited entry as a miss", () =>
@@ -119,7 +110,9 @@ describe("FileCache", () => {
 
       yield* withCache(
         directory,
-        Effect.flatMap(Cache.Cache, (cache) => cache.setMany({ "memory:a": record("value-a") })),
+        Effect.flatMap(Cache.Cache, (cache) =>
+          cache.setMany({ "memory:a": cacheRecord("value-a") }),
+        ),
       );
 
       expect(Object.keys(yield* read(keyB))).toEqual([]);
@@ -139,7 +132,9 @@ describe("FileCache", () => {
 
       yield* withCache(
         directory,
-        Effect.flatMap(Cache.Cache, (cache) => cache.setMany({ "memory:b": record("value-b") })),
+        Effect.flatMap(Cache.Cache, (cache) =>
+          cache.setMany({ "memory:b": cacheRecord("value-b") }),
+        ),
       );
 
       const files = yield* entryFiles(directory);
@@ -150,14 +145,14 @@ describe("FileCache", () => {
       const found = yield* read();
 
       expect(Object.keys(found)).toEqual(["memory:a"]);
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.effect("keeps a record without a value, and binds the missing value to the entry", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const directory = yield* tempDirectory;
-      const missing: Cache.CacheRecord = { ...record(""), value: Option.none() };
+      const missing: Cache.CacheRecord = { ...cacheRecord(""), value: Option.none() };
 
       const read = withCache(
         directory,
@@ -185,7 +180,7 @@ describe("FileCache", () => {
       ).pipe(Effect.provide(plain));
 
       expect(fromPlain["memory:a"]?.value).toEqual(Option.none());
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.effect("writes plaintext only with the explicit opt-in", () =>
@@ -195,7 +190,7 @@ describe("FileCache", () => {
       const plain = FileCache.layerPlaintext({ directory });
 
       yield* Effect.flatMap(Cache.Cache, (cache) =>
-        cache.setMany({ "memory:token": record("visible") }),
+        cache.setMany({ "memory:token": cacheRecord("visible") }),
       ).pipe(Effect.provide(plain));
 
       const [file] = yield* entryFiles(directory);
@@ -215,7 +210,7 @@ describe("FileCache", () => {
       );
 
       expect(Object.keys(encrypted)).toEqual([]);
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.effect("lists and clears entries", () =>
@@ -231,8 +226,8 @@ describe("FileCache", () => {
           expect(yield* cache.clear()).toBe(0);
 
           yield* cache.setMany({
-            "memory:a": record("a", 1),
-            "memory:b": record("b", 2),
+            "memory:a": cacheRecord("a", 1),
+            "memory:b": cacheRecord("b", 2),
           });
 
           const entries = yield* cache.list();
@@ -243,7 +238,7 @@ describe("FileCache", () => {
           expect(yield* cache.list()).toEqual([]);
         }),
       );
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.effect("runs one locked resolution at a time", () =>
@@ -290,7 +285,7 @@ describe("FileCache", () => {
       yield* joinWithClock(second);
 
       expect(order).toEqual(["first in", "first out", "second"]);
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.effect("fails with LockTimeout after the bounded wait", () =>
@@ -324,7 +319,7 @@ describe("FileCache", () => {
 
       expect(error).toBeInstanceOf(CacheError);
       expect(error).toMatchObject({ reason: CacheFailure.LockTimeout });
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.effect("takes over the lock of a crashed owner", () =>
@@ -343,7 +338,7 @@ describe("FileCache", () => {
 
       expect(result).toBe("ran");
       expect(yield* fs.exists(`${directory}/${CacheLock.lockFileName}`)).toBe(false);
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.live("removes its lock after an effect that ends at once", () =>
@@ -359,7 +354,7 @@ describe("FileCache", () => {
 
         expect(yield* fs.exists(`${directory}/${CacheLock.lockFileName}`)).toBe(false);
       }
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.effect("leaves the lock of another owner at release", () =>
@@ -377,7 +372,7 @@ describe("FileCache", () => {
       );
 
       expect(yield* fs.readFileString(lockFile)).toBe("424242");
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.effect("renews its lock past the stale age, so no other process takes it", () =>
@@ -418,7 +413,7 @@ describe("FileCache", () => {
 
       yield* Deferred.succeed(release, undefined);
       yield* Fiber.join(owner);
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.effect("renews only a lock that still holds its own time", () =>
@@ -454,7 +449,7 @@ describe("FileCache", () => {
 
       yield* Deferred.succeed(release, undefined);
       yield* Fiber.join(owner);
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 
   it.effect("removes leftover temp files on clear and counts only entries", () =>
@@ -468,7 +463,7 @@ describe("FileCache", () => {
         Effect.gen(function* () {
           const cache = yield* Cache.Cache;
 
-          yield* cache.setMany({ "memory:a": record("a") });
+          yield* cache.setMany({ "memory:a": cacheRecord("a") });
           yield* fs.writeFileString(temp, "partial");
 
           return yield* cache.clear();
@@ -477,6 +472,6 @@ describe("FileCache", () => {
 
       expect(removed).toBe(1);
       expect(yield* fs.exists(temp)).toBe(false);
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 });

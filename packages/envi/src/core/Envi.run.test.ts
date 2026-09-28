@@ -4,13 +4,11 @@ import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import * as Sink from "effect/Sink";
-import * as Stream from "effect/Stream";
 
-import * as Cache from "./Cache.ts";
 import { defineConfig } from "./Config.ts";
 import * as Envi from "./Envi.ts";
 import { RunError, RunFailure } from "./Errors.ts";
+import { enviLayer, exitedProcess } from "./fixtures/Support.ts";
 import { mem, memoryProvider } from "./Memory.ts";
 import * as Provider from "./Provider.ts";
 
@@ -39,21 +37,7 @@ const spawner = ChildProcessSpawner.make((command) => {
 
   spawned.push(command);
 
-  return Effect.succeed(
-    ChildProcessSpawner.makeHandle({
-      pid: ChildProcessSpawner.ProcessId(1),
-      exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(7)),
-      isRunning: Effect.succeed(false),
-      kill: () => Effect.void,
-      stdin: Sink.drain,
-      stdout: Stream.empty,
-      stderr: Stream.empty,
-      all: Stream.empty,
-      getInputFd: () => Sink.drain,
-      getOutputFd: () => Stream.empty,
-      unref: Effect.succeed(Effect.void),
-    }),
-  );
+  return Effect.succeed(exitedProcess(7));
 });
 
 const parent = {
@@ -65,7 +49,7 @@ const parent = {
 };
 
 const layer = Layer.mergeAll(
-  Layer.provide(Envi.layer(), Cache.layerMemory),
+  enviLayer(),
   Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner),
   Layer.succeed(Envi.ParentEnvironment, parent),
 );

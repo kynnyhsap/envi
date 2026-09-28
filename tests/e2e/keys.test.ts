@@ -6,28 +6,14 @@ import * as Effect from "effect/Effect";
 
 import {
   cacheFiles,
+  exportJson,
   fixture,
   makeSandbox,
   providerCalls,
-  runCli,
   runtimes,
-  type Sandbox,
 } from "./helpers.ts";
 
 const app = fixture("cached");
-
-const exportJson = (
-  runtime: string,
-  sandbox: Sandbox,
-  env: Readonly<Record<string, string>> = {},
-  flags: ReadonlyArray<string> = [],
-) =>
-  runCli(
-    runtime,
-    app,
-    ["export", "--cache-dir", sandbox.cacheDirectory, "--format", "json", ...flags],
-    { ...sandbox.env, ...env },
-  );
 
 layer(NodeServices.layer, { excludeTestServices: true })("envi cache key", (it) => {
   describe.each(runtimes)("on %s", (runtime) => {
@@ -36,9 +22,9 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache key", (it) 
         const sandbox = yield* makeSandbox("keychain");
         const key = { ENVI_CACHE_KEY: "a key from the secrets of the CI system" };
 
-        const first = yield* exportJson(runtime, sandbox, key, ["--debug"]);
-        const second = yield* exportJson(runtime, sandbox, key);
-        const other = yield* exportJson(runtime, sandbox, { ENVI_CACHE_KEY: "another key" });
+        const first = yield* exportJson(runtime, app, sandbox, key, ["--debug"]);
+        const second = yield* exportJson(runtime, app, sandbox, key);
+        const other = yield* exportJson(runtime, app, sandbox, { ENVI_CACHE_KEY: "another key" });
         const files = yield* cacheFiles(sandbox.cacheDirectory);
 
         expect(first.exitCode).toBe(0);
@@ -60,8 +46,8 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache key", (it) 
       it.effect("warns once and runs without a cache, and --cache fails", () =>
         Effect.gen(function* () {
           const sandbox = yield* makeSandbox("keychain");
-          const fallback = yield* exportJson(runtime, sandbox);
-          const forced = yield* exportJson(runtime, sandbox, {}, ["--cache"]);
+          const fallback = yield* exportJson(runtime, app, sandbox);
+          const forced = yield* exportJson(runtime, app, sandbox, {}, ["--cache"]);
 
           expect(fallback.exitCode).toBe(0);
           expect(fallback.stderr.match(/Envi runs without a cache/gu)?.length).toBe(1);

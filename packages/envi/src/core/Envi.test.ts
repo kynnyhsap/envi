@@ -1,12 +1,9 @@
 import { assert, describe, expect, expectTypeOf, it } from "@effect/vitest";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
-import * as Cache from "./Cache.ts";
 import { defineConfig } from "./Config.ts";
 import * as Envi from "./Envi.ts";
 import { docsBase } from "./ErrorClass.ts";
@@ -22,6 +19,7 @@ import {
   UnknownStageError,
   VarsError,
 } from "./Errors.ts";
+import { enviLayer, withEnv } from "./fixtures/Support.ts";
 import { mem, memoryProvider } from "./Memory.ts";
 import * as Provider from "./Provider.ts";
 import { ExportFormat, ValueOrigin } from "./Reports.ts";
@@ -47,10 +45,7 @@ const makeConfig = (provider = memoryProvider(secrets)) =>
     }),
   });
 
-const layer = Layer.provide(Envi.layer(), Cache.layerMemory);
-
-const withEnv = (env: Readonly<Record<string, string>>) =>
-  ConfigProvider.layer(ConfigProvider.fromUnknown(env));
+const layer = enviLayer();
 
 /** A provider that records whether each batch may ask the user. */
 const recording = () => {
@@ -119,13 +114,11 @@ describe("Envi", () => {
       // NODE_ENV never selects the stage.
       const unselected = withEnv({ NODE_ENV: "production" });
 
-      const byOption = yield* envi
-        .load(staged, { stage: "development" })
-        .pipe(Effect.provide(selected));
+      const byOption = yield* envi.load(staged, { stage: "development" }).pipe(selected);
 
-      const byVariable = yield* envi.load(staged).pipe(Effect.provide(selected));
-      const byDefault = yield* envi.load(staged).pipe(Effect.provide(unselected));
-      const byFallback = yield* envi.load(bare).pipe(Effect.provide(unselected));
+      const byVariable = yield* envi.load(staged).pipe(selected);
+      const byDefault = yield* envi.load(staged).pipe(unselected);
+      const byFallback = yield* envi.load(bare).pipe(unselected);
 
       expect(byOption.STAGE).toBe("development");
       expect(byVariable.STAGE).toBe("production");
@@ -142,7 +135,7 @@ describe("Envi", () => {
       assert(error instanceof UnknownStageError);
       expect(error.stage).toBe("qa");
       expect(error.stages).toEqual(["development", "production"]);
-    }).pipe(Effect.provide(layer), Effect.provide(withEnv({ ENVI_STAGE: "qa" }))),
+    }).pipe(Effect.provide(layer), withEnv({ ENVI_STAGE: "qa" })),
   );
 
   it.effect("fails a load with every failed var, the stage, and a hint for each failure", () =>
@@ -220,12 +213,9 @@ describe("Envi", () => {
       expect(env.DATABASE_URL).toBe("postgres://override");
     }).pipe(
       Effect.provide(
-        Layer.provide(
-          Envi.layer({
-            providers: [memoryProvider({ "db/production": "postgres://override", token: "t" })],
-          }),
-          Cache.layerMemory,
-        ),
+        enviLayer({
+          providers: [memoryProvider({ "db/production": "postgres://override", token: "t" })],
+        }),
       ),
     ),
   );
@@ -498,7 +488,7 @@ describe("Envi", () => {
 
       expect((yield* envi.load(config)).SHA).toBe("abc123");
       expect((yield* envi.cache.list).entries).toEqual([]);
-    }).pipe(Effect.provide(layer), Effect.provide(withEnv({ GITHUB_SHA: "abc123" }))),
+    }).pipe(Effect.provide(layer), withEnv({ GITHUB_SHA: "abc123" })),
   );
 
   describe("interactive", () => {
@@ -510,8 +500,8 @@ describe("Envi", () => {
         const { seen, config } = recording();
 
         yield* Effect.flatMap(Envi.Envi, (envi) => envi.load(config)).pipe(
-          Effect.provide(Layer.provide(Envi.layer(options), Cache.layerMemory)),
-          Effect.provide(withEnv(env)),
+          Effect.provide(enviLayer(options)),
+          withEnv(env),
         );
 
         return seen[0];

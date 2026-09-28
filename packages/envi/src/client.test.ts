@@ -1,7 +1,5 @@
-import * as ConfigProvider from "effect/ConfigProvider";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -9,8 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
+import { enviLayer, withEnv } from "./core/fixtures/Support.ts";
 import {
-  Cache,
   createEnvi,
   DecodeError,
   defineConfig,
@@ -298,10 +296,7 @@ describe("the overrides of a client", () => {
 
 describe("the cache of a sync report", () => {
   /** The environment of the default layer: a temp home and a key from `ENVI_CACHE_KEY`. */
-  const environment = () =>
-    ConfigProvider.layer(
-      ConfigProvider.fromUnknown({ HOME: cacheDirectory(), ENVI_CACHE_KEY: "a test key" }),
-    );
+  const environment = () => withEnv({ HOME: cacheDirectory(), ENVI_CACHE_KEY: "a test key" });
 
   it.each([
     { cache: false as const, reported: false },
@@ -310,10 +305,7 @@ describe("the cache of a sync report", () => {
     const { oneConfig } = oneSecret(cache);
 
     const report = await Effect.runPromise(
-      Envi.Envi.use((envi) => envi.sync(oneConfig)).pipe(
-        Effect.provide(layer()),
-        Effect.provide(environment()),
-      ),
+      Envi.Envi.use((envi) => envi.sync(oneConfig)).pipe(Effect.provide(layer()), environment()),
     );
 
     expect(report.cache).toBe(reported);
@@ -332,10 +324,7 @@ describe("the cache of a sync report", () => {
     });
 
     const report = await Effect.runPromise(
-      program.pipe(
-        Effect.provide(Envi.layer().pipe(Layer.provide(Cache.layerMemory))),
-        Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ CI: "true" }))),
-      ),
+      program.pipe(Effect.provide(enviLayer()), withEnv({ CI: "true" })),
     );
 
     expect(report.cache).toBe(true);
