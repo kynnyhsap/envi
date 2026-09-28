@@ -2,6 +2,7 @@
 // call for the token, or one SDK call for each desktop account.
 import { Provider, type ProviderError, ProviderFailure } from "@kynnyhsap/envi";
 import * as Arr from "effect/Array";
+import * as Cache from "effect/Cache";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
@@ -48,7 +49,9 @@ export const makeProvider = <DesktopAuth>(
   settings: Credential.OnePasswordSettings,
   loadSdk: Effect.Effect<Sdk.Sdk<DesktopAuth>, ProviderError>,
 ): Provider.Provider<OnePasswordHelpers> => {
-  const clients = Clients.make<DesktopAuth>();
+  // `Provider.make` is synchronous, and the cache needs no service to exist. Each lookup runs with
+  // the services of its caller, such as the clock and the log level.
+  const clients = Effect.runSync(Clients.make(loadSdk));
 
   return Provider.make({
     id: providerId,
@@ -64,10 +67,9 @@ export const makeProvider = <DesktopAuth>(
         const credential = yield* Credential.read(settings);
 
         if (credential.kind === Credential.CredentialKind.ServiceAccount) {
-          const sdk = yield* loadSdk;
-          const client = yield* clients.serviceAccount(sdk, credential.token);
+          const client = yield* Cache.get(clients, credential);
 
-          return yield* Batch.resolve(sdk, credential.kind, client, requests);
+          return yield* Batch.resolve(yield* loadSdk, credential.kind, client, requests);
         }
 
         if (!context.interactive) {
@@ -90,7 +92,7 @@ export const makeProvider = <DesktopAuth>(
         const batches = yield* Effect.forEach(
           Object.entries(Arr.groupBy(known, (entry) => entry.account)),
           ([account, group]) =>
-            Effect.flatMap(clients.desktop(sdk, account), (client) =>
+            Effect.flatMap(Cache.get(clients, { kind: credential.kind, account }), (client) =>
               Batch.resolve(
                 sdk,
                 credential.kind,

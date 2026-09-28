@@ -1,45 +1,41 @@
-// The SDK clients of one provider in one process: one for the service account token, and one for
-// each desktop account. A failed connection is not kept, so the next operation tries again.
+// The SDK clients of one provider in one process: one for each service account token, and one for
+// each desktop account. Two concurrent operations share one connection. A failed connection is not
+// kept, so the next operation tries again.
 import type { ProviderError } from "@kynnyhsap/envi";
+import * as Cache from "effect/Cache";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
 
-import { CredentialKind } from "./Credential.ts";
+import { CredentialKind, DesktopAccount, ServiceAccount } from "./Credential.ts";
 import * as Sdk from "./Sdk.ts";
 
-/** The clients of one provider. */
-export interface Clients<DesktopAuth> {
-  readonly serviceAccount: (
-    sdk: Sdk.Sdk<DesktopAuth>,
-    token: Redacted.Redacted,
-  ) => Effect.Effect<Sdk.SdkClient, ProviderError>;
-  readonly desktop: (
-    sdk: Sdk.Sdk<DesktopAuth>,
-    account: string,
-  ) => Effect.Effect<Sdk.SdkClient, ProviderError>;
-}
+/** What one client authenticates with: a token, or one desktop account. */
+export const ClientKey = Schema.Union([ServiceAccount, DesktopAccount]);
 
-export const make = <DesktopAuth>(): Clients<DesktopAuth> => {
-  // The kind leads every key, so an account never takes the client of the token.
-  const clients = new Map<string, Sdk.SdkClient>();
+export type ClientKey = typeof ClientKey.Type;
 
-  const clientFor = (key: string, connect: () => Effect.Effect<Sdk.SdkClient, ProviderError>) =>
-    Effect.suspend(() => {
-      const known = clients.get(key);
+export type Clients = Cache.Cache<ClientKey, Sdk.SdkClient, ProviderError>;
 
-      return known === undefined
-        ? Effect.tap(connect(), (client) => Effect.sync(() => clients.set(key, client)))
-        : Effect.succeed(known);
-    });
+/** The most clients that one provider keeps: one for each token and each account in use. */
+const capacity = 16;
 
-  return {
-    serviceAccount: (sdk, token) =>
-      clientFor(CredentialKind.ServiceAccount, () =>
-        Sdk.connect(sdk, CredentialKind.ServiceAccount, Redacted.value(token)),
+/** A client lives as long as the process. A failed connection expires at once. */
+const timeToLive = (exit: Exit.Exit<Sdk.SdkClient, ProviderError>): Duration.Duration =>
+  Exit.isSuccess(exit) ? Duration.infinity : Duration.zero;
+
+/** The clients of one provider. `loadSdk` runs before each new connection. */
+export const make = <DesktopAuth>(
+  loadSdk: Effect.Effect<Sdk.Sdk<DesktopAuth>, ProviderError>,
+): Effect.Effect<Clients> =>
+  Cache.makeWith(
+    (key: ClientKey) =>
+      Effect.flatMap(loadSdk, (sdk) =>
+        key.kind === CredentialKind.ServiceAccount
+          ? Sdk.connect(sdk, key.kind, Redacted.value(key.token))
+          : Sdk.connect(sdk, key.kind, new sdk.DesktopAuth(key.account)),
       ),
-    desktop: (sdk, account) =>
-      clientFor(`${CredentialKind.Desktop}:${account}`, () =>
-        Sdk.connect(sdk, CredentialKind.Desktop, new sdk.DesktopAuth(account)),
-      ),
-  };
-};
+    { capacity, timeToLive },
+  );

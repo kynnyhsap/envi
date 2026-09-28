@@ -4,6 +4,7 @@ import type * as OnePassword from "@1password/sdk";
 import { type ProviderError, ProviderFailure, Timing } from "@kynnyhsap/envi";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 
 // The npm name and the version of this package come from its manifest, so a rename or a release
 // changes only the manifest.
@@ -12,17 +13,24 @@ import { CredentialKind } from "./Credential.ts";
 import { failure } from "./Failure.ts";
 
 /** One answer of `resolveAll`. The real SDK sets the unused member to `null`. */
-export interface SdkResponse {
-  readonly content?: { readonly secret: string } | null;
-  readonly error?: { readonly type: string } | null;
-}
+export const SdkResponse = Schema.Struct({
+  content: Schema.optionalKey(Schema.NullOr(Schema.Struct({ secret: Schema.String }))),
+  error: Schema.optionalKey(Schema.NullOr(Schema.Struct({ type: Schema.String }))),
+});
+
+export type SdkResponse = typeof SdkResponse.Type;
+
+/** The result of one `resolveAll` call: one answer for each reference. */
+export const ResolveAllResponse = Schema.Struct({
+  individualResponses: Schema.Record(Schema.String, SdkResponse),
+});
 
 /** The part of one SDK client that Envi uses. */
 export interface SdkClient {
   readonly secrets: {
-    readonly resolveAll: (references: Array<string>) => Promise<{
-      readonly individualResponses: Readonly<Record<string, SdkResponse>>;
-    }>;
+    // The SDK is the boundary: `Batch` decodes the answer with `ResolveAllResponse`.
+    // oxlint-disable-next-line anti-slop/no-unknown-returns
+    readonly resolveAll: (references: Array<string>) => Promise<unknown>;
   };
 }
 

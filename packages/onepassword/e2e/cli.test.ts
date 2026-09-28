@@ -49,7 +49,14 @@ describe.skipIf(account === undefined && token === undefined)(
 
             const apiToken = yield* expected(primaryVault, "app", "API_TOKEN");
             const stripeKey = yield* expected(secondaryVault, "payments", "STRIPE_KEY");
-            const sync = yield* runCli(runtime, cacheDirectory, "sync", ["--json"]);
+
+            // The fixture lives inside this repository, and `sync` searches the whole repository
+            // by default. `up` keeps the search to the fixture app.
+            const sync = yield* runCli(runtime, cacheDirectory, "sync", [
+              "--config-search",
+              "up",
+              "--json",
+            ]);
 
             expect(sync.exitCode).toBe(0);
             expect(sync.stdout).not.toContain(stripeKey);

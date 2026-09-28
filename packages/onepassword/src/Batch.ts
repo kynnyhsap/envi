@@ -10,6 +10,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Predicate from "effect/Predicate";
 import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 
 import type { CredentialKind } from "./Credential.ts";
 import { failure } from "./Failure.ts";
@@ -25,6 +26,8 @@ const NotFoundType = {
 } as const;
 
 const notFoundTypes: ReadonlySet<string> = new Set(Object.values(NotFoundType));
+
+const decodeAnswer = Schema.decodeUnknownEffect(Sdk.ResolveAllResponse);
 
 /** The result of one answer. Any other SDK error means that the reference is invalid. */
 const resultOf = (response: Sdk.SdkResponse): Result.Result<string, ReferenceFailure> => {
@@ -50,6 +53,15 @@ export const resolve = <DesktopAuth>(
     client.secrets.resolveAll(requests.map((request) => describeReference(request.reference))),
   ).pipe(
     Timing.measure(Sdk.Step.ResolveAll, { references: requests.length }),
+    // The decode error can hold a secret of the answer, so the failure holds only a fixed text.
+    Effect.flatMap((answer) =>
+      Effect.mapError(decodeAnswer(answer), () =>
+        failure(
+          ProviderFailure.InvalidResponse,
+          "1Password returned an answer of an unknown form.",
+        ),
+      ),
+    ),
     Effect.flatMap(({ individualResponses }) =>
       Effect.forEach(requests, (request) => {
         const response = individualResponses[describeReference(request.reference)];

@@ -56,6 +56,23 @@ describe("Batch", () => {
     }),
   );
 
+  it.effect("fails with InvalidResponse when an answer does not match the SDK schema", () =>
+    Effect.gen(function* () {
+      const client: SdkClient = {
+        secrets: {
+          resolveAll: () =>
+            Promise.resolve({ individualResponses: { "op://app/postgres/url": { content: 42 } } }),
+        },
+      };
+
+      const error = yield* Effect.flip(
+        Batch.resolve(sdk, CredentialKind.ServiceAccount, client, [request("a", "url")]),
+      );
+
+      expect(error).toMatchObject({ reason: ProviderFailure.InvalidResponse });
+    }),
+  );
+
   it.effect("fails with InvalidResponse when a reference has no answer", () =>
     Effect.gen(function* () {
       const error = yield* Effect.flip(
