@@ -2,12 +2,16 @@
 // call to a real file.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
+import { CheckReport, InspectReport, SyncReport } from "@kynnyhsap/envi";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 
 import {
   ageCache,
   cacheFiles,
+  decodeJson,
+  ExportedVars,
+  exportJson,
   fixture,
   makeSandbox,
   providerCalls,
@@ -32,8 +36,10 @@ const fullBatch = [
 /** The batch of a run on a full cache: only the `.cache(false)` var calls the provider again. */
 const uncachedBatch = ["uncached"];
 
-const failedKeys = (stdout: string): ReadonlyArray<string> =>
-  JSON.parse(stdout).failures.map((failure: { key: string }) => failure.key);
+const failedKeys = (stdout: string) =>
+  Effect.map(decodeJson(CheckReport, stdout), (report) =>
+    report.failures.map((failure) => failure.key),
+  );
 
 layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
   describe.each(runtimes)("on %s", (runtime) => {
@@ -44,7 +50,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
         const first = yield* runCli(runtime, app, ["sync", ...args, "--json"], sandbox.env);
 
         expect(first.exitCode).toBe(0);
-        expect(JSON.parse(first.stdout).providers).toEqual([
+        expect((yield* decodeJson(SyncReport, first.stdout)).providers).toEqual([
           { provider: "file", secrets: 7, cached: 0, resolved: 7 },
         ]);
 
@@ -55,8 +61,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
 
         const inspect = yield* runCli(runtime, app, ["inspect", ...args, "--json"], sandbox.env);
 
-        const vars: ReadonlyArray<{ key: string; origin: string; value: string | null }> =
-          JSON.parse(inspect.stdout).vars;
+        const { vars } = yield* decodeJson(InspectReport, inspect.stdout);
 
         const origins = Object.fromEntries(vars.map((entry) => [entry.key, entry.origin]));
 
@@ -83,22 +88,23 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const sandbox = yield* makeSandbox("none");
-        const args = ["export", "--cache-dir", sandbox.cacheDirectory, "--format", "json"];
 
-        yield* runCli(runtime, app, args, sandbox.env);
+        yield* exportJson(runtime, app, sandbox);
 
         yield* fs.writeFileString(
           sandbox.secretsFile,
           JSON.stringify({ ...secrets, "token-development": "rotated-token-value" }),
         );
 
-        const cached = yield* runCli(runtime, app, args, sandbox.env);
-        const refreshed = yield* runCli(runtime, app, [...args, "--refresh"], sandbox.env);
-        const afterwards = yield* runCli(runtime, app, args, sandbox.env);
+        const cached = yield* exportJson(runtime, app, sandbox);
+        const refreshed = yield* exportJson(runtime, app, sandbox, {}, ["--refresh"]);
+        const afterwards = yield* exportJson(runtime, app, sandbox);
 
-        expect(JSON.parse(cached.stdout).API_TOKEN).toBe("dev-token-value");
-        expect(JSON.parse(refreshed.stdout).API_TOKEN).toBe("rotated-token-value");
-        expect(JSON.parse(afterwards.stdout).API_TOKEN).toBe("rotated-token-value");
+        const tokens = yield* Effect.forEach([cached, refreshed, afterwards], (result) =>
+          Effect.map(decodeJson(ExportedVars, result.stdout), (vars) => vars["API_TOKEN"]),
+        );
+
+        expect(tokens).toEqual(["dev-token-value", "rotated-token-value", "rotated-token-value"]);
       }),
     );
 
@@ -192,12 +198,12 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
 
         // A var without an entry has no fallback. A cached `NotFound` serves `.optional()` and
         // `.default()` as a stale entry too.
-        expect(failedKeys(stale.stdout)).toEqual(["UNCACHED"]);
+        expect(yield* failedKeys(stale.stdout)).toEqual(["UNCACHED"]);
         expect(stale.stderr).toContain("expired cache entry");
         expect(stale.stderr).toContain("file://token-development");
-        expect(failedKeys(strict.stdout)).toContain("API_TOKEN");
-        expect(failedKeys(strict.stdout)).toContain("DATABASE_URL");
-        expect(failedKeys(viaVariable.stdout)).toContain("API_TOKEN");
+        expect(yield* failedKeys(strict.stdout)).toContain("API_TOKEN");
+        expect(yield* failedKeys(strict.stdout)).toContain("DATABASE_URL");
+        expect(yield* failedKeys(viaVariable.stdout)).toContain("API_TOKEN");
       }),
     );
 

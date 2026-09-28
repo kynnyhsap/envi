@@ -1,12 +1,12 @@
 import * as NodePath from "@effect/platform-node-shared/NodePath";
 import { describe, expect, it } from "@effect/vitest";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as CacheSettings from "./CacheSettings.ts";
 import { SettingsError } from "./Errors.ts";
+import { withEnv } from "./fixtures/Support.ts";
 
 type Environment = Readonly<Record<string, string>>;
 
@@ -16,7 +16,7 @@ const selectWith = (
   environment: Environment,
 ) =>
   CacheSettings.select({ ...CacheSettings.noOverrides, ...overrides }, configKey).pipe(
-    Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(environment))),
+    withEnv(environment),
     Effect.provide(NodePath.layer),
   );
 

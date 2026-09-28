@@ -2,15 +2,26 @@
 // codes, and the real files of each command.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
+import {
+  CacheClearReport,
+  CacheListReport,
+  CachePathReport,
+  CheckReport,
+  InspectReport,
+  SyncReport,
+} from "@kynnyhsap/envi";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import {
   cacheFiles,
+  decodeJson,
   docsOf,
+  ExportedVars,
   fixture,
+  gitInit,
+  hiddenSecrets,
   makeSandbox,
   providerCalls,
   providerInteractive,
@@ -24,9 +35,6 @@ const app = fixture("cached");
 
 const workspace = fixture("workspace");
 
-/** The secret values that a redacted output must not hold. `public-name` is not redacted. */
-const hidden = [secrets["token-development"], secrets["db-password"], "line-one", "postgres://"];
-
 /** Runs a command on the cache of the sandbox. A flag follows the name of its command. */
 const cli = (runtime: string, sandbox: Sandbox, args: ReadonlyArray<string>, cwd = app) => {
   const name = args[0] === "cache" ? 2 : 1;
@@ -38,13 +46,6 @@ const cli = (runtime: string, sandbox: Sandbox, args: ReadonlyArray<string>, cwd
     sandbox.env,
   );
 };
-
-const git = (cwd: string, args: ReadonlyArray<string>) =>
-  Effect.flatMap(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
-    spawner.exitCode(
-      ChildProcess.make("git", args, { cwd, stdout: "ignore", stderr: "ignore", stdin: "ignore" }),
-    ),
-  );
 
 layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) => {
   describe.each(runtimes)("on %s", (runtime) => {
@@ -59,7 +60,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           expect(result.stdout).toContain("file: 7 secrets, 0 cached, 7 resolved");
           expect((yield* cacheFiles(sandbox.cacheDirectory)).length).toBe(7);
 
-          for (const secret of hidden) {
+          for (const secret of hiddenSecrets) {
             expect(result.stdout + result.stderr).not.toContain(secret);
           }
         }),
@@ -76,7 +77,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
             workspace,
           );
 
-          const report = JSON.parse(result.stdout);
+          const report = yield* decodeJson(SyncReport, result.stdout);
 
           expect(result.exitCode).toBe(0);
           expect(report.configs).toBe(2);
@@ -98,7 +99,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const json = yield* cli(runtime, inCi, ["sync", "--json"]);
 
           expect(text.stdout).toContain("The cache is off");
-          expect(JSON.parse(json.stdout).cache).toBe(false);
+          expect((yield* decodeJson(SyncReport, json.stdout)).cache).toBe(false);
           expect(yield* cacheFiles(sandbox.cacheDirectory)).toEqual([]);
         }),
       );
@@ -108,7 +109,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const sandbox = yield* makeSandbox("none");
           const result = yield* cli(runtime, sandbox, ["sync", "--stage", "production", "--json"]);
 
-          expect(JSON.parse(result.stdout).stage).toBe("production");
+          expect((yield* decodeJson(SyncReport, result.stdout)).stage).toBe("production");
           expect((yield* providerCalls(sandbox))[0]).toContain("token-production");
         }),
       );
@@ -124,7 +125,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const result = yield* cli(runtime, sandbox, ["sync", "--json"]);
 
           expect(result.exitCode).toBe(1);
-          expect(JSON.parse(result.stdout).failures).toEqual([
+          expect((yield* decodeJson(SyncReport, result.stdout)).failures).toEqual([
             {
               key: "API_TOKEN",
               config: `${app}/envi.config.ts`,
@@ -152,7 +153,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           expect(result.stdout).toContain("✓ OPTIONAL");
           expect(result.stdout).not.toContain("✗");
 
-          for (const secret of [...hidden, secrets["public-name"]]) {
+          for (const secret of [...hiddenSecrets, secrets["public-name"]]) {
             expect(result.stdout).not.toContain(secret);
           }
         }),
@@ -169,7 +170,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
             sandbox.env,
           );
 
-          const report = JSON.parse(result.stdout);
+          const report = yield* decodeJson(CheckReport, result.stdout);
 
           expect(result.exitCode).toBe(1);
           expect(report.passed).toEqual(["GOOD_PORT"]);
@@ -200,7 +201,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
             /DATABASE_URL\s+custom\s+custom\(database-url\)\s+<redacted>/u,
           );
 
-          for (const secret of hidden) {
+          for (const secret of hiddenSecrets) {
             expect(result.stdout).not.toContain(secret);
           }
         }),
@@ -212,9 +213,8 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const shown = yield* cli(runtime, sandbox, ["inspect", "--no-redact"]);
           const json = yield* cli(runtime, sandbox, ["inspect", "--json"]);
 
-          const token = JSON.parse(json.stdout).vars.find(
-            (entry: { key: string }) => entry.key === "API_TOKEN",
-          );
+          const { vars } = yield* decodeJson(InspectReport, json.stdout);
+          const token = vars.find((entry) => entry.key === "API_TOKEN");
 
           expect(shown.stdout).toContain(secrets["token-development"]);
           expect(token).toMatchObject({
@@ -251,8 +251,10 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const byFormat = yield* cli(runtime, sandbox, ["export", "--format", "json"]);
           const byFlag = yield* cli(runtime, sandbox, ["export", "--json"]);
 
-          expect(JSON.parse(byFormat.stdout)).toEqual(JSON.parse(byFlag.stdout));
-          expect(JSON.parse(byFormat.stdout)).toMatchObject({
+          const exported = yield* decodeJson(ExportedVars, byFormat.stdout);
+
+          expect(yield* decodeJson(ExportedVars, byFlag.stdout)).toEqual(exported);
+          expect(exported).toMatchObject({
             PORT: "3000",
             PRIVATE_KEY: secrets["private-key"],
             WITH_DEFAULT: "fallback",
@@ -268,7 +270,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           expect(result.stdout).toContain("PUBLIC_NAME=public-app-name");
           expect(result.stdout).toContain("PORT=3000");
 
-          for (const secret of hidden) {
+          for (const secret of hiddenSecrets) {
             expect(result.stdout).not.toContain(secret);
           }
         }),
@@ -282,7 +284,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const project = path.join(sandbox.directory, "project");
 
           yield* fs.makeDirectory(project);
-          yield* git(project, ["init", "--quiet"]);
+          yield* gitInit(project);
 
           const tracked = path.join(project, ".env.production");
           const written = yield* cli(runtime, sandbox, ["export", "--output", tracked]);
@@ -346,7 +348,9 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           });
 
           expect(byFlag.stdout.trim()).toBe(sandbox.cacheDirectory);
-          expect(JSON.parse(byVariable.stdout)).toEqual({ directory: sandbox.cacheDirectory });
+          expect(yield* decodeJson(CachePathReport, byVariable.stdout)).toEqual({
+            directory: sandbox.cacheDirectory,
+          });
           expect(inCi.stdout.trim()).toBe(sandbox.cacheDirectory);
         }),
       );
@@ -367,14 +371,14 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           expect(list.stdout).toContain(`Directory: ${sandbox.cacheDirectory}`);
           expect(list.stdout).toContain("file://token-development");
           expect(list.stdout).toContain("custom(database-url)");
-          expect(JSON.parse(json.stdout).entries.length).toBe(7);
+          expect((yield* decodeJson(CacheListReport, json.stdout)).entries.length).toBe(7);
 
-          for (const secret of [...hidden, secrets["public-name"]]) {
+          for (const secret of [...hiddenSecrets, secrets["public-name"]]) {
             expect(list.stdout + json.stdout).not.toContain(secret);
           }
 
-          expect(JSON.parse(cleared.stdout)).toMatchObject({ removed: 7 });
-          expect(JSON.parse(after.stdout).entries).toEqual([]);
+          expect(yield* decodeJson(CacheClearReport, cleared.stdout)).toEqual({ removed: 7 });
+          expect((yield* decodeJson(CacheListReport, after.stdout)).entries).toEqual([]);
           expect(yield* cacheFiles(sandbox.cacheDirectory)).toEqual([]);
         }),
       );
@@ -389,8 +393,8 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const list = yield* cli(runtime, inCi, ["cache", "list", "--json"]);
           const cleared = yield* cli(runtime, inCi, ["cache", "clear", "--json"]);
 
-          expect(JSON.parse(list.stdout).entries.length).toBe(7);
-          expect(JSON.parse(cleared.stdout)).toMatchObject({ removed: 7 });
+          expect((yield* decodeJson(CacheListReport, list.stdout)).entries.length).toBe(7);
+          expect(yield* decodeJson(CacheClearReport, cleared.stdout)).toEqual({ removed: 7 });
           expect(yield* cacheFiles(sandbox.cacheDirectory)).toEqual([]);
         }),
       );

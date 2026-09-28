@@ -1,13 +1,9 @@
-import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
-import * as NodePath from "@effect/platform-node-shared/NodePath";
 import { describe, expect, it } from "@effect/vitest";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
-import * as Redacted from "effect/Redacted";
 
 import * as Cache from "./Cache.ts";
 import * as CacheSettings from "./CacheSettings.ts";
@@ -16,20 +12,15 @@ import * as DefaultCache from "./DefaultCache.ts";
 import * as Envi from "./Envi.ts";
 import { CacheError, CacheFailure } from "./Errors.ts";
 import { EncryptionKey } from "./FileCache.ts";
+import { cacheRecord, nodePlatform, withEnv } from "./fixtures/Support.ts";
 import { mem, memoryProvider } from "./Memory.ts";
 
-const record: Cache.CacheRecord = {
-  provider: "memory",
-  reference: "a",
-  value: Option.some(Redacted.make("value")),
-  resolvedAt: 0,
-};
+const record = cacheRecord("value");
 
 describe("DefaultCache", () => {
   describe("without an encryption key", () => {
-    const noKey = Layer.mergeAll(
-      NodeFileSystem.layer,
-      NodePath.layer,
+    const noKey = Layer.merge(
+      nodePlatform,
       Layer.succeed(
         EncryptionKey,
         Effect.fail(new CacheError({ reason: CacheFailure.KeyUnavailable, detail: "No key." })),
@@ -60,7 +51,7 @@ describe("DefaultCache", () => {
           return yield* cache.getMany(["a"]);
         }).pipe(
           Effect.provide(DefaultCache.layer(overrides, configKey)),
-          Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ HOME: directory }))),
+          withEnv({ HOME: directory }),
           Effect.provide(Logger.layer([logger])),
         );
 
@@ -138,7 +129,7 @@ describe("DefaultCache", () => {
           const report = yield* Envi.Envi.use((envi) => envi.sync(config)).pipe(
             Effect.provide(Envi.layer()),
             Effect.provide(DefaultCache.layer(CacheSettings.noOverrides, configKey)),
-            Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({}))),
+            withEnv({}),
             Effect.provide(Logger.layer([])),
           );
 

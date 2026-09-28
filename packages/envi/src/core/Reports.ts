@@ -129,6 +129,13 @@ export const ErrorReport = Schema.Struct({
 
 export type ErrorReport = typeof ErrorReport.Type;
 
+/** The directory of the cache. `null` when the cache has no directory. */
+export const CachePathReport = Schema.Struct({
+  directory: Schema.NullOr(Schema.String),
+});
+
+export type CachePathReport = typeof CachePathReport.Type;
+
 export const CacheClearReport = Schema.Struct({
   removed: Schema.Number,
 });

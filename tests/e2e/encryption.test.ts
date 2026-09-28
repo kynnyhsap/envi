@@ -9,10 +9,13 @@ import * as FileSystem from "effect/FileSystem";
 
 import {
   cacheFiles,
+  decodeJson,
+  ExportedVars,
+  exportJson,
   fixture,
+  hiddenSecrets,
   makeSandbox,
   providerCalls,
-  runCli,
   runtimes,
   type Sandbox,
   secrets,
@@ -24,17 +27,9 @@ const uncachedBatch = ["uncached"];
 
 const tokenReference = "file://token-development";
 
-const exportJson = (runtime: string, sandbox: Sandbox) =>
-  runCli(
-    runtime,
-    app,
-    ["export", "--cache-dir", sandbox.cacheDirectory, "--format", "json"],
-    sandbox.env,
-  );
-
 /** Fills the cache, and returns the entry file of the token. */
 const fillCache = Effect.fn("fillCache")(function* (runtime: string, sandbox: Sandbox) {
-  const first = yield* exportJson(runtime, sandbox);
+  const first = yield* exportJson(runtime, app, sandbox);
 
   expect(first.exitCode).toBe(0);
 
@@ -60,19 +55,16 @@ describe.skipIf(!hasKeychain)("envi encrypted cache", () => {
           expect(files.every((entry) => entry.encryption === "aes-256-gcm")).toBe(true);
           expect(files.every((entry) => entry.mode === 0o600)).toBe(true);
 
-          for (const secret of [
-            secrets["token-development"],
-            secrets["db-password"],
-            "line-one",
-            "postgres://",
-          ]) {
+          for (const secret of hiddenSecrets) {
             expect(everything).not.toContain(secret);
           }
 
-          const second = yield* exportJson(runtime, sandbox);
+          const second = yield* exportJson(runtime, app, sandbox);
 
-          expect(JSON.parse(second.stdout).API_TOKEN).toBe(secrets["token-development"]);
-          expect(JSON.parse(second.stdout).PRIVATE_KEY).toBe(secrets["private-key"]);
+          expect(yield* decodeJson(ExportedVars, second.stdout)).toMatchObject({
+            API_TOKEN: secrets["token-development"],
+            PRIVATE_KEY: secrets["private-key"],
+          });
           expect((yield* providerCalls(sandbox))[1]).toEqual(uncachedBatch);
         }),
       );
@@ -89,9 +81,12 @@ describe.skipIf(!hasKeychain)("envi encrypted cache", () => {
             JSON.stringify({ ...metadata, encryption: "none", value: "attacker-value" }),
           );
 
-          const result = yield* exportJson(runtime, sandbox);
+          const result = yield* exportJson(runtime, app, sandbox);
 
-          expect(JSON.parse(result.stdout).API_TOKEN).toBe(secrets["token-development"]);
+          expect(yield* decodeJson(ExportedVars, result.stdout)).toHaveProperty(
+            "API_TOKEN",
+            secrets["token-development"],
+          );
           expect(result.stdout).not.toContain("attacker-value");
         }),
       );
@@ -100,14 +95,14 @@ describe.skipIf(!hasKeychain)("envi encrypted cache", () => {
         Effect.gen(function* () {
           const sandbox = yield* makeSandbox("none");
 
-          yield* exportJson(runtime, sandbox);
+          yield* exportJson(runtime, app, sandbox);
 
           const encrypted = {
             ...sandbox,
             env: { ...sandbox.env, ENVI_E2E_ENCRYPTION: "keychain" },
           };
 
-          const result = yield* exportJson(runtime, encrypted);
+          const result = yield* exportJson(runtime, app, encrypted);
           const files = yield* cacheFiles(sandbox.cacheDirectory);
 
           expect(result.exitCode).toBe(0);

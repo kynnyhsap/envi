@@ -1,16 +1,12 @@
-import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
-import * as NodePath from "@effect/platform-node-shared/NodePath";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
+import { nodePlatform } from "./core/fixtures/Support.ts";
 import * as Package from "./core/Package.ts";
 import { findLocalBin } from "./delegate.ts";
-
-const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 
 /**
  * A project with a local installation of Envi under the name from its manifest, which can hold a
@@ -42,6 +38,6 @@ describe("findLocalBin", () => {
       const project = yield* makeProject;
 
       expect(yield* findLocalBin(project.nested, project.bin)).toEqual(Option.none());
-    }).pipe(Effect.provide(platform)),
+    }).pipe(Effect.provide(nodePlatform)),
   );
 });

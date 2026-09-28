@@ -23,6 +23,16 @@ export const runtimes = ["node", "bun"] as const;
 export const docsOf = (section: string): string =>
   `https://github.com/kynnyhsap/envi#error-${section}`;
 
+/**
+ * Decodes the JSON output of a command with its schema, such as a report schema of Envi.
+ * A missing or wrong field fails the test with the path of the field.
+ */
+export const decodeJson = <S extends Schema.Top>(schema: S, text: string) =>
+  Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(text);
+
+/** The output of `export --format json`: each var and its raw value. */
+export const ExportedVars = Schema.Record(Schema.String, Schema.String);
+
 /** The fake secrets of the file provider. */
 export const secrets = {
   "token-development": "dev-token-value",
@@ -34,6 +44,14 @@ export const secrets = {
   "db-password": "db-pass-value",
   shared: "shared-value",
 } as const;
+
+/** The secret values that a redacted output must not hold. `public-name` is not redacted. */
+export const hiddenSecrets = [
+  secrets["token-development"],
+  secrets["db-password"],
+  "line-one",
+  "postgres://",
+];
 
 /**
  * Variables of the developer machine that must not reach a test run. The fixtures live in the
@@ -174,3 +192,21 @@ export const runCli = (
   args: ReadonlyArray<string>,
   env: Readonly<Record<string, string | undefined>> = {},
 ) => runProcess(runtime, [cliPath, ...args], cwd, env);
+
+/** Runs `export --format json` of a config on the cache of the sandbox. */
+export const exportJson = (
+  runtime: string,
+  cwd: string,
+  sandbox: Sandbox,
+  env: Readonly<Record<string, string>> = {},
+  flags: ReadonlyArray<string> = [],
+) =>
+  runCli(
+    runtime,
+    cwd,
+    ["export", "--cache-dir", sandbox.cacheDirectory, "--format", "json", ...flags],
+    { ...sandbox.env, ...env },
+  );
+
+/** Makes a folder a git repository, so that the config search follows its ignore rules. */
+export const gitInit = (cwd: string) => runProcess("git", ["init", "--quiet"], cwd);

@@ -1,15 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import { SettingsError } from "./Errors.ts";
+import { withEnv } from "./fixtures/Support.ts";
 import * as ResolveSettings from "./ResolveSettings.ts";
 
 const none = Option.none<boolean>();
-
-const withEnv = (env: Readonly<Record<string, string>>) =>
-  Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(env)));
 
 describe("ResolveSettings", () => {
   it.effect.each([

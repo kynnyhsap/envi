@@ -2,16 +2,14 @@
 // when a setting or a failure forbids it. Each case syncs while the provider is up, lets the
 // entries expire, and then checks while the provider fails.
 import { describe, expect, it } from "@effect/vitest";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as TestClock from "effect/testing/TestClock";
 
-import * as Cache from "./Cache.ts";
 import { type Config, defineConfig } from "./Config.ts";
 import * as Envi from "./Envi.ts";
 import { ProviderError, ProviderFailure, ReferenceFailure } from "./Errors.ts";
+import { enviLayer, withEnv } from "./fixtures/Support.ts";
 import { mem, memoryProviderId } from "./Memory.ts";
 import * as Provider from "./Provider.ts";
 
@@ -91,10 +89,7 @@ const checkAfterExpiry = (
     state.mode = mode;
 
     return yield* envi.check(config, { strict: options.strict });
-  }).pipe(
-    Effect.provide(Layer.provide(Envi.layer(), Cache.layerMemory)),
-    Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(options.env ?? {}))),
-  );
+  }).pipe(Effect.provide(enviLayer()), withEnv(options.env ?? {}));
 
 const plain = (provider: Provider.Provider) =>
   defineConfig({ providers: [provider], vars: { A: mem("a") } });
