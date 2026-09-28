@@ -3,6 +3,9 @@ import {
   type CacheClearReport,
   type CacheListReport,
   type CheckReport,
+  type DocsListReport,
+  type DocsPage,
+  type DocsSearchReport,
   type InspectReport,
   type SyncReport,
   redactedText,
@@ -94,3 +97,19 @@ export const cacheList = (report: CacheListReport): string =>
 /** The text of `envi cache clear`. */
 export const cacheClear = (report: CacheClearReport): string =>
   lines([`Removed ${report.removed} cache ${report.removed === 1 ? "entry" : "entries"}.`]);
+
+/** Each page and its description, with a line that says how to read one. */
+const docsPages = (pages: ReadonlyArray<DocsPage>): ReadonlyArray<string> => [
+  ...table([["PAGE", "DESCRIPTION"], ...pages.map((page) => [page.page, page.description])]),
+  "Read a page with `envi docs show <page>`.",
+];
+
+/** The text of `envi docs list`. */
+export const docsList = (report: DocsListReport): string =>
+  lines([`Folder: ${report.folder}`, ...docsPages(report.pages)]);
+
+/** The text of `envi docs search`. */
+export const docsSearch = (report: DocsSearchReport): string =>
+  report.pages.length === 0
+    ? lines([`No page holds every word of "${report.query}". Run \`envi docs list\`.`])
+    : lines(docsPages(report.pages));

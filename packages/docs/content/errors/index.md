@@ -35,6 +35,9 @@ as one JSON document on stdout:
 }
 ```
 
+To read the page of an error offline, pass its docs link to `envi docs show`. The command prints
+the page of the installed version.
+
 The SDK fails with the same tagged errors. Each error has the getters `summary`, `hint`, and `docs`.
 
 ## Every error
@@ -66,6 +69,8 @@ The SDK fails with the same tagged errors. Each error has the getters `summary`,
 | [RunError CommandNotExecutable](./run-command-not-executable.md)           | The command of `envi run` exists, but the OS does not allow Envi to run it.           |
 | [RunError SpawnFailed](./run-spawn-failed.md)                              | The OS failed to start the command of `envi run`.                                     |
 | [RunError KilledBySignal](./run-killed-by-signal.md)                       | A signal other than `SIGHUP`, `SIGINT`, or `SIGTERM` ended the command of `envi run`. |
+| [DocsError NotFound](./docs-not-found.md)                                  | `envi docs show` or `envi docs path` got a name that no docs page has.                |
+| [DocsError Unreadable](./docs-unreadable.md)                               | Envi cannot read its docs folder, or a page has no valid frontmatter.                 |
 | [ConfigLoadError NotFound](./config-load-not-found.md)                     | An explicit config path does not exist.                                               |
 | [ConfigLoadError NoConfig](./config-load-no-config.md)                     | The config search found no config file.                                               |
 | [ConfigLoadError ManyConfigs](./config-load-many-configs.md)               | `run`, `check`, `inspect`, and `export` use one config.                               |

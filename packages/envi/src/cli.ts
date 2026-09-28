@@ -16,6 +16,7 @@ import * as CacheSettings from "./core/CacheSettings.ts";
 import type * as Config from "./core/Config.ts";
 import * as ConfigLoader from "./core/ConfigLoader.ts";
 import * as DefaultCache from "./core/DefaultCache.ts";
+import * as Docs from "./core/Docs.ts";
 import * as Envi from "./core/Envi.ts";
 import {
   type AnyEnviError,
@@ -32,6 +33,10 @@ import {
   CacheListReport,
   CachePathReport,
   CheckReport,
+  DocsListReport,
+  DocsPageReport,
+  DocsPathReport,
+  DocsSearchReport,
   ErrorReport,
   ExportFormat,
   InspectReport,
@@ -62,6 +67,11 @@ const CommandName = {
   CachePath: "path",
   CacheList: "list",
   CacheClear: "clear",
+  Docs: "docs",
+  DocsList: "list",
+  DocsShow: "show",
+  DocsSearch: "search",
+  DocsPath: "path",
 } as const;
 
 /** The flags that `loggerLayer` and `report` read from the arguments before the CLI parses them. */
@@ -437,9 +447,93 @@ const cache = Command.make(CommandName.Cache).pipe(
   Command.withSubcommands([cachePath, cacheList, cacheClear]),
 );
 
+/** The docs folder of this Envi: `docs` next to `dist` in the package, and next to `src` in the repo. */
+const docsFolder = new URL("../docs/", import.meta.url);
+
+const docsLayer = Layer.unwrap(
+  Effect.map(
+    Effect.flatMap(Path.Path, (path) => Effect.orDie(path.fromFileUrl(docsFolder))),
+    Docs.layer,
+  ),
+);
+
+const docsList = Command.make(CommandName.DocsList, { json: jsonFlag }, (flags) =>
+  Effect.gen(function* () {
+    const docs = yield* Docs.Docs;
+    const pages = yield* docs.list;
+
+    yield* print(flags.json, DocsListReport, { folder: docs.folder, pages }, Render.docsList);
+  }).pipe(measureCommand(CommandName.Docs, CommandName.DocsList)),
+).pipe(Command.withDescription("List every docs page with its description."));
+
+const pageArgument = Argument.String("page").pipe(
+  Argument.withDescription(
+    "A page name such as errors/vars, its file name, or the docs link of an error.",
+  ),
+);
+
+const docsShow = Command.make(
+  CommandName.DocsShow,
+  { page: pageArgument, json: jsonFlag },
+  (input) =>
+    Effect.gen(function* () {
+      const page = yield* Docs.Docs.use((docs) => docs.show(input.page));
+
+      yield* print(input.json, DocsPageReport, page, (report) => report.text);
+    }).pipe(measureCommand(CommandName.Docs, CommandName.DocsShow)),
+).pipe(Command.withDescription("Print one docs page as Markdown."));
+
+const docsSearch = Command.make(
+  CommandName.DocsSearch,
+  {
+    words: Argument.String("words").pipe(
+      Argument.withDescription("The words that each page must hold."),
+      Argument.variadic({ min: 1 }),
+    ),
+    json: jsonFlag,
+  },
+  (input) =>
+    Effect.gen(function* () {
+      const query = input.words.join(" ");
+      const pages = yield* Docs.Docs.use((docs) => docs.search(query));
+
+      yield* print(input.json, DocsSearchReport, { query, pages }, Render.docsSearch);
+    }).pipe(measureCommand(CommandName.Docs, CommandName.DocsSearch)),
+).pipe(Command.withDescription("Find the docs pages that hold every word."));
+
+const docsPath = Command.make(
+  CommandName.DocsPath,
+  { page: pageArgument.pipe(Argument.optional), json: jsonFlag },
+  (input) =>
+    Effect.gen(function* () {
+      const docs = yield* Docs.Docs;
+
+      const path = yield* Option.match(input.page, {
+        onNone: () => Effect.succeed(docs.folder),
+        onSome: (page) => Effect.map(docs.show(page), (report) => report.path),
+      });
+
+      yield* print(input.json, DocsPathReport, { path }, (report) => report.path);
+    }).pipe(measureCommand(CommandName.Docs, CommandName.DocsPath)),
+).pipe(Command.withDescription("Print the docs folder, or the file of one page."));
+
+const docs = Command.make(CommandName.Docs, {}, () =>
+  Effect.gen(function* () {
+    const index = yield* Docs.Docs.use((service) => service.show(Docs.indexPage));
+
+    yield* writeStdout(index.text);
+  }).pipe(measureCommand(CommandName.Docs)),
+).pipe(
+  Command.withDescription(
+    "Read the docs of this Envi offline. Without a subcommand, print the index.",
+  ),
+  Command.withSubcommands([docsList, docsShow, docsSearch, docsPath]),
+  Command.provide(docsLayer),
+);
+
 /** The `envi` command with all subcommands. */
 const command = root.pipe(
-  Command.withSubcommands([run, sync, inspect, check, exportCommand, cache]),
+  Command.withSubcommands([run, sync, inspect, check, exportCommand, cache, docs]),
 );
 
 /** The arguments of Envi. The arguments after `--` belong to the child of `run`. */

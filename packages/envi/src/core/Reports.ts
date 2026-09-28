@@ -145,6 +145,50 @@ export const CacheClearReport = Schema.Struct({
 
 export type CacheClearReport = typeof CacheClearReport.Type;
 
+/** One docs page. `page` is its path in the docs folder without `.md`, such as `errors/vars`. */
+export const DocsPage = Schema.Struct({
+  page: Schema.String,
+  title: Schema.String,
+  description: Schema.String,
+});
+
+export type DocsPage = typeof DocsPage.Type;
+
+/** Every docs page, in the order of its path. `folder` is the docs folder of this Envi. */
+export const DocsListReport = Schema.Struct({
+  folder: Schema.String,
+  pages: Schema.Array(DocsPage),
+});
+
+export type DocsListReport = typeof DocsListReport.Type;
+
+/**
+ * The pages that hold every word of the query. The pages with every word in the title come first,
+ * then the pages with every word in the description.
+ */
+export const DocsSearchReport = Schema.Struct({
+  query: Schema.String,
+  pages: Schema.Array(DocsPage),
+});
+
+export type DocsSearchReport = typeof DocsSearchReport.Type;
+
+/** One docs page with its file and its Markdown text from the first heading. */
+export const DocsPageReport = Schema.Struct({
+  ...DocsPage.fields,
+  path: Schema.String,
+  text: Schema.String,
+});
+
+export type DocsPageReport = typeof DocsPageReport.Type;
+
+/** The docs folder, or the file of one page. */
+export const DocsPathReport = Schema.Struct({
+  path: Schema.String,
+});
+
+export type DocsPathReport = typeof DocsPathReport.Type;
+
 /** The formats of `export`. */
 export const ExportFormat = {
   Dotenv: "dotenv",

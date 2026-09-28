@@ -10,7 +10,7 @@ Envi is an env manager for TypeScript projects. A project defines its env in a t
 injects the values into a runtime. It works as a CLI (`envi`) and as an SDK.
 
 These docs match the version of Envi that ships them. The npm package holds them in its `docs`
-folder. Read the smallest page that answers the task.
+folder, and `envi docs` reads them offline. Read the smallest page that answers the task.
 
 ## Pages by task
 
@@ -24,6 +24,7 @@ folder. Read the smallest page that answers the task.
 | Find a command or a flag                                  | [CLI](./cli/index.md)                                    |
 | Understand which config a command uses                    | [Config search](./cli/config-search.md)                  |
 | Run a command with the vars                               | [envi run](./cli/run.md)                                 |
+| Read these docs offline, or find a page                   | [envi docs](./cli/docs.md)                               |
 | Find an environment variable or the order of the settings | [Settings](./settings.md)                                |
 | Understand the cache, its expiry, and its encryption      | [Cache](./cache.md)                                      |
 | Use 1Password references, tokens, or the desktop app      | [1Password](./providers/1password.md)                    |

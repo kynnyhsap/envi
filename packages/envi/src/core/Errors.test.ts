@@ -15,6 +15,8 @@ import {
   CustomReason,
   DecodeError,
   DeriveError,
+  DocsError,
+  DocsFailure,
   ExportError,
   ExportFileError,
   ExportFileFailure,
@@ -50,6 +52,7 @@ const samples: ReadonlyArray<AnyEnviError> = [
   new ExportFileError({ reason: ExportFileFailure.WriteFailed, path: "/repo/.env" }),
   new SettingsError({ name: "ENVI_STRICT", expected: "true or false" }),
   new RunError({ reason: RunFailure.CommandNotFound, command: "missing" }),
+  new DocsError({ reason: DocsFailure.NotFound, page: "errors/missing" }),
   new ConfigLoadError({
     reason: ConfigLoadFailure.NotFound,
     path: "/repo/envi.config.ts",
