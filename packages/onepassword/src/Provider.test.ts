@@ -6,7 +6,9 @@ import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
 import * as TestClock from "effect/testing/TestClock";
 
-import { makeProvider, type Sdk, tokenVariables } from "./Provider.ts";
+import { tokenVariables } from "./Credential.ts";
+import { makeProvider } from "./Provider.ts";
+import type { Sdk } from "./Sdk.ts";
 
 class FakeDesktopAuth {
   readonly accountName: string;
@@ -176,6 +178,20 @@ describe("onePasswordProvider", () => {
         ENVI_PROVIDER_ONEPASSWORD_SERVICE_ACCOUNT_TOKEN: "ops_envi",
       }),
     ),
+  );
+
+  it.effect("keeps the client of a token apart from the client of an account", () =>
+    Effect.gen(function* () {
+      const sdk = fakeSdk(secrets);
+      const provider = makeProvider({ account: "service-account" }, Effect.succeed(sdk));
+
+      yield* provider
+        .resolveMany(requests, { interactive: false })
+        .pipe(withEnv({ OP_SERVICE_ACCOUNT_TOKEN: "ops_fake" }));
+      yield* provider.resolveMany(requests, { interactive: true }).pipe(withEnv({}));
+
+      expect(sdk.connections).toEqual(["ops_fake", new FakeDesktopAuth("service-account")]);
+    }),
   );
 
   it.effect("treats an empty token as absent and falls back to the next source", () =>
