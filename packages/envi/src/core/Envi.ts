@@ -213,164 +213,172 @@ const activeWithoutFiles: Cache.StatusInterface = {
   active: Effect.succeed(true),
 };
 
-const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
-  const cache = yield* Cache.Cache;
+/** The cache and the settings of one Envi service, and what its operations need. */
+interface Runtime {
+  readonly cache: Cache.Interface;
+  readonly status: Cache.StatusInterface;
+  readonly layerOptions: LayerOptions;
+  readonly cacheOverrides: CacheSettings.Overrides;
+}
 
-  const status = Option.getOrElse(
-    yield* Effect.serviceOption(Cache.Status),
-    () => activeWithoutFiles,
+/** The providers of a config, or the providers of the layer options that replace them. */
+const providersOf = (runtime: Runtime, config: Config.Config) =>
+  runtime.layerOptions.providers ?? config.providers;
+
+const policyOf = (runtime: Runtime, config: Config.Config) =>
+  CacheSettings.selectPolicy(runtime.cacheOverrides, config.cache);
+
+const resolverOptions = Effect.fn("Envi.resolverOptions")(function* (
+  runtime: Runtime,
+  policy: CacheSettings.Policy,
+  config: Config.Config,
+  stage: string,
+  options: ResolveOptions | undefined,
+) {
+  const { strict, interactive } = yield* ResolveSettings.select(
+    {
+      callStrict: Option.fromUndefinedOr(options?.strict),
+      strict: Option.fromUndefinedOr(runtime.layerOptions.strict),
+      interactive: Option.fromUndefinedOr(runtime.layerOptions.interactive),
+    },
+    config.strict,
   );
 
-  const override = Option.fromUndefinedOr(layerOptions.providers);
-  const cacheOverrides = layerOptions.cache ?? CacheSettings.noOverrides;
+  return {
+    stage,
+    refresh: options?.refresh ?? false,
+    strict,
+    interactive,
+    ttl: policy.ttl,
+    maxStale: policy.maxStale,
+  } satisfies Resolver.Options;
+});
 
-  const policyOf = (config: Config.Config) =>
-    CacheSettings.selectPolicy(cacheOverrides, config.cache);
+const resolveWith = Effect.fn("Envi.resolveWith")(function* (
+  runtime: Runtime,
+  config: Config.Config,
+  stage: string,
+  providers: ReadonlyArray<Provider.Provider>,
+  sources: Readonly<Record<string, Source.AnySource>>,
+  options: ResolveOptions | undefined,
+) {
+  const policy = yield* policyOf(runtime, config);
+  const settings = yield* resolverOptions(runtime, policy, config, stage, options);
 
-  const resolverOptions = Effect.fn("Envi.resolverOptions")(function* (
-    policy: CacheSettings.Policy,
-    config: Config.Config,
-    stage: string,
-    options: ResolveOptions | undefined,
-  ) {
-    const { strict, interactive } = yield* ResolveSettings.select(
-      {
-        callStrict: Option.fromUndefinedOr(options?.strict),
-        strict: Option.fromUndefinedOr(layerOptions.strict),
-        interactive: Option.fromUndefinedOr(layerOptions.interactive),
-      },
-      config.strict,
-    );
+  return yield* Resolver.resolve(sources, settings).pipe(
+    Effect.provide(Provider.layer(providers)),
+    Effect.provideService(Cache.Cache, policy.enabled ? runtime.cache : Cache.none),
+  );
+});
 
-    return {
+const resolveVars = Effect.fn("Envi.resolveVars")(function* (
+  runtime: Runtime,
+  config: Config.Config,
+  options: LoadOptions<string> | undefined,
+) {
+  const stage = yield* stageOf(config, options?.stage);
+  const sources = yield* Config.varsFor(config, stage);
+
+  const resolution = yield* resolveWith(
+    runtime,
+    config,
+    stage,
+    providersOf(runtime, config),
+    sources,
+    options,
+  );
+
+  return { stage, sources, resolution };
+});
+
+/** Resolves every var of a config, and fails with a `VarsError` that lists each failed var. */
+const resolveAll = (
+  runtime: Runtime,
+  config: Config.Config,
+  options: LoadOptions<string> | undefined,
+) =>
+  Effect.flatMap(resolveVars(runtime, config, options), ({ stage, resolution }) =>
+    Effect.map(Outcomes.allOrVarsError(config, stage, resolution.vars), (entries) => ({
       stage,
-      refresh: options?.refresh ?? false,
-      strict,
-      interactive,
-      ttl: policy.ttl,
-      maxStale: policy.maxStale,
-    } satisfies Resolver.Options;
+      entries,
+    })),
+  );
+
+const load = <C extends Config.Config>(
+  runtime: Runtime,
+  config: C,
+  options?: LoadOptions<Config.StageOf<C>>,
+) =>
+  Effect.map(resolveAll(runtime, config, options), ({ entries }) => {
+    const env = Object.fromEntries(entries.map(([key, resolved]) => [key, resolved.decoded]));
+
+    // SAFETY: TypeScript cannot relate the entries to the mapped type. Each entry holds the
+    // value that the codec of the descriptor under the same key decoded.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return env as Config.Env<C>;
   });
 
-  const resolveWith = Effect.fn("Envi.resolveWith")(function* (
-    config: Config.Config,
-    stage: string,
-    providers: ReadonlyArray<Provider.Provider>,
-    sources: Readonly<Record<string, Source.AnySource>>,
-    options: ResolveOptions | undefined,
-  ) {
-    const policy = yield* policyOf(config);
-    const settings = yield* resolverOptions(policy, config, stage, options);
-
-    return yield* Resolver.resolve(sources, settings).pipe(
-      Effect.provide(Provider.layer(providers)),
-      Effect.provideService(Cache.Cache, policy.enabled ? cache : Cache.none),
+const loadRaw = <C extends Config.Config>(
+  runtime: Runtime,
+  config: C,
+  options?: LoadOptions<Config.StageOf<C>>,
+) =>
+  Effect.map(resolveAll(runtime, config, options), ({ entries }) => {
+    const raw = Object.fromEntries(
+      entries.map(([key, resolved]) => [key, Option.getOrUndefined(Outcomes.rawOf(resolved))]),
     );
+
+    // SAFETY: TypeScript cannot relate the entries to the mapped type. A raw value is a
+    // string, and it is absent only for an optional descriptor.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return raw as Config.RawEnv<C>;
   });
 
-  const resolveVars = Effect.fn("Envi.resolveVars")(function* (
-    config: Config.Config,
-    options: LoadOptions<string> | undefined,
-  ) {
+const parse: Interface["parse"] = <C extends Config.Config>(
+  config: C,
+  record: Readonly<Record<string, string | undefined>>,
+  options?: { readonly stage?: Config.StageOf<C> },
+) =>
+  Effect.gen(function* () {
     const stage = yield* stageOf(config, options?.stage);
     const sources = yield* Config.varsFor(config, stage);
 
-    const resolution = yield* resolveWith(
-      config,
-      stage,
-      Option.getOrElse(override, () => config.providers),
-      sources,
-      options,
+    const outcomes = yield* Effect.forEach(Object.entries(sources), ([key, source]) =>
+      Effect.map(Effect.result(Source.parse(source, key, record[key])), (outcome) =>
+        Tuple.make(key, outcome),
+      ),
     );
 
-    return { stage, sources, resolution };
+    const entries = yield* Outcomes.allOrVarsError(config, stage, Object.fromEntries(outcomes));
+
+    // SAFETY: TypeScript cannot relate the entries to the mapped type. Each entry holds the
+    // value that the codec of the descriptor under the same key decoded.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return Object.fromEntries(entries) as Config.Env<C>;
   });
 
-  const load: Interface["load"] = <C extends Config.Config>(
-    config: C,
-    options?: LoadOptions<Config.StageOf<C>>,
-  ) =>
-    resolveVars(config, options).pipe(
-      Effect.flatMap(({ stage, resolution }) =>
-        Outcomes.allOrVarsError(config, stage, resolution.vars),
+const resolveRecord = (
+  runtime: Runtime,
+  config: Config.Config,
+  sources: Readonly<Record<string, Source.AnySource>>,
+  options: ResolveOptions | undefined,
+) =>
+  stageOf(config, undefined).pipe(
+    Effect.flatMap((stage) =>
+      resolveWith(runtime, config, stage, providersOf(runtime, config), sources, options).pipe(
+        Effect.flatMap((resolution) => Outcomes.allOrVarsError(config, stage, resolution.vars)),
       ),
-      Effect.map((entries) => {
-        const env = Object.fromEntries(entries.map(([key, resolved]) => [key, resolved.decoded]));
+    ),
+    Effect.map((entries) =>
+      Object.fromEntries(entries.map(([key, resolved]) => [key, resolved.decoded])),
+    ),
+  );
 
-        // SAFETY: TypeScript cannot relate the entries to the mapped type. Each entry holds the
-        // value that the codec of the descriptor under the same key decoded.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        return env as Config.Env<C>;
-      }),
-    );
+/** The key of the one descriptor that `resolve` puts into a record. */
+const single = "value";
 
-  const loadRaw: Interface["loadRaw"] = <C extends Config.Config>(
-    config: C,
-    options?: LoadOptions<Config.StageOf<C>>,
-  ) =>
-    resolveVars(config, options).pipe(
-      Effect.flatMap(({ stage, resolution }) =>
-        Outcomes.allOrVarsError(config, stage, resolution.vars),
-      ),
-      Effect.map((entries) => {
-        const raw = Object.fromEntries(
-          entries.map(([key, resolved]) => [key, Option.getOrUndefined(Outcomes.rawOf(resolved))]),
-        );
-
-        // SAFETY: TypeScript cannot relate the entries to the mapped type. A raw value is a
-        // string, and it is absent only for an optional descriptor.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        return raw as Config.RawEnv<C>;
-      }),
-    );
-
-  const parse: Interface["parse"] = <C extends Config.Config>(
-    config: C,
-    record: Readonly<Record<string, string | undefined>>,
-    options?: { readonly stage?: Config.StageOf<C> },
-  ) =>
-    Effect.gen(function* () {
-      const stage = yield* stageOf(config, options?.stage);
-      const sources = yield* Config.varsFor(config, stage);
-
-      const outcomes = yield* Effect.forEach(Object.entries(sources), ([key, source]) =>
-        Effect.map(Effect.result(Source.parse(source, key, record[key])), (outcome) =>
-          Tuple.make(key, outcome),
-        ),
-      );
-
-      const entries = yield* Outcomes.allOrVarsError(config, stage, Object.fromEntries(outcomes));
-
-      // SAFETY: TypeScript cannot relate the entries to the mapped type. Each entry holds the
-      // value that the codec of the descriptor under the same key decoded.
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      return Object.fromEntries(entries) as Config.Env<C>;
-    });
-
-  const resolveRecord = (
-    config: Config.Config,
-    sources: Readonly<Record<string, Source.AnySource>>,
-    options: ResolveOptions | undefined,
-  ) =>
-    stageOf(config, undefined).pipe(
-      Effect.flatMap((stage) =>
-        resolveWith(
-          config,
-          stage,
-          Option.getOrElse(override, () => config.providers),
-          sources,
-          options,
-        ).pipe(
-          Effect.flatMap((resolution) => Outcomes.allOrVarsError(config, stage, resolution.vars)),
-        ),
-      ),
-      Effect.map((entries) =>
-        Object.fromEntries(entries.map(([key, resolved]) => [key, resolved.decoded])),
-      ),
-    );
-
-  const single = "value";
-
+/** The `resolve` operation of one service. */
+const resolverOf = (runtime: Runtime): Interface["resolve"] => {
   function resolve<A, Optional extends boolean>(
     config: Config.Config,
     source: Source.Source<A, Optional>,
@@ -387,147 +395,163 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     options?: ResolveOptions,
   ): Effect.Effect<unknown, EnviError> {
     return Source.isSource(input)
-      ? resolveRecord(config, { [single]: input }, options).pipe(
+      ? resolveRecord(runtime, config, { [single]: input }, options).pipe(
           Effect.map((record) => record[single]),
           // One descriptor has one failure. The caller gets it without the list around it.
           Effect.catchTag("VarsError", (error) =>
             Effect.fail(error.failures.length === 1 ? (error.failures[0]?.error ?? error) : error),
           ),
         )
-      : resolveRecord(config, input, options);
+      : resolveRecord(runtime, config, input, options);
   }
 
-  const sync: Interface["sync"] = Effect.fn("Envi.sync")(function* (configs, options) {
-    const startedAt = yield* Clock.currentTimeMillis;
-    const list = Config.isConfig(configs) ? [configs] : configs;
+  return resolve;
+};
 
-    const members = yield* Effect.forEach(list, (config) =>
-      Effect.gen(function* () {
-        const stage = yield* stageOf(config, options?.stage);
+const sync = Effect.fn("Envi.sync")(function* (
+  runtime: Runtime,
+  configs: Config.Config | ReadonlyArray<Config.Config>,
+  options: LoadOptions<string> | undefined,
+) {
+  const startedAt = yield* Clock.currentTimeMillis;
+  const list = Config.isConfig(configs) ? [configs] : configs;
 
-        return {
-          config,
-          stage,
-          providers: Option.getOrElse(override, () => config.providers),
-          vars: yield* Config.varsFor(config, stage),
-        } satisfies Groups.Member;
-      }),
-    );
+  const members = yield* Effect.forEach(list, (config) =>
+    Effect.gen(function* () {
+      const stage = yield* stageOf(config, options?.stage);
 
-    const groups = Groups.of(members);
-
-    const resolved = yield* Effect.forEach(groups, (group) =>
-      Effect.map(
-        resolveWith(group.config, group.stage, group.providers, group.sources, options),
-        (resolution) => ({ group, resolution }),
-      ),
-    );
-
-    const policies = yield* Effect.forEach(groups, (group) => policyOf(group.config));
-
-    const finishedAt = yield* Clock.currentTimeMillis;
-
-    const counts = Arr.groupBy(
-      resolved.flatMap(({ resolution }) => resolution.providers),
-      (entry) => entry.provider,
-    );
-
-    return {
-      stage: members[0]?.stage ?? Config.fallbackStage,
-      configs: list.length,
-      providers: Object.entries(counts).map(([provider, entries]) => ({
-        provider,
-        secrets: Arr.reduce(entries, 0, (sum, entry) => sum + entry.secrets),
-        cached: Arr.reduce(entries, 0, (sum, entry) => sum + entry.cached),
-        resolved: Arr.reduce(entries, 0, (sum, entry) => sum + entry.resolved),
-      })),
-      failures: resolved.flatMap(({ group, resolution }) =>
-        Outcomes.failuresOf(resolution.vars, (groupKey) => Groups.originOf(group, groupKey)),
-      ),
-      cache: (yield* status.active) && policies.every((policy) => policy.enabled),
-      durationMillis: finishedAt - startedAt,
-    };
-  });
-
-  const check: Interface["check"] = (config, options) =>
-    Effect.map(resolveVars(config, options), ({ stage, resolution }) => ({
-      stage,
-      passed: Outcomes.passedOf(resolution.vars),
-      failures: Outcomes.failuresOf(resolution.vars, (key) => ({ key, config: config.path })),
-    }));
-
-  const inspect: Interface["inspect"] = Effect.fn("Envi.inspect")(function* (config, options) {
-    const { stage, resolution } = yield* resolveVars(config, options);
-    const entries = yield* Outcomes.allOrVarsError(config, stage, resolution.vars);
-    const redact = options?.redact ?? true;
-
-    return {
-      stage,
-      vars: entries.map(([key, resolved]) => Outcomes.varReportOf(key, resolved, redact)),
-    };
-  });
-
-  const exportVars: Interface["export"] = Effect.fn("Envi.export")(
-    function* (config, format, options) {
-      const { stage, resolution } = yield* resolveVars(config, options);
-      const entries = yield* Outcomes.allOrVarsError(config, stage, resolution.vars);
-      const redact = options?.redact ?? false;
-
-      return yield* Dotenv.render(format, Outcomes.rawEntries(entries, redact));
-    },
+      return {
+        config,
+        stage,
+        providers: providersOf(runtime, config),
+        vars: yield* Config.varsFor(config, stage),
+      } satisfies Groups.Member;
+    }),
   );
 
-  const run: Interface["run"] = Effect.fn("Envi.run")(function* (config, command, args, options) {
-    const { stage, resolution } = yield* resolveVars(config, options);
-    const entries = yield* Outcomes.allOrVarsError(config, stage, resolution.vars);
-    const parent = yield* ParentEnvironment;
+  const groups = Groups.of(members);
 
-    const env = ChildEnvironment.make({
-      parent,
-      credentialVariables: Option.getOrElse(override, () => config.providers).flatMap(
-        (provider) => provider.credentialVariables,
-      ),
-      values: Outcomes.rawEntries(entries, false),
-      stage,
-    });
+  const resolved = yield* Effect.forEach(groups, (group) =>
+    Effect.map(
+      resolveWith(runtime, group.config, group.stage, group.providers, group.sources, options),
+      (resolution) => ({ group, resolution }),
+    ),
+  );
 
-    const child = ChildProcess.make(command, args ?? [], {
-      cwd: options?.cwd,
-      env,
-      extendEnv: false,
-      // The child stays in the process group of Envi, so it keeps the terminal and its signals.
-      detached: false,
-      stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
-    });
+  const policies = yield* Effect.forEach(groups, (group) => policyOf(runtime, group.config));
 
-    const failure = (reason: RunFailure) => new RunError({ reason, command });
+  const finishedAt = yield* Clock.currentTimeMillis;
 
-    const exitCode = yield* Signals.supervise(child).pipe(
-      Timing.measure(Timing.Step.RunChild, { command }),
-      Effect.mapError((error) =>
-        failure(
-          Match.value(error.reason).pipe(
-            Match.tag("NotFound", () => RunFailure.CommandNotFound),
-            Match.tag("PermissionDenied", () => RunFailure.CommandNotExecutable),
-            Match.orElse(() => RunFailure.SpawnFailed),
-          ),
+  const counts = Arr.groupBy(
+    resolved.flatMap(({ resolution }) => resolution.providers),
+    (entry) => entry.provider,
+  );
+
+  return {
+    stage: members[0]?.stage ?? Config.fallbackStage,
+    configs: list.length,
+    providers: Object.entries(counts).map(([provider, entries]) => ({
+      provider,
+      secrets: Arr.reduce(entries, 0, (sum, entry) => sum + entry.secrets),
+      cached: Arr.reduce(entries, 0, (sum, entry) => sum + entry.cached),
+      resolved: Arr.reduce(entries, 0, (sum, entry) => sum + entry.resolved),
+    })),
+    failures: resolved.flatMap(({ group, resolution }) =>
+      Outcomes.failuresOf(resolution.vars, (groupKey) => Groups.originOf(group, groupKey)),
+    ),
+    cache: (yield* runtime.status.active) && policies.every((policy) => policy.enabled),
+    durationMillis: finishedAt - startedAt,
+  } satisfies SyncReport;
+});
+
+const check = (runtime: Runtime, config: Config.Config, options: LoadOptions<string> | undefined) =>
+  Effect.map(resolveVars(runtime, config, options), ({ stage, resolution }): CheckReport => ({
+    stage,
+    passed: Outcomes.passedOf(resolution.vars),
+    failures: Outcomes.failuresOf(resolution.vars, (key) => ({ key, config: config.path })),
+  }));
+
+const inspect = (
+  runtime: Runtime,
+  config: Config.Config,
+  options: ExportOptions<string> | undefined,
+) =>
+  Effect.map(resolveAll(runtime, config, options), ({ stage, entries }): InspectReport => ({
+    stage,
+    vars: entries.map(([key, resolved]) =>
+      Outcomes.varReportOf(key, resolved, options?.redact ?? true),
+    ),
+  }));
+
+const exportVars = (
+  runtime: Runtime,
+  config: Config.Config,
+  format: ExportFormat,
+  options: ExportOptions<string> | undefined,
+) =>
+  Effect.flatMap(resolveAll(runtime, config, options), ({ entries }) =>
+    Dotenv.render(format, Outcomes.rawEntries(entries, options?.redact ?? false)),
+  );
+
+/** Starts the child, waits for its exit, and maps each spawn failure to a `RunError`. */
+const superviseChild = (child: ChildProcess.Command, command: string) => {
+  const failure = (reason: RunFailure) => new RunError({ reason, command });
+
+  return Signals.supervise(child).pipe(
+    Timing.measure(Timing.Step.RunChild, { command }),
+    Effect.mapError((error) =>
+      failure(
+        Match.value(error.reason).pipe(
+          Match.tag("NotFound", () => RunFailure.CommandNotFound),
+          Match.tag("PermissionDenied", () => RunFailure.CommandNotExecutable),
+          Match.orElse(() => RunFailure.SpawnFailed),
         ),
       ),
-      Effect.flatMap(
-        Option.match({
-          onNone: () => Effect.fail(failure(RunFailure.KilledBySignal)),
-          onSome: (code) => Effect.succeed(code),
-        }),
-      ),
-    );
+    ),
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.fail(failure(RunFailure.KilledBySignal)),
+        onSome: (code) => Effect.succeed(code),
+      }),
+    ),
+  );
+};
 
-    return { exitCode };
+const run = Effect.fn("Envi.run")(function* (
+  runtime: Runtime,
+  config: Config.Config,
+  command: string,
+  args: ReadonlyArray<string> | undefined,
+  options: RunOptions<string> | undefined,
+) {
+  const { stage, entries } = yield* resolveAll(runtime, config, options);
+
+  const env = ChildEnvironment.make({
+    parent: yield* ParentEnvironment,
+    credentialVariables: providersOf(runtime, config).flatMap(
+      (provider) => provider.credentialVariables,
+    ),
+    values: Outcomes.rawEntries(entries, false),
+    stage,
   });
 
-  const list: Interface["cache"]["list"] = Effect.map(cache.list(), (entries) => ({
-    directory: Option.getOrNull(status.directory),
+  const child = ChildProcess.make(command, args ?? [], {
+    cwd: options?.cwd,
+    env,
+    extendEnv: false,
+    // The child stays in the process group of Envi, so it keeps the terminal and its signals.
+    detached: false,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+
+  return { exitCode: yield* superviseChild(child, command) } satisfies RunReport;
+});
+
+const listCache = (runtime: Runtime) =>
+  Effect.map(runtime.cache.list(), (entries): CacheListReport => ({
+    directory: Option.getOrNull(runtime.status.directory),
     entries: entries
       .toSorted((left, right) => left.reference.localeCompare(right.reference))
       .map((entry) => ({
@@ -537,20 +561,28 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
       })),
   }));
 
+const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
+  const runtime: Runtime = {
+    cache: yield* Cache.Cache,
+    status: Option.getOrElse(yield* Effect.serviceOption(Cache.Status), () => activeWithoutFiles),
+    layerOptions,
+    cacheOverrides: layerOptions.cache ?? CacheSettings.noOverrides,
+  };
+
   return Envi.of({
-    load,
-    loadRaw,
+    load: (config, options) => load(runtime, config, options),
+    loadRaw: (config, options) => loadRaw(runtime, config, options),
     parse,
-    resolve,
-    sync,
-    check,
-    inspect,
-    export: exportVars,
-    run,
+    resolve: resolverOf(runtime),
+    sync: (configs, options) => sync(runtime, configs, options),
+    check: (config, options) => check(runtime, config, options),
+    inspect: (config, options) => inspect(runtime, config, options),
+    export: (config, format, options) => exportVars(runtime, config, format, options),
+    run: (config, command, args, options) => run(runtime, config, command, args, options),
     cache: {
-      path: Effect.succeed(status.directory),
-      list,
-      clear: Effect.map(cache.clear(), (removed) => ({ removed })),
+      path: Effect.succeed(runtime.status.directory),
+      list: listCache(runtime),
+      clear: Effect.map(runtime.cache.clear(), (removed) => ({ removed })),
     },
   });
 });

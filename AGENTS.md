@@ -127,6 +127,10 @@ This repository is public. These rules have no exception.
   `Schema`, such as `ExportFormat.Dotenv`.
 - Give every number in the code of a package or a script a name, such as `jsonIndent`. Write a
   `Duration` constant as text, such as `"30 seconds"`. A lint rule enforces this outside tests.
+- A function in the code of a package or a script has at most 80 lines, and a lint rule enforces
+  this. To split a service constructor, make each operation a module function that takes one
+  named record of the dependencies first, such as `Store` in `FileCache.ts`. The constructor
+  builds the record and binds each operation to it.
 - Prefer a small set of strong primitives. Do not add a custom helper when plain TypeScript or a
   built-in Effect function does the job. Do not add a special case without a real use case.
 - All code runs on both Node and Bun. The core (`packages/envi/src/core`) depends only on Effect

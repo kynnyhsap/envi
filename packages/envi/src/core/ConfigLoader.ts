@@ -106,274 +106,294 @@ const syntaxLocationOf = (cause: unknown): Option.Option<string | undefined> =>
 const noConfig = (directory: string, detail: string) =>
   new ConfigLoadError({ reason: ConfigLoadFailure.NoConfig, path: directory, detail });
 
-const make = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const spawner = yield* ChildProcessSpawner;
+/** The platform services of the config search and the import. */
+interface Host {
+  readonly fs: FileSystem.FileSystem;
+  readonly path: Path.Path;
+  readonly spawner: ChildProcessSpawner["Service"];
+}
 
-  const exists = (file: string) => Effect.orElseSucceed(fs.exists(file), () => false);
+const exists = (host: Host, file: string) =>
+  Effect.orElseSucceed(host.fs.exists(file), () => false);
 
-  const configIn = (directory: string): Effect.Effect<Option.Option<string>> =>
-    Effect.findFirst(
-      configExtensions.map((extension) => path.join(directory, `${configBaseName}${extension}`)),
-      exists,
-    );
+const configIn = (host: Host, directory: string): Effect.Effect<Option.Option<string>> =>
+  Effect.findFirst(
+    configExtensions.map((extension) => host.path.join(directory, `${configBaseName}${extension}`)),
+    (file) => exists(host, file),
+  );
 
-  const importFailure = (file: string, cause: unknown): ConfigLoadError => {
-    const code = Predicate.hasProperty(cause, "code") ? cause.code : undefined;
+const importFailure = (file: string, cause: unknown): ConfigLoadError => {
+  const code = Predicate.hasProperty(cause, "code") ? cause.code : undefined;
 
-    if (code === unknownExtensionCode) {
-      return new ConfigLoadError({
-        reason: ConfigLoadFailure.UnsupportedRuntime,
-        path: file,
-        detail: `A TypeScript config needs Node ${Package.minimumNodeVersion} or later, or Bun ${Package.minimumBunVersion} or later.`,
-      });
-    }
-
-    if (code === moduleNotFoundCode) {
-      return new ConfigLoadError({
-        reason: ConfigLoadFailure.MissingDependency,
-        path: file,
-        detail: `The config imports a module that does not resolve. Install Envi and each provider package in the project, such as \`bun add -d ${Package.name}\`.`,
-      });
-    }
-
-    const syntax = syntaxLocationOf(cause);
-
-    if (Option.isSome(syntax)) {
-      return new ConfigLoadError({
-        reason: ConfigLoadFailure.ConfigSyntax,
-        path: file,
-        detail: "The file has a syntax error.",
-        location: syntax.value,
-      });
-    }
-
-    // The cause can hold a secret from user code, so the error holds only its name and location.
-    const { thrown, location } = Thrown.describe(Thrown.asError(cause));
-
+  if (code === unknownExtensionCode) {
     return new ConfigLoadError({
-      reason: ConfigLoadFailure.ImportFailed,
+      reason: ConfigLoadFailure.UnsupportedRuntime,
       path: file,
-      detail: `The import threw ${thrown}.`,
-      location,
+      detail: `A TypeScript config needs Node ${Package.minimumNodeVersion} or later, or Bun ${Package.minimumBunVersion} or later.`,
     });
-  };
+  }
 
-  const load: Interface["load"] = Effect.fn("ConfigLoader.load")(function* (file) {
-    const absolute = path.resolve(file);
+  if (code === moduleNotFoundCode) {
+    return new ConfigLoadError({
+      reason: ConfigLoadFailure.MissingDependency,
+      path: file,
+      detail: `The config imports a module that does not resolve. Install Envi and each provider package in the project, such as \`bun add -d ${Package.name}\`.`,
+    });
+  }
 
-    if (!(yield* exists(absolute))) {
-      return yield* new ConfigLoadError({
-        reason: ConfigLoadFailure.NotFound,
-        path: absolute,
-        detail: "The file does not exist.",
-      });
-    }
+  const syntax = syntaxLocationOf(cause);
 
-    const invalid = (detail: string) =>
-      new ConfigLoadError({ reason: ConfigLoadFailure.InvalidConfig, path: absolute, detail });
+  if (Option.isSome(syntax)) {
+    return new ConfigLoadError({
+      reason: ConfigLoadFailure.ConfigSyntax,
+      path: file,
+      detail: "The file has a syntax error.",
+      location: syntax.value,
+    });
+  }
 
-    if (!configExtensions.includes(path.extname(absolute))) {
-      return yield* invalid(`A config file ends with ${configExtensions.join(", ")}.`);
-    }
+  // The cause can hold a secret from user code, so the error holds only its name and location.
+  const { thrown, location } = Thrown.describe(Thrown.asError(cause));
 
-    const url = yield* Effect.mapError(path.toFileUrl(absolute), () =>
-      invalid("The path does not convert to a file URL."),
-    );
+  return new ConfigLoadError({
+    reason: ConfigLoadFailure.ImportFailed,
+    path: file,
+    detail: `The import threw ${thrown}.`,
+    location,
+  });
+};
 
-    // The query gives each modified file a new module identity. It does not reload its imports.
-    const modified = yield* fs.stat(absolute).pipe(
-      Effect.map((info) =>
-        Option.getOrElse(
-          Option.map(info.mtime, (time) => time.getTime()),
-          () => 0,
-        ),
+const load = Effect.fn("ConfigLoader.load")(function* (host: Host, file: string) {
+  const absolute = host.path.resolve(file);
+
+  if (!(yield* exists(host, absolute))) {
+    return yield* new ConfigLoadError({
+      reason: ConfigLoadFailure.NotFound,
+      path: absolute,
+      detail: "The file does not exist.",
+    });
+  }
+
+  const invalid = (detail: string) =>
+    new ConfigLoadError({ reason: ConfigLoadFailure.InvalidConfig, path: absolute, detail });
+
+  if (!configExtensions.includes(host.path.extname(absolute))) {
+    return yield* invalid(`A config file ends with ${configExtensions.join(", ")}.`);
+  }
+
+  const url = yield* Effect.mapError(host.path.toFileUrl(absolute), () =>
+    invalid("The path does not convert to a file URL."),
+  );
+
+  // The query gives each modified file a new module identity. It does not reload its imports.
+  const modified = yield* host.fs.stat(absolute).pipe(
+    Effect.map((info) =>
+      Option.getOrElse(
+        Option.map(info.mtime, (time) => time.getTime()),
+        () => 0,
       ),
-      Effect.orElseSucceed(() => 0),
-    );
+    ),
+    Effect.orElseSucceed(() => 0),
+  );
 
-    url.searchParams.set("cache", String(modified));
+  url.searchParams.set("cache", String(modified));
 
-    const module: unknown = yield* Effect.tryPromise({
-      try: () => import(url.href),
-      catch: (cause) => importFailure(absolute, cause),
-    }).pipe(Timing.measure(Timing.Step.ConfigImport, { file: absolute }));
+  const module: unknown = yield* Effect.tryPromise({
+    try: () => import(url.href),
+    catch: (cause) => importFailure(absolute, cause),
+  }).pipe(Timing.measure(Timing.Step.ConfigImport, { file: absolute }));
 
-    const exported = Predicate.hasProperty(module, "default") ? module.default : undefined;
+  const exported = Predicate.hasProperty(module, "default") ? module.default : undefined;
 
-    return Config.isConfig(exported)
-      ? { ...exported, path: Option.some(absolute) }
-      : yield* invalid("The default export must be the result of `defineConfig`.");
-  });
+  return Config.isConfig(exported)
+    ? { ...exported, path: Option.some(absolute) }
+    : yield* invalid("The default export must be the result of `defineConfig`.");
+});
 
-  const configNames = new Set(configExtensions.map((extension) => `${configBaseName}${extension}`));
+const configNames = new Set(configExtensions.map((extension) => `${configBaseName}${extension}`));
 
-  /** The nearest folder with `.git`, a folder in a repo or a file in a worktree. */
-  const projectRoot = Effect.fn("ConfigLoader.projectRoot")(function* (start: string) {
-    let current = start;
+/** The nearest folder with `.git`, a folder in a repo or a file in a worktree. */
+const projectRoot = Effect.fn("ConfigLoader.projectRoot")(function* (host: Host, start: string) {
+  let current = start;
 
-    while (true) {
-      if (yield* exists(path.join(current, gitMarker))) {
-        return Option.some(current);
-      }
-
-      const parent = path.dirname(current);
-
-      if (parent === current) {
-        return Option.none<string>();
-      }
-
-      current = parent;
+  while (true) {
+    if (yield* exists(host, host.path.join(current, gitMarker))) {
+      return Option.some(current);
     }
-  });
 
-  const isWithin = (file: string, folder: string) => {
-    const relative = path.relative(folder, file);
+    const parent = host.path.dirname(current);
 
-    return !relative.startsWith("..") && !path.isAbsolute(relative);
-  };
-
-  const up = Effect.fn("ConfigLoader.up")(function* (start: string) {
-    const home = yield* Settings.home;
-
-    const stop = Option.orElse(yield* projectRoot(start), () =>
-      Option.filter(home, (folder) => isWithin(start, path.resolve(folder))).pipe(
-        Option.map((folder) => path.resolve(folder)),
-      ),
-    );
-
-    let current = start;
-
-    while (true) {
-      const found = yield* configIn(current);
-
-      if (Option.isSome(found)) {
-        return Arr.of(found.value);
-      }
-
-      const parent = path.dirname(current);
-
-      if (Option.contains(stop, current) || parent === current) {
-        return yield* noConfig(
-          start,
-          `No ${configBaseName}.ts exists in this directory or in an ancestor up to ${Option.getOrElse(stop, () => parent)}.`,
-        );
-      }
-
-      current = parent;
+    if (parent === current) {
+      return Option.none<string>();
     }
-  });
 
-  /** The files that git tracks or does not ignore. None when git fails, as outside a repo. */
-  const gitFiles = (directory: string): Effect.Effect<Option.Option<ReadonlyArray<string>>> =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const handle = yield* spawner.spawn(
-          ChildProcess.make(
-            "git",
-            ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-            {
-              cwd: directory,
-              stdin: "ignore",
-              stderr: "ignore",
-            },
-          ),
-        );
+    current = parent;
+  }
+});
 
-        const [stdout, exitCode] = yield* Effect.all(
-          [Stream.mkString(Stream.decodeText(handle.stdout)), handle.exitCode],
-          { concurrency: 2 },
-        );
+const isWithin = (host: Host, file: string, folder: string) => {
+  const relative = host.path.relative(folder, file);
 
-        return exitCode === 0
-          ? Option.some(
-              stdout
-                .split("\0")
-                .filter((file) => file !== "")
-                .map((file) => path.join(directory, file)),
-            )
-          : Option.none();
-      }),
-    ).pipe(Effect.orElseSucceed(() => Option.none()));
+  return !relative.startsWith("..") && !host.path.isAbsolute(relative);
+};
 
-  /** Every config file below a folder, without `node_modules` and dot folders. */
-  const walk = (directory: string): Effect.Effect<ReadonlyArray<string>> =>
+const up = Effect.fn("ConfigLoader.up")(function* (host: Host, start: string) {
+  const home = yield* Settings.home;
+
+  const stop = Option.orElse(yield* projectRoot(host, start), () =>
+    Option.filter(home, (folder) => isWithin(host, start, host.path.resolve(folder))).pipe(
+      Option.map((folder) => host.path.resolve(folder)),
+    ),
+  );
+
+  let current = start;
+
+  while (true) {
+    const found = yield* configIn(host, current);
+
+    if (Option.isSome(found)) {
+      return Arr.of(found.value);
+    }
+
+    const parent = host.path.dirname(current);
+
+    if (Option.contains(stop, current) || parent === current) {
+      return yield* noConfig(
+        start,
+        `No ${configBaseName}.ts exists in this directory or in an ancestor up to ${Option.getOrElse(stop, () => parent)}.`,
+      );
+    }
+
+    current = parent;
+  }
+});
+
+/** The files that git tracks or does not ignore. None when git fails, as outside a repo. */
+const gitFiles = (
+  host: Host,
+  directory: string,
+): Effect.Effect<Option.Option<ReadonlyArray<string>>> =>
+  Effect.scoped(
     Effect.gen(function* () {
-      const names = yield* Effect.orElseSucceed(fs.readDirectory(directory), () => []);
+      const handle = yield* host.spawner.spawn(
+        ChildProcess.make("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
+          cwd: directory,
+          stdin: "ignore",
+          stderr: "ignore",
+        }),
+      );
 
-      const nested = yield* Effect.forEach(names, (name) => {
-        const file = path.join(directory, name);
+      const [stdout, exitCode] = yield* Effect.all(
+        [Stream.mkString(Stream.decodeText(handle.stdout)), handle.exitCode],
+        { concurrency: 2 },
+      );
 
-        if (configNames.has(name)) {
-          return Effect.succeed([file]);
-        }
+      return exitCode === 0
+        ? Option.some(
+            stdout
+              .split("\0")
+              .filter((file) => file !== "")
+              .map((file) => host.path.join(directory, file)),
+          )
+        : Option.none();
+    }),
+  ).pipe(Effect.orElseSucceed(() => Option.none()));
 
-        if (name === skippedFolder || name.startsWith(".")) {
-          return Effect.succeed([]);
-        }
+/** Every config file below a folder, without `node_modules` and dot folders. */
+const walk = (host: Host, directory: string): Effect.Effect<ReadonlyArray<string>> =>
+  Effect.gen(function* () {
+    const names = yield* Effect.orElseSucceed(host.fs.readDirectory(directory), () => []);
 
-        return fs.stat(file).pipe(
-          Effect.flatMap((info) => (info.type === "Directory" ? walk(file) : Effect.succeed([]))),
-          Effect.orElseSucceed(() => []),
-        );
-      });
+    const nested = yield* Effect.forEach(names, (name) => {
+      const file = host.path.join(directory, name);
 
-      return nested.flat();
+      if (configNames.has(name)) {
+        return Effect.succeed([file]);
+      }
+
+      if (name === skippedFolder || name.startsWith(".")) {
+        return Effect.succeed([]);
+      }
+
+      return host.fs.stat(file).pipe(
+        Effect.flatMap((info) =>
+          info.type === "Directory" ? walk(host, file) : Effect.succeed([]),
+        ),
+        Effect.orElseSucceed(() => []),
+      );
     });
 
-  const down = Effect.fn("ConfigLoader.down")(function* (start: string) {
-    const listed = Option.isSome(yield* projectRoot(start))
-      ? yield* gitFiles(start)
-      : Option.none<ReadonlyArray<string>>();
-
-    const candidates = Option.isSome(listed)
-      ? yield* Effect.filter(
-          listed.value.filter((file) => configNames.has(path.basename(file))),
-          exists,
-        )
-      : yield* walk(start);
-
-    const skipped = (file: string) =>
-      path
-        .relative(start, path.dirname(file))
-        .split(path.sep)
-        .some((part) => part === skippedFolder || part.startsWith("."));
-
-    // One config per folder: the first extension in the order of the search.
-    const byFolder = Arr.groupBy(
-      candidates.filter((file) => !skipped(file)),
-      (file) => path.dirname(file),
-    );
-
-    const found = Object.values(byFolder)
-      .map((files) =>
-        files.toSorted(
-          (a, b) =>
-            configExtensions.indexOf(path.extname(a)) - configExtensions.indexOf(path.extname(b)),
-        ),
-      )
-      .flatMap((files) => files.slice(0, 1))
-      .toSorted();
-
-    return Arr.isReadonlyArrayNonEmpty(found)
-      ? found
-      : yield* noConfig(start, `No ${configBaseName}.ts exists in this directory or below it.`);
+    return nested.flat();
   });
 
-  const find: Interface["find"] = (directory, search) => {
-    const start = path.resolve(directory);
+const down = Effect.fn("ConfigLoader.down")(function* (host: Host, start: string) {
+  const listed = Option.isSome(yield* projectRoot(host, start))
+    ? yield* gitFiles(host, start)
+    : Option.none<ReadonlyArray<string>>();
 
-    if (search === ConfigSearch.Up) {
-      return up(start);
-    }
+  const candidates = Option.isSome(listed)
+    ? yield* Effect.filter(
+        listed.value.filter((file) => configNames.has(host.path.basename(file))),
+        (file) => exists(host, file),
+      )
+    : yield* walk(host, start);
 
-    return search === ConfigSearch.Down
-      ? down(start)
-      : Effect.flatMap(projectRoot(start), (root) => down(Option.getOrElse(root, () => start)));
+  const skipped = (file: string) =>
+    host.path
+      .relative(start, host.path.dirname(file))
+      .split(host.path.sep)
+      .some((part) => part === skippedFolder || part.startsWith("."));
+
+  // One config per folder: the first extension in the order of the search.
+  const byFolder = Arr.groupBy(
+    candidates.filter((file) => !skipped(file)),
+    (file) => host.path.dirname(file),
+  );
+
+  const found = Object.values(byFolder)
+    .map((files) =>
+      files.toSorted(
+        (a, b) =>
+          configExtensions.indexOf(host.path.extname(a)) -
+          configExtensions.indexOf(host.path.extname(b)),
+      ),
+    )
+    .flatMap((files) => files.slice(0, 1))
+    .toSorted();
+
+  return Arr.isReadonlyArrayNonEmpty(found)
+    ? found
+    : yield* noConfig(start, `No ${configBaseName}.ts exists in this directory or below it.`);
+});
+
+const find = (host: Host, directory: string, search: ConfigSearch) => {
+  const start = host.path.resolve(directory);
+
+  if (search === ConfigSearch.Up) {
+    return up(host, start);
+  }
+
+  return search === ConfigSearch.Down
+    ? down(host, start)
+    : Effect.flatMap(projectRoot(host, start), (root) =>
+        down(
+          host,
+          Option.getOrElse(root, () => start),
+        ),
+      );
+};
+
+const make = Effect.gen(function* () {
+  const host: Host = {
+    fs: yield* FileSystem.FileSystem,
+    path: yield* Path.Path,
+    spawner: yield* ChildProcessSpawner,
   };
 
-  return ConfigLoader.of({ load, find });
+  return ConfigLoader.of({
+    load: (file) => load(host, file),
+    find: (directory, search) => find(host, directory, search),
+  });
 });
 
 /** The config loader on top of the platform file system. */
