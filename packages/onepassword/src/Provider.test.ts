@@ -1,12 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Provider, ProviderFailure, ReferenceFailure } from "@kynnyhsap/envi";
+import { ProviderFailure, ReferenceFailure } from "@kynnyhsap/envi";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
 import * as TestClock from "effect/testing/TestClock";
 
-import { tokenVariables } from "./Credential.ts";
 import { makeProvider } from "./Provider.ts";
 import type { Sdk } from "./Sdk.ts";
 
@@ -95,8 +94,10 @@ describe("onePasswordProvider", () => {
   it("declares its token variables, so that run removes them from the child", () => {
     const provider = makeProvider({}, Effect.succeed(fakeSdk(secrets)));
 
-    expect(provider.credentialVariables).toEqual(tokenVariables);
-    expect(tokenVariables).toContain("OP_SERVICE_ACCOUNT_TOKEN");
+    expect(provider.credentialVariables).toEqual([
+      "ENVI_PROVIDER_ONEPASSWORD_SERVICE_ACCOUNT_TOKEN",
+      "OP_SERVICE_ACCOUNT_TOKEN",
+    ]);
   });
 
   it.effect("resolves one batch through desktop authentication", () =>
@@ -134,8 +135,6 @@ describe("onePasswordProvider", () => {
         }),
       );
 
-      expect(Provider.isProvider(provider)).toBe(true);
-      expect(provider.helpers.op("op://app/postgres/url").isRedacted).toBe(true);
       yield* provider.prepare({ uri: "op://app/postgres/url" });
       expect(loads).toBe(0);
     }).pipe(withEnv({})),

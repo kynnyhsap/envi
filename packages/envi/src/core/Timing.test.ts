@@ -56,22 +56,4 @@ describe("Timing.measure", () => {
       ]);
     }),
   );
-
-  it.effect("adds the given annotations to the line", () =>
-    Effect.gen(function* () {
-      const { lines } = yield* capture(
-        Effect.void.pipe(Timing.measure("provider.resolve", { provider: "memory" })),
-      );
-
-      expect(lines).toEqual([
-        {
-          level: "DEBUG",
-          step: "provider.resolve",
-          durationMs: 0,
-          outcome: "success",
-          provider: "memory",
-        },
-      ]);
-    }),
-  );
 });

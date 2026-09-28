@@ -16,6 +16,7 @@ import {
   DecodeError,
   ExportError,
   hints,
+  ReferenceFailure,
   SecretReferenceError,
   SettingsError,
   UnknownStageError,
@@ -138,7 +139,9 @@ describe("Envi", () => {
       const envi = yield* Envi.Envi;
       const error = yield* Effect.flip(envi.load(makeConfig()));
 
-      expect(error).toBeInstanceOf(UnknownStageError);
+      assert(error instanceof UnknownStageError);
+      expect(error.stage).toBe("qa");
+      expect(error.stages).toEqual(["development", "production"]);
     }).pipe(Effect.provide(layer), Effect.provide(withEnv({ ENVI_STAGE: "qa" }))),
   );
 
@@ -202,6 +205,10 @@ describe("Envi", () => {
       const error = yield* Effect.flip(envi.resolve(config, mem("missing")));
 
       expect(error).toBeInstanceOf(SecretReferenceError);
+      expect(error).toMatchObject({
+        reason: ReferenceFailure.NotFound,
+        reference: "memory://missing",
+      });
     }).pipe(Effect.provide(layer)),
   );
 

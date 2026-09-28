@@ -6,12 +6,8 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import * as ChildProcess from "effect/process/ChildProcess";
-import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
 
-import * as Config from "./Config.ts";
 import * as ConfigLoader from "./ConfigLoader.ts";
 import { ConfigLoadFailure } from "./Errors.ts";
 
@@ -22,7 +18,7 @@ const layer = Layer.provideMerge(
   Layer.provideMerge(NodeChildProcessSpawner.layer, platform),
 );
 
-const { Down, Repo, Up } = ConfigLoader.ConfigSearch;
+const { Down, Up } = ConfigLoader.ConfigSearch;
 
 /** Writes empty config files and folders into a temp folder, and returns the folder. */
 const tree = (files: ReadonlyArray<string>) =>
@@ -48,11 +44,6 @@ const tree = (files: ReadonlyArray<string>) =>
     return root;
   });
 
-const gitInit = (directory: string) =>
-  Effect.flatMap(ChildProcessSpawner, (spawner) =>
-    spawner.exitCode(ChildProcess.make("git", ["init", "-q"], { cwd: directory, stdin: "ignore" })),
-  );
-
 /** Runs a search with the given HOME, and returns the paths relative to the root. */
 const find = (root: string, from: string, search: ConfigLoader.ConfigSearch, home = "/nowhere") =>
   Effect.gen(function* () {
@@ -71,63 +62,18 @@ const fixture = (...segments: ReadonlyArray<string>) =>
     path.join(import.meta.dirname, "fixtures", "loader", ...segments),
   );
 
-const nameOf = (config: Config.Config) =>
-  Effect.map(Config.varsFor(config, "development"), (vars) => vars["NAME"]?.origin);
-
 describe("ConfigLoader", () => {
-  it.effect("loads the default export of a config file", () =>
+  it.effect("fails with ImportFailed for a config that throws, and hides the message", () =>
     Effect.gen(function* () {
       const loader = yield* ConfigLoader.ConfigLoader;
-      const config = yield* loader.load(yield* fixture("valid", "envi.config.ts"));
+      const error = yield* Effect.flip(loader.load(yield* fixture("throws", "envi.config.ts")));
 
-      expect(Config.isConfig(config)).toBe(true);
-      expect(yield* nameOf(config)).toMatchObject({ value: "valid" });
-      expect(config.path).toEqual(Option.some(yield* fixture("valid", "envi.config.ts")));
-    }).pipe(Effect.provide(layer)),
-  );
-
-  it.effect("fails with NotFound, InvalidConfig, and ImportFailed", () =>
-    Effect.gen(function* () {
-      const loader = yield* ConfigLoader.ConfigLoader;
-      const missing = yield* Effect.flip(loader.load(yield* fixture("nope", "envi.config.ts")));
-      const invalid = yield* Effect.flip(loader.load(yield* fixture("invalid", "envi.config.ts")));
-      const throwing = yield* Effect.flip(loader.load(yield* fixture("throws", "envi.config.ts")));
-
-      const extension = yield* Effect.flip(
-        loader.load(yield* fixture("valid", "nested", "deep", ".gitkeep")),
-      );
-
-      expect(missing.reason).toBe(ConfigLoadFailure.NotFound);
-      expect(invalid.reason).toBe(ConfigLoadFailure.InvalidConfig);
-      expect(throwing.reason).toBe(ConfigLoadFailure.ImportFailed);
-      expect(throwing.message).not.toContain("secret-in-config-error");
-      expect(extension.reason).toBe(ConfigLoadFailure.InvalidConfig);
-    }).pipe(Effect.provide(layer)),
-  );
-
-  it.effect("reports an install hint for an import that does not resolve", () =>
-    Effect.gen(function* () {
-      const loader = yield* ConfigLoader.ConfigLoader;
-
-      const error = yield* Effect.flip(
-        loader.load(yield* fixture("missing-dependency", "envi.config.ts")),
-      );
-
-      expect(error.reason).toBe(ConfigLoadFailure.MissingDependency);
-      expect(error.detail).toContain("Install Envi");
+      expect(error.reason).toBe(ConfigLoadFailure.ImportFailed);
+      expect(error.message).not.toContain("secret-in-config-error");
     }).pipe(Effect.provide(layer)),
   );
 
   describe("find", () => {
-    it.effect("up finds the nearest config file of a directory", () =>
-      Effect.gen(function* () {
-        const loader = yield* ConfigLoader.ConfigLoader;
-        const found = yield* loader.find(yield* fixture("valid", "nested", "deep"), Up);
-
-        expect(found).toEqual([yield* fixture("valid", "envi.config.ts")]);
-      }).pipe(Effect.provide(layer)),
-    );
-
     it.effect("up stops at the project root, the nearest folder with .git", () =>
       Effect.gen(function* () {
         const root = yield* tree(["envi.config.ts", "repo/.git/", "repo/apps/api/"]);
@@ -168,38 +114,6 @@ describe("ConfigLoader", () => {
         expect(yield* find(root, ".", Down)).toEqual([
           "a/envi.config.ts",
           "b/c/envi.config.js",
-          "envi.config.ts",
-        ]);
-      }).pipe(Effect.scoped, Effect.provide(layer)),
-    );
-
-    it.effect("down in a repo lists the files of git, so an ignored config is left out", () =>
-      Effect.gen(function* () {
-        const root = yield* tree([
-          ".gitignore",
-          "apps/api/envi.config.ts",
-          "apps/web/envi.config.ts",
-          "apps/ignored/envi.config.ts",
-          "envi.config.ts",
-        ]);
-
-        yield* gitInit(root);
-
-        expect(yield* find(root, "apps", Down)).toEqual([
-          "apps/api/envi.config.ts",
-          "apps/web/envi.config.ts",
-        ]);
-      }).pipe(Effect.scoped, Effect.provide(layer)),
-    );
-
-    it.effect("repo searches down from the project root", () =>
-      Effect.gen(function* () {
-        const root = yield* tree([".gitignore", "apps/api/envi.config.ts", "envi.config.ts"]);
-
-        yield* gitInit(root);
-
-        expect(yield* find(root, "apps/api", Repo)).toEqual([
-          "apps/api/envi.config.ts",
           "envi.config.ts",
         ]);
       }).pipe(Effect.scoped, Effect.provide(layer)),

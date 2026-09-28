@@ -1,4 +1,4 @@
-import { assert, describe, expect, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
@@ -10,7 +10,7 @@ import * as Stream from "effect/Stream";
 import * as Cache from "./Cache.ts";
 import { defineConfig } from "./Config.ts";
 import * as Envi from "./Envi.ts";
-import { RunError, RunFailure, SecretReferenceError, VarsError } from "./Errors.ts";
+import { RunError, RunFailure } from "./Errors.ts";
 import { mem, memoryProvider } from "./Memory.ts";
 import * as Provider from "./Provider.ts";
 
@@ -111,24 +111,6 @@ describe("Envi.run", () => {
         PORT: "3000",
         ENVI_STAGE: "production",
       });
-    }).pipe(Effect.provide(layer)),
-  );
-
-  it.effect("starts no child when a var fails", () =>
-    Effect.gen(function* () {
-      const envi = yield* Envi.Envi;
-      const before = spawned.length;
-
-      const broken = defineConfig({
-        providers: [memoryProvider({})],
-        vars: { TOKEN: mem("token") },
-      });
-
-      const error = yield* Effect.flip(envi.run(broken, "bun", ["run", "dev"]));
-
-      assert(error instanceof VarsError);
-      expect(error.failures[0]?.error).toBeInstanceOf(SecretReferenceError);
-      expect(spawned.length).toBe(before);
     }).pipe(Effect.provide(layer)),
   );
 

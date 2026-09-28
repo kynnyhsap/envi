@@ -80,9 +80,18 @@ describe.skipIf(account === undefined && token === undefined)(
 
             const inspect = yield* runCli(runtime, cacheDirectory, "inspect", []);
 
+            // The row of a var: the key, the origin, the reference, and the hidden value.
+            const stripeRow = inspect.stdout
+              .split("\n")
+              .find((line) => line.startsWith("STRIPE_KEY "));
+
             expect(inspect.exitCode).toBe(0);
-            expect(inspect.stdout).toContain(`op://${secondaryVault}/payments/STRIPE_KEY`);
-            expect(inspect.stdout).toContain("cache");
+            expect(stripeRow?.split(/\s+/u)).toEqual([
+              "STRIPE_KEY",
+              "cache",
+              `op://${secondaryVault}/payments/STRIPE_KEY`,
+              "<redacted>",
+            ]);
             expect(inspect.stdout).not.toContain(apiToken);
           }),
         );
