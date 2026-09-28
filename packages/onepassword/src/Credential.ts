@@ -47,6 +47,12 @@ export const Desktop = Schema.Struct({
   account: Schema.Option(Schema.String),
 });
 
+/** One account of desktop authentication, after the account of a reference won. */
+export const DesktopAccount = Schema.Struct({
+  kind: Schema.Literal(CredentialKind.Desktop),
+  account: Schema.String,
+});
+
 /** The credential of one operation. */
 export const Credential = Schema.Union([ServiceAccount, Desktop]);
 

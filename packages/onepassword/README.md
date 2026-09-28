@@ -68,8 +68,11 @@ A variable wins over a setting. An empty variable counts as absent.
 
 - The provider imports `@1password/sdk` and creates a client only on a cache miss, because a
   client takes 2 to 5 seconds. A run from the cache never loads the SDK.
-- The provider creates one client for each account and resolves the references of one account in
-  one `resolveAll` call.
+- The provider creates one client for each token and each account, and resolves the references
+  of one account in one `resolveAll` call. Two concurrent operations in one process share one
+  client. A new token gets a new client. A failed connection is not kept.
+- The provider checks the form of each `resolveAll` answer. An answer of another form gives
+  `InvalidResponse`.
 - A call with a token times out after 30 seconds. A desktop call waits 90 seconds for the
   approval.
 - A rate limit, a network failure, and a timeout give `Unavailable`, so an expired cache entry can

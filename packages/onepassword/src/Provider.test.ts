@@ -180,6 +180,32 @@ describe("onePasswordProvider", () => {
     ),
   );
 
+  it.effect("shares one client between two concurrent resolves", () =>
+    Effect.gen(function* () {
+      const sdk = fakeSdk(secrets);
+      const provider = makeProvider({ account: "my-team" }, Effect.succeed(sdk));
+      const resolve = provider.resolveMany(requests, { interactive: true });
+
+      yield* Effect.all([resolve, resolve], { concurrency: "unbounded" });
+
+      expect(sdk.connections).toEqual([new FakeDesktopAuth("my-team")]);
+    }).pipe(withEnv({})),
+  );
+
+  it.effect("connects again when the token changes", () =>
+    Effect.gen(function* () {
+      const sdk = fakeSdk(secrets);
+      const provider = makeProvider({}, Effect.succeed(sdk));
+      const resolve = provider.resolveMany(requests, { interactive: false });
+
+      yield* resolve.pipe(withEnv({ OP_SERVICE_ACCOUNT_TOKEN: "ops_team_a" }));
+      yield* resolve.pipe(withEnv({ OP_SERVICE_ACCOUNT_TOKEN: "ops_team_b" }));
+      yield* resolve.pipe(withEnv({ OP_SERVICE_ACCOUNT_TOKEN: "ops_team_a" }));
+
+      expect(sdk.connections).toEqual(["ops_team_a", "ops_team_b"]);
+    }),
+  );
+
   it.effect("keeps the client of a token apart from the client of an account", () =>
     Effect.gen(function* () {
       const sdk = fakeSdk(secrets);
