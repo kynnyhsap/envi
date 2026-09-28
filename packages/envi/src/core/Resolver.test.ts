@@ -412,6 +412,47 @@ describe("Resolver", () => {
     }).pipe(Effect.provide(layerWith())),
   );
 
+  it.effect("keeps one custom entry for each scope, and computes it again after an edit", () =>
+    Effect.gen(function* () {
+      const runs = yield* Ref.make(0);
+
+      const counted = (value: string) =>
+        Effect.as(
+          Ref.update(runs, (count) => count + 1),
+          value,
+        );
+
+      const staging = Source.custom({
+        id: "api-token",
+        scope: "https://staging.example.com",
+        resolve: () => counted("t"),
+      });
+
+      const production = Source.custom({
+        id: "api-token",
+        scope: "https://auth.example.com",
+        resolve: () => counted("t"),
+      });
+
+      const edited = Source.custom({
+        id: "api-token",
+        scope: "https://auth.example.com",
+        resolve: () => counted("edited"),
+      });
+
+      yield* Resolver.resolve({ TOKEN: staging }, options);
+      yield* Resolver.resolve({ TOKEN: production }, options);
+      yield* Resolver.resolve({ TOKEN: staging }, options);
+
+      expect(yield* Ref.get(runs)).toBe(2);
+
+      const afterEdit = yield* Resolver.resolve({ TOKEN: edited }, options);
+
+      expect(succeeded(afterEdit, "TOKEN").decoded).toBe("edited");
+      expect(yield* Ref.get(runs)).toBe(3);
+    }).pipe(Effect.provide(layerWith())),
+  );
+
   it.effect("fails the var when a custom input fails", () =>
     Effect.gen(function* () {
       const resolution = yield* Resolver.resolve(

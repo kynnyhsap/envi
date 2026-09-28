@@ -1,4 +1,5 @@
 // Shared parts of the end-to-end tests. Every test works on real files in a scoped temp folder.
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -116,6 +117,26 @@ export const cacheFiles = Effect.fn("cacheFiles")(function* (directory: string) 
         return { file, text, mode: info.mode & 0o777, ...entry };
       }),
   );
+});
+
+const PlainEntryFile = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Json));
+
+/**
+ * Moves the time of each plaintext entry back by `age`, as if a process wrote the entries
+ * earlier. A plaintext entry binds nothing, so the edit keeps it valid.
+ */
+export const ageCache = Effect.fn("ageCache")(function* (directory: string, age: Duration.Input) {
+  const fs = yield* FileSystem.FileSystem;
+
+  for (const entry of yield* cacheFiles(directory)) {
+    const fields = yield* Schema.decodeEffect(PlainEntryFile)(entry.text);
+    const resolvedAt = yield* Schema.decodeUnknownEffect(Schema.Number)(fields["resolvedAt"]);
+
+    yield* fs.writeFileString(
+      entry.file,
+      JSON.stringify({ ...fields, resolvedAt: resolvedAt - Duration.toMillis(age) }),
+    );
+  }
 });
 
 /** Runs a command to its end. The variables of `cleared` do not reach it. */

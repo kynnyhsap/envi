@@ -6,6 +6,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 
 import {
+  ageCache,
   cacheFiles,
   fixture,
   makeSandbox,
@@ -177,11 +178,12 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const sandbox = yield* makeSandbox("none");
-        const env = { ...sandbox.env, ENVI_E2E_TTL: "short" };
+        const { env } = sandbox;
         const args = ["check", "--cache-dir", sandbox.cacheDirectory, "--json"];
 
         yield* runCli(runtime, app, args, env);
-        yield* Effect.sleep("1200 millis");
+        // Past the ttl of 24 hours, and within the default maxStale of 7 days.
+        yield* ageCache(sandbox.cacheDirectory, "2 days");
         yield* fs.remove(sandbox.secretsFile);
 
         const stale = yield* runCli(runtime, app, args, env);

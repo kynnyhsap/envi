@@ -2,7 +2,7 @@ import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
 import * as NodePath from "@effect/platform-node-shared/NodePath";
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
-import type * as Duration from "effect/Duration";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -377,6 +377,47 @@ describe("FileCache", () => {
       );
 
       expect(yield* fs.readFileString(lockFile)).toBe("424242");
+    }).pipe(Effect.provide(platform)),
+  );
+
+  it.effect("renews its lock past the stale age, so no other process takes it", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const directory = yield* tempDirectory;
+      const lockFile = `${directory}/${CacheLock.lockFileName}`;
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const staleAfter = Duration.seconds(3);
+
+      const owner = yield* Effect.forkChild(
+        withCache(
+          directory,
+          Effect.flatMap(Cache.Cache, (cache) =>
+            cache.withResolveLock(
+              Effect.andThen(Deferred.succeed(entered, undefined), Deferred.await(release)),
+            ),
+          ),
+          keyA,
+          staleAfter,
+        ),
+      );
+
+      yield* Deferred.await(entered);
+
+      // Each renewal writes the time of the test clock. The loop moves the clock until the owner
+      // has renewed its lock past the stale age. When the owner never renews, the test times out.
+      const renewedAt = yield* Effect.repeat(
+        TestClock.adjust("1 second").pipe(
+          Effect.andThen(TestClock.withLive(Effect.sleep("5 millis"))),
+          Effect.andThen(Effect.map(fs.readFileString(lockFile), Number)),
+        ),
+        { until: (time) => time > Duration.toMillis(staleAfter) },
+      );
+
+      expect(renewedAt).toBeGreaterThan(Duration.toMillis(staleAfter));
+
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(owner);
     }).pipe(Effect.provide(platform)),
   );
 
