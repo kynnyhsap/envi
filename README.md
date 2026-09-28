@@ -59,13 +59,13 @@ cache. `envi check` validates every var and shows no value.
 ## Docs
 
 The docs live in [`packages/docs/content`](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/README.md). The npm package ships the same pages in
-its `docs` folder, so they always match the installed version.
+its `docs` folder, so they always match the installed version. `envi docs` reads them offline.
 
 - [Getting started](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/getting-started.md)
 - Config: [keys and stages](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/config/index.md), [sources](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/config/sources.md),
   [derive and custom](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/config/derive-and-custom.md), [monorepo](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/config/monorepo.md)
 - CLI: [commands and flags](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/cli/index.md), [config search](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/cli/config-search.md),
-  [envi run](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/cli/run.md)
+  [envi run](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/cli/run.md), [envi docs](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/cli/docs.md)
 - [Settings](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/settings.md), [Cache](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/cache.md), [CI](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/ci.md)
 - [1Password](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/providers/1password.md)
 - SDK: [client](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/sdk/index.md), [Effect](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/sdk/effect.md),

@@ -83,6 +83,19 @@ export const RunFailureSchema = Schema.Enum(RunFailure);
 
 export type RunFailure = typeof RunFailureSchema.Type;
 
+/** The reasons why `envi docs` shows no page. */
+export const DocsFailure = {
+  /** No page has the name. */
+  NotFound: "NotFound",
+  /** The docs folder or a page cannot be read, or a page has no valid frontmatter. */
+  Unreadable: "Unreadable",
+} as const;
+
+/** The schema of `DocsFailure`. */
+export const DocsFailureSchema = Schema.Enum(DocsFailure);
+
+export type DocsFailure = typeof DocsFailureSchema.Type;
+
 /** The reasons why a config file does not load. */
 export const ConfigLoadFailure = {
   /** An explicit config path does not exist. */
@@ -119,6 +132,7 @@ interface Catalog {
   readonly ExportFileError: Readonly<Record<ExportFileFailure, string>>;
   readonly SettingsError: string;
   readonly RunError: Readonly<Record<RunFailure, string>>;
+  readonly DocsError: Readonly<Record<DocsFailure, string>>;
   readonly ConfigLoadError: Readonly<Record<ConfigLoadFailure, string>>;
 }
 
@@ -179,6 +193,11 @@ export const hints: Catalog = {
     SpawnFailed: "Check the command, its arguments, and the working directory.",
     KilledBySignal:
       "A signal such as `SIGKILL` or `SIGSEGV` ended the command. Run the command without Envi to see whether it fails on its own.",
+  },
+  DocsError: {
+    NotFound: "Run `envi docs list` to see every page, or `envi docs search <words>` to find one.",
+    Unreadable:
+      "Reinstall Envi, so that its `docs` folder is complete. In the Envi repo, run `bun run build` first.",
   },
   ConfigLoadError: {
     NotFound: "Check the path in `--config` or `ENVI_CONFIG`.",
@@ -398,6 +417,17 @@ export class RunError extends ReasonError<RunError>()(
   },
 ) {}
 
+/** `envi docs` shows no page. `page` is the page name, or the docs folder. */
+export class DocsError extends ReasonError<DocsError>()(
+  "DocsError",
+  DocsFailureSchema,
+  { page: Schema.String },
+  {
+    summary: (error) => `Envi docs failed: ${error.reason} for ${error.page}`,
+    hints: hints.DocsError,
+  },
+) {}
+
 /**
  * A config file failed to load, or its `vars` threw. `path` is the file path, or the directory of
  * a failed search. `location` is the file, line, and column of a syntax error or a throw.
@@ -427,6 +457,7 @@ export const AnyEnviErrorSchema = Schema.Union([
   ExportFileError,
   SettingsError,
   RunError,
+  DocsError,
   ConfigLoadError,
 ]);
 

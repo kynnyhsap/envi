@@ -117,8 +117,9 @@ This repository is public. These rules have no exception.
 - **The docs ship with Envi.** The npm package of `envi` holds the docs pages of its version in
   `docs`, so an agent reads them offline in `node_modules`. `docs/README.md` maps each task to a
   page. Each page starts with a frontmatter of a JSON string `title` and `description`, and a
-  relative link names a page. `bun run docs:check` enforces the page rules. Envi never writes a
-  file of the user, such as `AGENTS.md`.
+  relative link names a page. `Docs.test.ts` enforces the page rules. `envi docs` reads the
+  folder offline. The build of `envi` copies the pages too, so the CLI of the repo finds them.
+  Envi never writes a file of the user, such as `AGENTS.md`.
 - **A throw in user code hides its message.** `derive()`, `custom()`, and `vars` show only the
   class name and the location of the throw. `CustomFailure` carries a safe message.
 
@@ -249,8 +250,6 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 - `bun run versions` writes the root version and `engines` into every package manifest, and the
   `effect` range and the floors into every README and docs page. `bun run check` fails while a
   file differs or a rule breaks.
-- `bun run docs:check` checks the frontmatter, the first heading, and the links of each docs page.
-  `bun run check` runs it.
 - To release, change the root version, run `bun run versions`, and merge the change. Then tag
   the merge commit on `main` with `v<version>`, and push the tag.
 - `bun run release --tag v<version> --dry-run` packs both packages and checks them with
