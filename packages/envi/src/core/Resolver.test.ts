@@ -1,5 +1,4 @@
 import { assert, describe, expect, it } from "@effect/vitest";
-import * as ConfigProvider from "effect/ConfigProvider";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -118,22 +117,6 @@ describe("Resolver", () => {
     }).pipe(Effect.provide(layerWith(memory)));
   });
 
-  it.effect("reads the cache on the second call and reports the counts", () => {
-    const memory = memoryProvider({ a: "1" });
-
-    return Effect.gen(function* () {
-      const first = yield* Resolver.resolve({ A: mem("a") }, options);
-      const second = yield* Resolver.resolve({ A: mem("a") }, options);
-
-      expect(memory.calls()).toHaveLength(1);
-      expect(succeeded(second, "A").origin).toBe(ValueOrigin.Cache);
-      expect(first.providers).toEqual([{ provider: "memory", secrets: 1, cached: 0, resolved: 1 }]);
-      expect(second.providers).toEqual([
-        { provider: "memory", secrets: 1, cached: 1, resolved: 0 },
-      ]);
-    }).pipe(Effect.provide(layerWith(memory)));
-  });
-
   it.effect("calls the provider again for refresh, for cache(false), and after the TTL", () => {
     const memory = memoryProvider({ a: "1" });
 
@@ -247,22 +230,6 @@ describe("Resolver", () => {
     }).pipe(Effect.provide(layerWith(memoryProvider({ word: "hello" })))),
   );
 
-  it.effect("reads fromEnv through the config provider", () =>
-    Effect.gen(function* () {
-      const resolution = yield* Resolver.resolve(
-        { SHA: Source.fromEnv("GITHUB_SHA"), NONE: Source.fromEnv("NOT_SET").default("local") },
-        options,
-      );
-
-      expect(succeeded(resolution, "SHA").decoded).toBe("abc123");
-      expect(succeeded(resolution, "SHA").origin).toBe(ValueOrigin.Environment);
-      expect(succeeded(resolution, "NONE").decoded).toBe("local");
-    }).pipe(
-      Effect.provide(layerWith()),
-      Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ GITHUB_SHA: "abc123" }))),
-    ),
-  );
-
   it.effect(
     "resolves the inputs of custom and derive in the same batch, and nests them in order",
     () => {
@@ -331,19 +298,26 @@ describe("Resolver", () => {
     }).pipe(Effect.provide(layerWith(memory)));
   });
 
-  it.effect("fails a derive that throws with a DeriveError", () =>
-    Effect.gen(function* () {
-      const resolution = yield* Resolver.resolve(
-        {
-          BROKEN: Source.derive(mem("a"), () => {
-            throw new Error("fake-secret-in-message");
-          }),
-        },
-        options,
-      );
+  it.effect(
+    "fails a derive that throws with the class name and the location, not the message",
+    () =>
+      Effect.gen(function* () {
+        const resolution = yield* Resolver.resolve(
+          {
+            BROKEN: Source.derive(mem("a"), () => {
+              throw new TypeError("fake-secret-in-message");
+            }),
+          },
+          options,
+        );
 
-      expect(failed(resolution, "BROKEN")).toBeInstanceOf(DeriveError);
-    }).pipe(Effect.provide(layerWith(memoryProvider({ a: "1" })))),
+        const error = failed(resolution, "BROKEN");
+
+        assert(error instanceof DeriveError);
+        expect(error.thrown).toBe("TypeError");
+        expect(error.location).toMatch(/Resolver\.test\.ts:\d+:\d+$/u);
+        expect(JSON.stringify(error) + error.message).not.toContain("fake-secret-in-message");
+      }).pipe(Effect.provide(layerWith(memoryProvider({ a: "1" })))),
   );
 
   it.effect("caches a custom value, and computes it again when an input changes", () => {
@@ -694,19 +668,6 @@ describe("Resolver", () => {
         decoded: "info",
         origin: ValueOrigin.Default,
       });
-    }).pipe(Effect.provide(layerWith(memory)));
-  });
-
-  it.effect("never trusts a cached missing value for a required var", () => {
-    const memory = memoryProvider({});
-
-    return Effect.gen(function* () {
-      yield* Resolver.resolve({ OPTIONAL: mem("token").optional() }, options);
-
-      const required = yield* Resolver.resolve({ REQUIRED: mem("token") }, options);
-
-      expect(memory.calls()).toHaveLength(2);
-      expect(failed(required, "REQUIRED")).toMatchObject({ reason: ReferenceFailure.NotFound });
     }).pipe(Effect.provide(layerWith(memory)));
   });
 

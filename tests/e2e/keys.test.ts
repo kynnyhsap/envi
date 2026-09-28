@@ -52,7 +52,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi cache key", (it) 
         const calls = yield* providerCalls(sandbox);
 
         expect(calls[1]).toEqual(["uncached"]);
-        expect(calls[2]?.length).toBeGreaterThan(1);
+        expect(calls[2]).toEqual(calls[0]);
       }),
     );
 

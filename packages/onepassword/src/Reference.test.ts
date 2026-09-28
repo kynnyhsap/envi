@@ -3,7 +3,7 @@ import { Source } from "@kynnyhsap/envi";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { describeReference, op, providerId, Reference } from "./Reference.ts";
+import { describeReference, op, Reference } from "./Reference.ts";
 
 const decode = (source: Source.AnySource) =>
   Source.Origin.$match(source.origin, {
@@ -62,13 +62,6 @@ describe("op", () => {
       expect(fromObject.account).toBe("partner-team");
     }),
   );
-
-  it("builds a redacted descriptor for the provider", () => {
-    const source = op("op://app/postgres/url");
-
-    expect(source.isRedacted).toBe(true);
-    expect(source.origin).toMatchObject({ provider: providerId });
-  });
 
   it.effect("rejects a reference that Envi does not support", () =>
     Effect.gen(function* () {

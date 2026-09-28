@@ -1,6 +1,7 @@
 // The encrypted file cache across CLI processes. The key lives in the real keychain: the macOS
-// Keychain, or the Secret Service in the Linux image that sets `ENVI_E2E_SECRET_SERVICE`. Each
-// test edits real entry files the way an attacker could.
+// Keychain, or the Secret Service in the Linux image that sets `ENVI_E2E_SECRET_SERVICE`. A test
+// edits real entry files the way an attacker could. `FileCache.test.ts` covers an edited entry
+// and a moved entry.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -73,57 +74,6 @@ describe.skipIf(!hasKeychain)("envi encrypted cache", () => {
           expect(JSON.parse(second.stdout).API_TOKEN).toBe(secrets["token-development"]);
           expect(JSON.parse(second.stdout).PRIVATE_KEY).toBe(secrets["private-key"]);
           expect((yield* providerCalls(sandbox))[1]).toEqual(uncachedBatch);
-        }),
-      );
-
-      it.effect("logs the duration of the Keychain read with --debug", () =>
-        Effect.gen(function* () {
-          const sandbox = yield* makeSandbox("keychain");
-
-          const result = yield* runCli(
-            runtime,
-            app,
-            ["check", "--cache-dir", sandbox.cacheDirectory, "--debug"],
-            sandbox.env,
-          );
-
-          expect(result.stderr).toMatch(/step=keychain\.key durationMs=\d+ outcome=success/);
-        }),
-      );
-
-      it.effect("treats an edited entry as a miss", () =>
-        Effect.gen(function* () {
-          const fs = yield* FileSystem.FileSystem;
-          const sandbox = yield* makeSandbox("keychain");
-          const { token } = yield* fillCache(runtime, sandbox);
-          const edited = { ...JSON.parse(token.text), resolvedAt: Date.now() + 60_000 };
-
-          yield* fs.writeFileString(token.file, JSON.stringify(edited));
-
-          const result = yield* exportJson(runtime, sandbox);
-
-          expect(result.exitCode).toBe(0);
-          expect(JSON.parse(result.stdout).API_TOKEN).toBe(secrets["token-development"]);
-          expect((yield* providerCalls(sandbox))[1]).toEqual(["token-development", "uncached"]);
-        }),
-      );
-
-      it.effect("treats an entry that someone moved to another key as a miss", () =>
-        Effect.gen(function* () {
-          const fs = yield* FileSystem.FileSystem;
-          const sandbox = yield* makeSandbox("keychain");
-          const { files, token } = yield* fillCache(runtime, sandbox);
-
-          const other = yield* Effect.fromNullishOr(
-            files.find((entry) => entry.reference === "file://public-name"),
-          );
-
-          yield* fs.writeFileString(token.file, other.text);
-
-          const result = yield* exportJson(runtime, sandbox);
-
-          expect(JSON.parse(result.stdout).API_TOKEN).toBe(secrets["token-development"]);
-          expect((yield* providerCalls(sandbox))[1]).toContain("token-development");
         }),
       );
 

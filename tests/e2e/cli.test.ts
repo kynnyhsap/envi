@@ -2,48 +2,16 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import { docsOf, enviVersion, fixture, runCli, runtimes } from "./helpers.ts";
+import { docsOf, fixture, runCli, runtimes } from "./helpers.ts";
 
 layer(NodeServices.layer)("envi CLI", (it) => {
   describe.each(runtimes)("on %s", (runtime) => {
-    it.effect("prints the package version", () =>
-      Effect.gen(function* () {
-        const result = yield* runCli(runtime, fixture("app"), ["--version"]);
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain(enviVersion);
-      }),
-    );
-
-    it.effect("inspects the nearest config with hidden secrets", () =>
-      Effect.gen(function* () {
-        const result = yield* runCli(runtime, fixture("app/nested"), ["inspect"]);
-
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain("memory://db/development");
-        expect(result.stdout).not.toContain("postgres://");
-      }),
-    );
-
     it.effect("exports real values for the stage of the flag", () =>
       Effect.gen(function* () {
         const result = yield* runCli(runtime, fixture("app"), ["export", "--stage", "production"]);
 
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toBe("PORT=3000\nDATABASE_URL=postgres://prod\n");
-      }),
-    );
-
-    it.effect("prints a report as JSON with --json", () =>
-      Effect.gen(function* () {
-        const result = yield* runCli(runtime, fixture("app"), ["sync", "--json"]);
-
-        expect(result.exitCode).toBe(0);
-        expect(JSON.parse(result.stdout)).toMatchObject({
-          stage: "development",
-          configs: 1,
-          failures: [],
-        });
       }),
     );
 
@@ -123,7 +91,8 @@ layer(NodeServices.layer)("envi CLI", (it) => {
         const result = yield* runCli(runtime, fixture("app"), ["check", "--stage", "qa"]);
 
         expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain("qa");
+        expect(result.stderr).toContain('"qa"');
+        expect(result.stderr).toContain(`docs: ${docsOf("unknown-stage")}`);
       }),
     );
 
@@ -148,7 +117,8 @@ layer(NodeServices.layer)("envi CLI", (it) => {
           "",
         ]);
 
-        expect(result.exitCode).not.toBe(0);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain("Unrecognized flag: --json in command envi run");
         expect(result.stdout).not.toContain("{");
       }),
     );

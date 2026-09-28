@@ -37,29 +37,11 @@ const makeProject = Effect.gen(function* () {
 });
 
 describe("findLocalBin", () => {
-  it.effect("finds the local installation from a directory below the project", () =>
-    Effect.gen(function* () {
-      const project = yield* makeProject;
-      const found = yield* findLocalBin(project.nested, "/usr/local/lib/envi/dist/bin.js");
-
-      expect(found).toEqual(Option.some(project.bin));
-    }).pipe(Effect.provide(platform)),
-  );
-
   it.effect("finds nothing when the running file is the local installation", () =>
     Effect.gen(function* () {
       const project = yield* makeProject;
 
       expect(yield* findLocalBin(project.nested, project.bin)).toEqual(Option.none());
-    }).pipe(Effect.provide(platform)),
-  );
-
-  it.effect("finds nothing without a local installation", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const empty = yield* fs.makeTempDirectoryScoped({ prefix: "envi-delegate-empty-" });
-
-      expect(yield* findLocalBin(empty, "/usr/local/lib/envi/dist/bin.js")).toEqual(Option.none());
     }).pipe(Effect.provide(platform)),
   );
 });

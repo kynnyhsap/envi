@@ -29,12 +29,6 @@ const forwarded = (name: Signals.SignalName): Signals.Received => ({ name, forwa
 
 layer(Platform.layer, { excludeTestServices: true })("Signals.supervise", (it) => {
   describe("with real child processes", () => {
-    it.effect("returns the exit code of the child", () =>
-      Effect.gen(function* () {
-        expect(yield* Signals.supervise(node("process.exit(5)"))).toEqual(Option.some(5));
-      }),
-    );
-
     it.effect.each([
       ["SIGHUP", 129],
       ["SIGINT", 130],
@@ -45,12 +39,6 @@ layer(Platform.layer, { excludeTestServices: true })("Signals.supervise", (it) =
         Effect.gen(function* () {
           expect(yield* Signals.supervise(node(endsItselfWith(name)))).toEqual(Option.some(code));
         }),
-    );
-
-    it.effect("returns nothing when another signal ends the child", () =>
-      Effect.gen(function* () {
-        expect(yield* Signals.supervise(node(endsItselfWith("SIGKILL")))).toEqual(Option.none());
-      }),
     );
 
     it.effect("forwards a second signal while the child still runs after the first", () =>

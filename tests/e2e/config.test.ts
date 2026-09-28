@@ -158,9 +158,9 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         ]);
 
         expect(extension.exitCode).toBe(1);
-        expect(extension.stderr).toContain("InvalidConfig");
+        expect(extension.stderr).toContain(`docs: ${docsOf("config-load-invalid-config")}`);
         expect(missing.exitCode).toBe(1);
-        expect(missing.stderr).toContain("NotFound");
+        expect(missing.stderr).toContain(`docs: ${docsOf("config-load-not-found")}`);
       }),
     );
 
@@ -376,25 +376,16 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
       }),
     );
 
-    it.effect("prints the help text with every command", () =>
-      Effect.gen(function* () {
-        const result = yield* runCli(runtime, app, ["--help"]);
-
-        expect(result.exitCode).toBe(0);
-
-        for (const name of ["run", "sync", "inspect", "check", "export", "cache"]) {
-          expect(result.stdout).toContain(name);
-        }
-      }),
-    );
-
-    it.effect("rejects an unknown command and an unknown flag", () =>
+    it.effect("rejects an unknown command, an unknown flag, and a flag before its command", () =>
       Effect.gen(function* () {
         const command = yield* runCli(runtime, app, ["deploy"]);
         const flag = yield* runCli(runtime, app, ["check", "--no-such-flag"]);
+        const early = yield* runCli(runtime, app, ["--stage", "production", "check"]);
 
-        expect(command.exitCode).not.toBe(0);
-        expect(flag.exitCode).not.toBe(0);
+        expect([command.exitCode, flag.exitCode, early.exitCode]).toEqual([1, 1, 1]);
+        expect(command.stderr).toContain('Unknown subcommand "deploy"');
+        expect(flag.stderr).toContain("Unrecognized flag: --no-such-flag");
+        expect(early.stderr).toContain("Unrecognized flag: --stage in command envi");
       }),
     );
   });

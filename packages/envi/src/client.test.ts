@@ -105,17 +105,22 @@ describe("createEnvi", () => {
     await envi.dispose();
   });
 
-  it("syncs several clients in one report", async () => {
-    const web = createEnvi(config);
+  it("syncs several clients in one report, with one call to a shared provider", async () => {
+    const shared = memoryProvider({ "db/url": "postgres://fake", port: "5432" });
+
+    const web = createEnvi(
+      defineConfig({ providers: [shared], cache: false, vars: { DATABASE_URL: mem("db/url") } }),
+    );
 
     const api = createEnvi(
-      defineConfig({ providers: [provider], cache: false, vars: { PORT: mem("port") } }),
+      defineConfig({ providers: [shared], cache: false, vars: { PORT: mem("port") } }),
     );
 
     const report = await syncAll([web, api]);
 
     expect(report.configs).toBe(2);
     expect(report.failures).toEqual([]);
+    expect(shared.calls()).toEqual([["db/url", "port"]]);
     await web.dispose();
     await api.dispose();
   });

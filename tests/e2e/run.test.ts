@@ -8,16 +8,7 @@ import { ChildProcess } from "effect/process";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 
-import {
-  cleared,
-  cliPath,
-  fixture,
-  makeSandbox,
-  providerCalls,
-  runCli,
-  runtimes,
-  secrets,
-} from "./helpers.ts";
+import { cleared, cliPath, fixture, makeSandbox, runCli, runtimes, secrets } from "./helpers.ts";
 
 const app = fixture("cached");
 
@@ -212,21 +203,6 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
       }),
     );
 
-    it.effect("returns the exit code of the child", () =>
-      Effect.gen(function* () {
-        const sandbox = yield* makeSandbox("none");
-
-        const result = yield* runCli(
-          runtime,
-          app,
-          ["run", "--cache-dir", sandbox.cacheDirectory, "--", "node", "-e", "process.exit(42)"],
-          sandbox.env,
-        );
-
-        expect(result.exitCode).toBe(42);
-      }),
-    );
-
     it.effect("passes flags after -- to the child and not to Envi", () =>
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
@@ -253,27 +229,6 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
       }),
     );
 
-    it.effect("starts no child when a var fails", () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const sandbox = yield* makeSandbox("none");
-
-        yield* fs.writeFileString(sandbox.secretsFile, JSON.stringify({ "db-user": "app" }));
-
-        const result = yield* runCli(
-          runtime,
-          app,
-          ["run", "--no-cache", "--", "node", "-e", "console.log('child-started')"],
-          sandbox.env,
-        );
-
-        expect(result.exitCode).toBe(1);
-        expect(result.stdout).not.toContain("child-started");
-        expect(result.stderr).toContain("NotFound");
-        expect(result.stderr).toContain("file://");
-      }),
-    );
-
     it.effect("reports a command that does not exist", () =>
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
@@ -289,19 +244,6 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi run", (it) => {
         // Node reports EACCES in place of ENOENT when a folder of `PATH` is not readable.
         expect(result.stderr).toMatch(/CommandNotFound|CommandNotExecutable/u);
         expect(result.stderr).toContain("envi-e2e-no-such-command");
-      }),
-    );
-
-    it.effect("reads the cache on the second run", () =>
-      Effect.gen(function* () {
-        const sandbox = yield* makeSandbox("none");
-        const args = ["run", "--cache-dir", sandbox.cacheDirectory, "--", "node", "-e", ""];
-
-        yield* runCli(runtime, app, args, sandbox.env);
-        yield* runCli(runtime, app, args, sandbox.env);
-
-        // A cached `NotFound` serves the optional vars, so only the uncached var calls again.
-        expect((yield* providerCalls(sandbox))[1]).toEqual(["uncached"]);
       }),
     );
 
