@@ -189,6 +189,49 @@ describe.each(installers)("the published packages installed with $manager", (ins
       }),
     );
 
+    it.effect("ships every docs page of its version in the docs folder of Envi", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { directory: project } = yield* Project;
+        const source = path.join(repoRoot, "packages/docs/content");
+        const shipped = path.join(project, "node_modules", ...enviManifest.name.split("/"), "docs");
+        const pages = yield* fs.readDirectory(source, { recursive: true });
+
+        expect((yield* fs.readDirectory(shipped, { recursive: true })).toSorted()).toEqual(
+          pages.toSorted(),
+        );
+
+        for (const page of pages.filter((name) => name.endsWith(".md"))) {
+          expect(yield* fs.readFileString(path.join(shipped, page)), page).toBe(
+            yield* fs.readFileString(path.join(source, page)),
+          );
+        }
+      }),
+    );
+
+    it.effect("lets an agent find the folder of Envi through its manifest", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const { directory: project } = yield* Project;
+        const manifest = `${enviManifest.name}/package.json`;
+
+        const result = yield* exec(
+          "node",
+          ["-p", `require.resolve(${JSON.stringify(manifest)})`],
+          project,
+        );
+
+        // `require.resolve` gives the real path, and the temp folder of macOS is a link.
+        expect(result.stdout.trim()).toBe(
+          yield* fs.realPath(
+            path.join(project, "node_modules", ...enviManifest.name.split("/"), "package.json"),
+          ),
+        );
+      }),
+    );
+
     it.effect("asks for a compatible Envi as the peer of the provider", () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;

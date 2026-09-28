@@ -15,10 +15,11 @@ Reasons for Envi:
 - Resolving secrets on every dev script run is slow and wasteful.
 - Text env files such as `.env.example` are unsafe and untyped.
 
-`README.md` holds the user docs: the config, each command, the settings, the cache, the
-provider, the SDK, and one section for each error. It is the source of truth for the behavior.
-Read it before you change behavior. Change it in the same change as the behavior. This file holds
-the decisions and the rules for contributors.
+`packages/docs/content` holds the user docs: the config, each command, the settings, the cache,
+the provider, the SDK, and one page for each error. The docs are the source of truth for the
+behavior. Read the page before you change behavior. Change the page in the same change as the
+behavior. `README.md` is an overview that links to the pages. This file holds the decisions and
+the rules for contributors.
 
 ## Use cases
 
@@ -110,9 +111,14 @@ This repository is public. These rules have no exception.
 - **Error docs.** Each error has `summary`, `hint`, and `docs`. Each error class comes from
   `EnviError` or `ReasonError` of `ErrorClass.ts`. A class gives its fields, its summary, and its
   hints. The factory derives `docs` and `message`. The hint catalog lives in `Errors.ts`. `docs`
-  links to `https://github.com/kynnyhsap/envi#error-<tag>-<reason>`. A unit test checks that the
-  README has a section and the hint for each catalog entry. Update the README section in the same
-  change as the catalog.
+  links to the page `errors/<tag>-<reason>.md` of the docs on GitHub, until a website serves the
+  docs. A unit test checks that each catalog entry has a page with its hint, and that each error
+  page has a catalog entry. Update the page in the same change as the catalog.
+- **The docs ship with Envi.** The npm package of `envi` holds the docs pages of its version in
+  `docs`, so an agent reads them offline in `node_modules`. `docs/README.md` maps each task to a
+  page. Each page starts with a frontmatter of a JSON string `title` and `description`, and a
+  relative link names a page. `bun run docs:check` enforces the page rules. Envi never writes a
+  file of the user, such as `AGENTS.md`.
 - **A throw in user code hides its message.** `derive()`, `custom()`, and `vars` show only the
   class name and the location of the throw. `CustomFailure` carries a safe message.
 
@@ -185,8 +191,8 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 - `effect` and every `@effect/*` entry of the catalog share one version. While Effect is a
   prerelease, the `effect` entry is an exact version. After it, the entry is a `~` range. The
   entry is the peer range of the packages.
-- Each README asks for the `effect` spec of the catalog in its install command, and names the
-  floors of `engines`.
+- Each README and each docs page asks for the `effect` spec of the catalog in its install
+  command, and names the floors of `engines`.
 
 - Every change goes through a pull request against `main`. Do not commit to `main` directly.
   CI must pass before a merge.
@@ -195,12 +201,13 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 | --------------------------- | ---------------------- | ------------------------------------------------------------------------ |
 | `@kynnyhsap/envi`           | `packages/envi`        | the core in `src/core`, the plain client, the layer, the CLI             |
 | `@kynnyhsap/envi-1password` | `packages/onepassword` | `op()`, `onePasswordProvider`, and its e2e tests; peer `@kynnyhsap/envi` |
+| none yet                    | `packages/docs`        | the docs pages in `content`; a manifest comes with the website           |
 
 - `envi` exports a small public API from `src/index.ts`, and the test helpers from
   `@kynnyhsap/envi/testing`. Every other module of `src/core` is internal.
 - A published package holds `dist`, and `src` for the declaration maps. `@kynnyhsap/envi-1password` has its
   own `README.md`. `scripts/prepack.ts` copies the root `LICENSE` into each package, and the root
-  `README.md` into `envi`. `scripts/release.ts` publishes: the Bun of the workspace packs each
+  `README.md` and the docs pages into `envi`. `scripts/release.ts` publishes: the Bun of the workspace packs each
   package, because npm does not resolve `workspace:` and `catalog:`. npm publishes each tarball,
   because `bun publish` signs no provenance and supports no trusted publishing.
 - `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/Workspace.ts`
@@ -240,8 +247,10 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 - `bun run rename` writes the names of `scripts/packages.ts` into every manifest, import, and doc.
   `bun run check` fails while a manifest differs from that file.
 - `bun run versions` writes the root version and `engines` into every package manifest, and the
-  `effect` range and the floors into every README. `bun run check` fails while a file differs or
-  a rule breaks.
+  `effect` range and the floors into every README and docs page. `bun run check` fails while a
+  file differs or a rule breaks.
+- `bun run docs:check` checks the frontmatter, the first heading, and the links of each docs page.
+  `bun run check` runs it.
 - To release, change the root version, run `bun run versions`, and merge the change. Then tag
   the merge commit on `main` with `v<version>`, and push the tag.
 - `bun run release --tag v<version> --dry-run` packs both packages and checks them with

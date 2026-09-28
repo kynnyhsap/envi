@@ -57,25 +57,45 @@ const samples: ReadonlyArray<AnyEnviError> = [
   }),
 ];
 
-const readme = new URL("../../../../README.md", import.meta.url);
+/** The docs pages. The link of each error is its path below `docsBase`. */
+const docsContent = new URL("../../../docs/content/", import.meta.url);
+
+/** The page of an error, such as `errors/vars.md`. */
+const errorsFolder = "errors";
+
+/** The page that lists every error. It belongs to no catalog entry. */
+const errorsIndex = "index.md";
 
 describe("Errors", () => {
-  it.effect("has a README section with the hint for each catalog entry", () =>
+  it.effect("has a docs page with the hint for each catalog entry", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const text = yield* fs.readFileString(readme.pathname);
 
       for (const entry of catalog) {
-        expect(text, entry.anchor).toContain(`<a id="${entry.anchor}"></a>`);
-        expect(text, entry.anchor).toContain(`Next action: ${entry.hint}`);
+        const text = yield* fs.readFileString(new URL(entry.page, docsContent).pathname);
+
+        expect(text, entry.page).toContain(`Next action: ${entry.hint}`);
       }
     }).pipe(Effect.provide(NodeFileSystem.layer)),
   );
 
-  it("gives every catalog entry a distinct anchor", () => {
-    const anchors = catalog.map((entry) => entry.anchor);
+  it.effect("has no error page without a catalog entry", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const names = yield* fs.readDirectory(new URL(errorsFolder, docsContent).pathname);
 
-    expect(new Set(anchors).size).toBe(anchors.length);
+      const pages = names
+        .filter((name) => name !== errorsIndex)
+        .map((name) => `${errorsFolder}/${name}`);
+
+      expect(pages.toSorted()).toEqual(catalog.map((entry) => entry.page).toSorted());
+    }).pipe(Effect.provide(NodeFileSystem.layer)),
+  );
+
+  it("gives every catalog entry a distinct page", () => {
+    const pages = catalog.map((entry) => entry.page);
+
+    expect(new Set(pages).size).toBe(pages.length);
   });
 
   it.each(samples.map((error) => ({ error, tag: error._tag })))(
@@ -89,7 +109,7 @@ describe("Errors", () => {
 
       expect(entry).toBeDefined();
       expect(error.hint).toBe(entry?.hint);
-      expect(error.docs).toBe(`${docsBase}${entry?.anchor}`);
+      expect(error.docs).toBe(`${docsBase}${entry?.page}`);
       expect(error.summary.startsWith("Envi ")).toBe(true);
       expect(isEnviError(error)).toBe(true);
     },
