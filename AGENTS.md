@@ -125,6 +125,8 @@ This repository is public. These rules have no exception.
   schema.
 - Do not use magic strings. Define each closed set of values once, as a constant object plus a
   `Schema`, such as `ExportFormat.Dotenv`.
+- Give every number in the code of a package or a script a name, such as `jsonIndent`. Write a
+  `Duration` constant as text, such as `"30 seconds"`. A lint rule enforces this outside tests.
 - Prefer a small set of strong primitives. Do not add a custom helper when plain TypeScript or a
   built-in Effect function does the job. Do not add a special case without a real use case.
 - All code runs on both Node and Bun. The core (`packages/envi/src/core`) depends only on Effect

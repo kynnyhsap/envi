@@ -62,8 +62,8 @@ const integration = { integrationName: "envi", integrationVersion: manifest.vers
  * stay below the wait for the resolve lock of the cache.
  */
 const timeouts: Readonly<Record<CredentialKind, Duration.Duration>> = {
-  [CredentialKind.Desktop]: Duration.seconds(90),
-  [CredentialKind.ServiceAccount]: Duration.seconds(30),
+  [CredentialKind.Desktop]: Duration.fromInputUnsafe("90 seconds"),
+  [CredentialKind.ServiceAccount]: Duration.fromInputUnsafe("30 seconds"),
 };
 
 /** The words of an SDK message about a rejected token. The SDK has no class for this case. */

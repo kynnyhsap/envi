@@ -3,7 +3,7 @@
 import * as Effect from "effect/Effect";
 
 import { ExportError } from "./Errors.ts";
-import { ExportFormat } from "./Reports.ts";
+import { ExportFormat, jsonIndent } from "./Reports.ts";
 
 /** A value that every dotenv parser reads as is. */
 const bare = /^[\w./:@+=,-]*$/u;
@@ -35,7 +35,7 @@ export const render = (
   values: ReadonlyArray<readonly [string, string]>,
 ): Effect.Effect<string, ExportError> =>
   format === ExportFormat.Json
-    ? Effect.succeed(`${JSON.stringify(Object.fromEntries(values), null, 2)}\n`)
+    ? Effect.succeed(`${JSON.stringify(Object.fromEntries(values), null, jsonIndent)}\n`)
     : Effect.map(
         Effect.forEach(values, ([key, raw]) => line(key, raw)),
         (lines) => `${lines.join("\n")}\n`,

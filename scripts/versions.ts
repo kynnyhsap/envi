@@ -61,9 +61,12 @@ const effectSpec = /(?<![\w@/-])effect@[^\s"'`]+/gu;
 /** A runtime floor in a README, such as `Node 22.19.0`. */
 const floor = (runtime: string) => new RegExp(`\\b${runtime} \\d+\\.\\d+\\.\\d+`, "gu");
 
+/** The indent of a manifest, as oxfmt formats it. */
+const manifestIndent = 2;
+
 /** The `engines` block of a manifest, formatted the way oxfmt formats a manifest. */
 const enginesBlock = (engines: typeof Engines.Type): string =>
-  `"engines": ${JSON.stringify(engines, null, 2).replaceAll("\n", "\n  ")}`;
+  `"engines": ${JSON.stringify(engines, null, manifestIndent).replaceAll("\n", "\n  ")}`;
 
 interface Dependency {
   readonly file: string;

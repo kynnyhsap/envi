@@ -96,6 +96,25 @@ export default defineConfig({
   },
   overrides: [
     {
+      // A number in the code of a package or a script has a name. A test states its values in place.
+      files: ["packages/*/src/**/*.ts", "scripts/**/*.ts"],
+      excludeFiles: ["**/*.test.ts", "**/fixtures/**"],
+      rules: {
+        "eslint/no-magic-numbers": [
+          "error",
+          {
+            ignore: [-1, 0, 1],
+            ignoreArrayIndexes: true,
+            ignoreDefaultValues: true,
+            ignoreEnums: true,
+            ignoreNumericLiteralTypes: true,
+            ignoreTypeIndexes: true,
+            enforceConst: true,
+          },
+        ],
+      },
+    },
+    {
       // The configs of tools and the Envi configs export a default, because the tools ask for it.
       files: ["*.config.ts", "**/envi.config.ts", "examples/config-*.ts"],
       rules: { "import/no-default-export": "off" },

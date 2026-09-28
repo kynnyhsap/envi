@@ -35,6 +35,7 @@ import {
   ErrorReport,
   ExportFormat,
   InspectReport,
+  jsonIndent,
   SyncReport,
 } from "./core/Reports.ts";
 import * as Settings from "./core/Settings.ts";
@@ -249,7 +250,7 @@ const print = <A, I>(
 ) =>
   json
     ? Effect.flatMap(Effect.orDie(Schema.encodeEffect(schema)(report)), (encoded) =>
-        Console.log(JSON.stringify(encoded, null, 2)),
+        Console.log(JSON.stringify(encoded, null, jsonIndent)),
       )
     : writeStdout(render(report));
 
@@ -477,7 +478,7 @@ const report = (argv: ReadonlyArray<string>) => (error: AnyEnviError) =>
     ownArguments(argv).includes(longFlag(FlagName.Json))
       ? Effect.flatMap(
           Effect.orDie(Schema.encodeEffect(ErrorReport)(Outcomes.errorReport(error))),
-          (encoded) => Console.log(JSON.stringify(encoded, null, 2)),
+          (encoded) => Console.log(JSON.stringify(encoded, null, jsonIndent)),
         )
       : Console.error(error.message),
     fail,
