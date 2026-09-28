@@ -1,0 +1,51 @@
+name: Effect release
+
+# Envi releases a new version for each new Effect release. Dependabot skips a Bun catalog
+# (dependabot/dependabot-core#14320), so this workflow opens an issue when npm has an Effect
+# version newer than the `effect` entry of the catalog.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: check
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Open an issue for a newer Effect
+        # `bash` runs the step with `pipefail`, so a failed `npm view` fails the job.
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current=$(jq -r '.workspaces.catalog.effect' package.json)
+          # The versions at or above the catalog entry. A prerelease entry also matches the later
+          # release candidates of the same version.
+          newest=$(npm view "effect@>=${current#\~}" version --json | jq -r 'if type == "array" then last else . end')
+
+          if [ "$newest" = "${current#\~}" ]; then
+            echo "The catalog has the newest Effect: $current."
+            exit 0
+          fi
+
+          title="Move to effect@$newest"
+
+          if [ -n "$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[].number')" ]; then
+            echo "An open issue already asks for effect@$newest."
+            exit 0
+          fi
+
+          gh issue create --title "$title" --body "npm has \`effect@$newest\`. The catalog asks for \`$current\`.
+
+          1. Set \`effect\` and every \`@effect/*\` entry of the catalog in the root \`package.json\` to the new version.
+          2. Run \`bun install\` and \`bun run versions\`.
+          3. Run \`bun run verify\`, and fix every import that the release moved.
+          4. Merge the change, and release Envi."

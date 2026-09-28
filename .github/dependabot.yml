@@ -1,5 +1,6 @@
 # Dependabot proposes updates of the pinned GitHub Actions. The catalog of the root manifest holds
-# every package version, and a person updates it.
+# every package version, and a person updates it. Dependabot skips a Bun catalog
+# (dependabot/dependabot-core#14320), so the `effect-release` workflow reports a new Effect.
 version: 2
 updates:
   - package-ecosystem: github-actions
