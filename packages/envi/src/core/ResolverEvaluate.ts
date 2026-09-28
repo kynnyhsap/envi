@@ -190,232 +190,259 @@ const fromEnvironment = (source: Source.AnySource, name: string): Evaluation =>
     ),
   );
 
+/** What the evaluation of one descriptor reads: the earlier steps, the cache, and the memo. */
+interface Step extends Input {
+  readonly cache: Cache.Interface;
+  /** The evaluation of another descriptor. Each descriptor runs once. */
+  readonly evaluated: (source: Source.AnySource) => Evaluation;
+}
+
+/** Uses an expired cache entry after a transient failure, while `maxStale` allows it. */
+const orStale = (
+  step: Step,
+  source: Source.AnySource,
+  record: Option.Option<Cache.CacheRecord>,
+  error: VarError | CacheError,
+): Evaluation =>
+  isTransient(error)
+    ? Option.match(
+        Option.filter(record, (found) => step.freshness.isUsableStale(source, found)),
+        {
+          onNone: () => Effect.fail(error),
+          onSome: (found) =>
+            Effect.andThen(
+              Effect.logWarning("Envi uses an expired cache entry after a transient failure.").pipe(
+                Effect.annotateLogs({ provider: found.provider, reference: found.reference }),
+              ),
+              fromCached(source, found, ValueOrigin.StaleCache),
+            ),
+        },
+      )
+    : Effect.fail(error);
+
+/** Evaluates and decodes the inputs of a `derive()` or `custom()` value. */
+const evaluateInputs = (
+  step: Step,
+  inputs: Readonly<Record<string, Source.AnySource>>,
+  owner: string,
+): Effect.Effect<Inputs, VarError | CacheError> =>
+  Effect.map(
+    Effect.forEach(Object.entries(inputs), ([name, inputSource]) =>
+      Effect.flatMap(step.evaluated(inputSource), (result) =>
+        Effect.map(decodeEvaluated(inputSource, `an input of ${owner}`, result), (decoded) => ({
+          name,
+          result,
+          decoded,
+        })),
+      ),
+    ),
+    (entries) => ({
+      decoded: Object.fromEntries(entries.map((entry) => [entry.name, entry.decoded])),
+      raws: entries
+        .map(
+          (entry) =>
+            [entry.name, Option.getOrNull(Option.map(entry.result.raw, Redacted.value))] as const,
+        )
+        .toSorted(([a], [b]) => (a < b ? -1 : 1)),
+      isStale: entries.some((entry) => entry.result.origin === ValueOrigin.StaleCache),
+    }),
+  );
+
+const fromReference = (step: Step, source: Source.AnySource): Evaluation => {
+  const leaf = step.plan.leaves.get(source);
+
+  if (leaf === undefined) {
+    return Effect.die("Envi resolver defect: a reference has no prepared leaf.");
+  }
+
+  if (Result.isFailure(leaf)) {
+    return Effect.fail(leaf.failure);
+  }
+
+  const { description, fullKey, provider } = leaf.success;
+  const answer = step.fetched.answers.get(fullKey);
+
+  if (answer === undefined) {
+    return Option.match(step.freshness.freshRecord(source, step.fetched.records), {
+      onNone: () => Effect.die("Envi resolver defect: a reference is neither fresh nor fetched."),
+      onSome: (found) => fromCached(source, found, ValueOrigin.Cache),
+    });
+  }
+
+  return Result.match(answer, {
+    onSuccess: (raw) =>
+      Effect.succeed({
+        raw: Option.some(Redacted.make(raw)),
+        origin: ValueOrigin.Provider,
+        provider: Option.some(provider.id),
+        reference: Option.some(description),
+        resolvedAt: Option.some(step.now),
+      }),
+    onFailure: (error) =>
+      Freshness.isNotFound(error)
+        ? whenMissing(source, provider.id, description)
+        : orStale(step, source, step.freshness.recordIn(source, step.cached), error),
+  });
+};
+
+const fromDerive = (
+  step: Step,
+  source: Source.AnySource,
+  origin: Source.Origin & { _tag: "Derived" },
+): Evaluation =>
+  Effect.gen(function* () {
+    const inputs = yield* evaluateInputs(step, origin.inputs, "derive()");
+    const value = yield* origin.call(inputs.decoded);
+
+    if (Option.isNone(value)) {
+      return yield* whenMissing(source, Source.deriveProviderId, "derive()");
+    }
+
+    return withInputs(
+      unsourced(Option.some(Redacted.make(value.value)), ValueOrigin.Derived),
+      inputs,
+    );
+  });
+
+/**
+ * The cached result of a `custom()` value. An entry that other inputs or other code produced
+ * does not exist for this run.
+ */
+const customRecord = (
+  entry: Option.Option<Cache.CacheRecord>,
+  digest: string,
+): Option.Option<Cache.CacheRecord> =>
+  Option.flatMap(entry, (found) =>
+    found.value.pipe(
+      Option.flatMap((value) => decodeCustomRecord(Redacted.value(value))),
+      Option.filter((decoded) => decoded.digest === digest),
+      Option.map((decoded): Cache.CacheRecord => ({
+        ...found,
+        value: Option.map(Option.fromNullOr(decoded.value), Redacted.make),
+      })),
+    ),
+  );
+
+const fromCustom = (
+  step: Step,
+  source: Source.AnySource,
+  origin: Source.Origin & { _tag: "Custom" },
+): Evaluation => {
+  const description = `custom(${origin.id})`;
+  const key = step.plan.customKeys.get(source);
+
+  if (key === undefined) {
+    return Effect.die("Envi resolver defect: a custom() value has no cache key.");
+  }
+
+  return Effect.gen(function* () {
+    const inputs = yield* evaluateInputs(step, origin.inputs, description);
+    const digest = yield* Digest.sha256Hex(JSON.stringify([origin.code, inputs.raws]));
+    const record = customRecord(Option.fromUndefinedOr(step.fetched.records[key]), digest);
+    const fresh = Option.filter(record, (found) => step.freshness.isFresh(source, found));
+
+    if (Option.isSome(fresh)) {
+      return withInputs(yield* fromCached(source, fresh.value, ValueOrigin.Cache), inputs);
+    }
+
+    const outcome = yield* Effect.result(
+      origin
+        .call(inputs.decoded)
+        .pipe(Timing.measure(Timing.Step.CustomResolve, { reference: description })),
+    );
+
+    if (Result.isFailure(outcome)) {
+      return yield* orStale(step, source, record, outcome.failure);
+    }
+
+    const value = outcome.success;
+
+    // A value from an expired input is safe to cache: the digest holds the old input values.
+    if (
+      !isCacheDisabled(source.cachePolicy) &&
+      (Option.isSome(value) || Freshness.allowsMissing(source))
+    ) {
+      const stored = encodeCustomRecord({ digest, value: Option.getOrNull(value) });
+
+      yield* step.cache.setMany({
+        [key]: {
+          provider: Source.customProviderId,
+          reference: description,
+          value: Option.some(Redacted.make(stored)),
+          resolvedAt: step.now,
+        },
+      });
+    }
+
+    if (Option.isNone(value)) {
+      return yield* whenMissing(source, Source.customProviderId, description);
+    }
+
+    return withInputs(
+      {
+        raw: Option.some(Redacted.make(value.value)),
+        origin: ValueOrigin.Custom,
+        provider: Option.some(Source.customProviderId),
+        reference: Option.some(description),
+        resolvedAt: Option.some(step.now),
+      },
+      inputs,
+    );
+  });
+};
+
+const evaluateOne = (step: Step, source: Source.AnySource): Evaluation =>
+  Source.Origin.$match(source.origin, {
+    Literal: (origin) =>
+      Effect.succeed(unsourced(Option.some(Redacted.make(origin.value)), ValueOrigin.Literal)),
+    Environment: (origin) => fromEnvironment(source, origin.name),
+    Reference: () => fromReference(step, source),
+    Derived: (origin) => fromDerive(step, source, origin),
+    Custom: (origin) => fromCustom(step, source, origin),
+  });
+
+/** Evaluates and decodes one var. The failure of the var stays in its result. */
+const resolveVar = (step: Step, key: string, source: Source.AnySource) =>
+  step.evaluated(source).pipe(
+    Effect.flatMap((result) =>
+      Effect.map(decodeEvaluated(source, key, result), (decoded) => ({
+        ...result,
+        decoded,
+        isRedacted: source.isRedacted,
+      })),
+    ),
+    Effect.map((resolved: Resolved) => [key, Result.succeed(resolved)] as const),
+    Effect.catchTags({
+      CustomError: (error) => Effect.succeed([key, Result.fail(error)] as const),
+      DecodeError: (error) => Effect.succeed([key, Result.fail(error)] as const),
+      DeriveError: (error) => Effect.succeed([key, Result.fail(error)] as const),
+      ProviderError: (error) => Effect.succeed([key, Result.fail(error)] as const),
+      SecretReferenceError: (error) => Effect.succeed([key, Result.fail(error)] as const),
+    }),
+  );
+
 /** Evaluates every var of a resolution. Only a cache failure fails the whole effect. */
 export const evaluate = Effect.fn("ResolverEvaluate.evaluate")(function* (
   sources: Readonly<Record<string, Source.AnySource>>,
   input: Input,
 ) {
-  const cache = yield* Cache.Cache;
-  const { plan, freshness, cached, fetched, now } = input;
-
   // The memo holds lazy effects, so the order of evaluation is free.
   const memo = new Map<Source.AnySource, Evaluation>();
 
-  const evaluated = (source: Source.AnySource): Evaluation =>
-    memo.get(source) ?? Effect.die("Envi resolver defect: a descriptor has no memo entry.");
-
-  const orStale = (
-    source: Source.AnySource,
-    record: Option.Option<Cache.CacheRecord>,
-    error: VarError | CacheError,
-  ): Evaluation =>
-    isTransient(error)
-      ? Option.match(
-          Option.filter(record, (found) => freshness.isUsableStale(source, found)),
-          {
-            onNone: () => Effect.fail(error),
-            onSome: (found) =>
-              Effect.andThen(
-                Effect.logWarning(
-                  "Envi uses an expired cache entry after a transient failure.",
-                ).pipe(
-                  Effect.annotateLogs({ provider: found.provider, reference: found.reference }),
-                ),
-                fromCached(source, found, ValueOrigin.StaleCache),
-              ),
-          },
-        )
-      : Effect.fail(error);
-
-  /** Evaluates and decodes the inputs of a `derive()` or `custom()` value. */
-  const evaluateInputs = (
-    inputs: Readonly<Record<string, Source.AnySource>>,
-    owner: string,
-  ): Effect.Effect<Inputs, VarError | CacheError> =>
-    Effect.map(
-      Effect.forEach(Object.entries(inputs), ([name, inputSource]) =>
-        Effect.flatMap(evaluated(inputSource), (result) =>
-          Effect.map(decodeEvaluated(inputSource, `an input of ${owner}`, result), (decoded) => ({
-            name,
-            result,
-            decoded,
-          })),
-        ),
-      ),
-      (entries) => ({
-        decoded: Object.fromEntries(entries.map((entry) => [entry.name, entry.decoded])),
-        raws: entries
-          .map(
-            (entry) =>
-              [entry.name, Option.getOrNull(Option.map(entry.result.raw, Redacted.value))] as const,
-          )
-          .toSorted(([a], [b]) => (a < b ? -1 : 1)),
-        isStale: entries.some((entry) => entry.result.origin === ValueOrigin.StaleCache),
-      }),
-    );
-
-  const fromReference = (source: Source.AnySource): Evaluation => {
-    const leaf = plan.leaves.get(source);
-
-    if (leaf === undefined) {
-      return Effect.die("Envi resolver defect: a reference has no prepared leaf.");
-    }
-
-    if (Result.isFailure(leaf)) {
-      return Effect.fail(leaf.failure);
-    }
-
-    const { description, fullKey, provider } = leaf.success;
-    const answer = fetched.answers.get(fullKey);
-
-    if (answer === undefined) {
-      return Option.match(freshness.freshRecord(source, fetched.records), {
-        onNone: () => Effect.die("Envi resolver defect: a reference is neither fresh nor fetched."),
-        onSome: (found) => fromCached(source, found, ValueOrigin.Cache),
-      });
-    }
-
-    return Result.match(answer, {
-      onSuccess: (raw) =>
-        Effect.succeed({
-          raw: Option.some(Redacted.make(raw)),
-          origin: ValueOrigin.Provider,
-          provider: Option.some(provider.id),
-          reference: Option.some(description),
-          resolvedAt: Option.some(now),
-        }),
-      onFailure: (error) =>
-        Freshness.isNotFound(error)
-          ? whenMissing(source, provider.id, description)
-          : orStale(source, freshness.recordIn(source, cached), error),
-    });
+  const step: Step = {
+    ...input,
+    cache: yield* Cache.Cache,
+    evaluated: (source) =>
+      memo.get(source) ?? Effect.die("Envi resolver defect: a descriptor has no memo entry."),
   };
 
-  const fromDerive = (source: Source.AnySource, origin: Source.Origin & { _tag: "Derived" }) =>
-    Effect.gen(function* () {
-      const inputs = yield* evaluateInputs(origin.inputs, "derive()");
-      const value = yield* origin.call(inputs.decoded);
-
-      if (Option.isNone(value)) {
-        return yield* whenMissing(source, Source.deriveProviderId, "derive()");
-      }
-
-      return withInputs(
-        unsourced(Option.some(Redacted.make(value.value)), ValueOrigin.Derived),
-        inputs,
-      );
-    });
-
-  const fromCustom = (source: Source.AnySource, origin: Source.Origin & { _tag: "Custom" }) => {
-    const description = `custom(${origin.id})`;
-    const key = plan.customKeys.get(source);
-
-    if (key === undefined) {
-      return Effect.die("Envi resolver defect: a custom() value has no cache key.");
-    }
-
-    return Effect.gen(function* () {
-      const inputs = yield* evaluateInputs(origin.inputs, description);
-      const digest = yield* Digest.sha256Hex(JSON.stringify([origin.code, inputs.raws]));
-
-      // An entry that other inputs or other code produced does not exist for this run.
-      const record = Option.flatMap(Option.fromUndefinedOr(fetched.records[key]), (found) =>
-        found.value.pipe(
-          Option.flatMap((value) => decodeCustomRecord(Redacted.value(value))),
-          Option.filter((decoded) => decoded.digest === digest),
-          Option.map((decoded): Cache.CacheRecord => ({
-            ...found,
-            value: Option.map(Option.fromNullOr(decoded.value), Redacted.make),
-          })),
-        ),
-      );
-
-      const fresh = Option.filter(record, (found) => freshness.isFresh(source, found));
-
-      if (Option.isSome(fresh)) {
-        return withInputs(yield* fromCached(source, fresh.value, ValueOrigin.Cache), inputs);
-      }
-
-      const outcome = yield* Effect.result(
-        origin
-          .call(inputs.decoded)
-          .pipe(Timing.measure(Timing.Step.CustomResolve, { reference: description })),
-      );
-
-      if (Result.isFailure(outcome)) {
-        return yield* orStale(source, record, outcome.failure);
-      }
-
-      const value = outcome.success;
-
-      // A value from an expired input is safe to cache: the digest holds the old input values.
-      if (
-        !isCacheDisabled(source.cachePolicy) &&
-        (Option.isSome(value) || Freshness.allowsMissing(source))
-      ) {
-        const stored = encodeCustomRecord({ digest, value: Option.getOrNull(value) });
-
-        yield* cache.setMany({
-          [key]: {
-            provider: Source.customProviderId,
-            reference: description,
-            value: Option.some(Redacted.make(stored)),
-            resolvedAt: now,
-          },
-        });
-      }
-
-      if (Option.isNone(value)) {
-        return yield* whenMissing(source, Source.customProviderId, description);
-      }
-
-      return withInputs(
-        {
-          raw: Option.some(Redacted.make(value.value)),
-          origin: ValueOrigin.Custom,
-          provider: Option.some(Source.customProviderId),
-          reference: Option.some(description),
-          resolvedAt: Option.some(now),
-        },
-        inputs,
-      );
-    });
-  };
-
-  const evaluateOne = (source: Source.AnySource): Evaluation =>
-    Source.Origin.$match(source.origin, {
-      Literal: (origin) =>
-        Effect.succeed(unsourced(Option.some(Redacted.make(origin.value)), ValueOrigin.Literal)),
-      Environment: (origin) => fromEnvironment(source, origin.name),
-      Reference: () => fromReference(source),
-      Derived: (origin) => fromDerive(source, origin),
-      Custom: (origin) => fromCustom(source, origin),
-    });
-
-  for (const source of plan.all) {
-    memo.set(source, yield* Effect.cached(evaluateOne(source)));
+  for (const source of input.plan.all) {
+    memo.set(source, yield* Effect.cached(evaluateOne(step, source)));
   }
 
   const entries = yield* Effect.forEach(
     Object.entries(sources),
-    ([key, source]) =>
-      evaluated(source).pipe(
-        Effect.flatMap((result) =>
-          Effect.map(decodeEvaluated(source, key, result), (decoded) => ({
-            ...result,
-            decoded,
-            isRedacted: source.isRedacted,
-          })),
-        ),
-        Effect.map((resolved: Resolved) => [key, Result.succeed(resolved)] as const),
-        Effect.catchTags({
-          CustomError: (error) => Effect.succeed([key, Result.fail(error)] as const),
-          DecodeError: (error) => Effect.succeed([key, Result.fail(error)] as const),
-          DeriveError: (error) => Effect.succeed([key, Result.fail(error)] as const),
-          ProviderError: (error) => Effect.succeed([key, Result.fail(error)] as const),
-          SecretReferenceError: (error) => Effect.succeed([key, Result.fail(error)] as const),
-        }),
-      ),
+    ([key, source]) => resolveVar(step, key, source),
     { concurrency: "unbounded" },
   );
 

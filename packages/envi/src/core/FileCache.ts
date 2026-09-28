@@ -64,13 +64,139 @@ const unwritable = (detail: string): CacheError =>
 const fileNameOf = (key: string): Effect.Effect<string> =>
   Effect.map(Digest.sha256Hex(key), (digest) => `${digest}${entrySuffix}`);
 
+/** The directory of one file cache, and what its operations need. */
+interface Store {
+  readonly fs: FileSystem.FileSystem;
+  readonly path: Path.Path;
+  readonly directory: string;
+  readonly keyring: CacheEntry.Keyring;
+}
+
+const ensureDirectory = (store: Store) =>
+  store.fs
+    .makeDirectory(store.directory, { recursive: true, mode: directoryMode })
+    .pipe(Effect.mapError(() => unwritable("Envi cannot create the cache directory.")));
+
+const readEntry = (store: Store, file: string): Effect.Effect<Option.Option<CacheEntry.Entry>> =>
+  store.fs.readFileString(file).pipe(
+    Effect.flatMap(CacheEntry.parse),
+    Effect.orElseSucceed(() => Option.none()),
+  );
+
+/** A missing, a corrupt, a moved, and an edited entry are all absent. */
+const readRecord = (
+  store: Store,
+  key: string,
+): Effect.Effect<Option.Option<Cache.CacheRecord>, CacheError> =>
+  Effect.gen(function* () {
+    const file = store.path.join(store.directory, yield* fileNameOf(key));
+    const found = Option.filter(yield* readEntry(store, file), (entry) => entry.key === key);
+
+    return Option.isNone(found)
+      ? Option.none()
+      : yield* CacheEntry.toRecord(found.value, store.keyring);
+  });
+
+/**
+ * Writes a temp file and renames it, so a reader never sees a partial entry. The release
+ * removes the temp file also after an interrupt, because a plaintext entry holds a secret.
+ */
+const writeRecord = (
+  store: Store,
+  key: string,
+  record: Cache.CacheRecord,
+): Effect.Effect<void, CacheError> =>
+  Effect.gen(function* () {
+    const file = store.path.join(store.directory, yield* fileNameOf(key));
+    const suffix = Hex.encode(crypto.getRandomValues(new Uint8Array(tempNameBytes)));
+    const temp = `${file}.${suffix}${tempSuffix}`;
+    const text = yield* CacheEntry.encode(key, record, store.keyring);
+
+    yield* Effect.acquireUseRelease(
+      Effect.as(store.fs.writeFileString(temp, text, { flag: "wx", mode: fileMode }), temp),
+      () => store.fs.rename(temp, file),
+      () => Effect.ignore(store.fs.remove(temp, { force: true })),
+    ).pipe(Effect.mapError(() => unwritable("Envi cannot write a cache entry.")));
+  });
+
+/** The files of the cache directory whose names end with the suffix. */
+const filesEndingWith = (store: Store, suffix: string) =>
+  store.fs.readDirectory(store.directory).pipe(
+    Effect.map((names) =>
+      names
+        .filter((name) => name.endsWith(suffix))
+        .map((name) => store.path.join(store.directory, name)),
+    ),
+    Effect.catchIf(
+      (error) => Predicate.isTagged(error.reason, "NotFound"),
+      () => Effect.succeed([]),
+    ),
+    Effect.mapError(() => unreadable("Envi cannot read the cache directory.")),
+  );
+
+const removeFile = (store: Store, file: string) =>
+  store.fs
+    .remove(file, { force: true })
+    .pipe(Effect.mapError(() => unwritable("Envi cannot remove a cache entry.")));
+
+const getMany = (store: Store, keys: ReadonlyArray<string>) =>
+  Effect.map(
+    Effect.forEach(
+      keys,
+      (key) => Effect.map(readRecord(store, key), (found) => [key, found] as const),
+      {
+        concurrency: "unbounded",
+      },
+    ),
+    (entries): Cache.CacheRecords =>
+      Object.fromEntries(
+        entries.flatMap(([key, found]) =>
+          Option.toArray(Option.map(found, (record) => [key, record])),
+        ),
+      ),
+  );
+
+const setMany = (store: Store, records: Cache.CacheRecords) =>
+  Effect.andThen(
+    ensureDirectory(store),
+    Effect.forEach(Object.entries(records), ([key, record]) => writeRecord(store, key, record), {
+      concurrency: "unbounded",
+      discard: true,
+    }),
+  );
+
+const list = (store: Store) =>
+  Effect.flatMap(filesEndingWith(store, entrySuffix), (files) =>
+    Effect.map(
+      Effect.forEach(files, (file) => readEntry(store, file), { concurrency: "unbounded" }),
+      (entries) =>
+        entries.flatMap(Option.toArray).map((entry) => ({
+          key: entry.key,
+          provider: entry.provider,
+          reference: entry.reference,
+          resolvedAt: entry.resolvedAt,
+        })),
+    ),
+  );
+
+/** Removes every entry and every leftover temp file. It counts only the entries. */
+const clear = (store: Store) =>
+  Effect.flatMap(
+    Effect.all([filesEndingWith(store, entrySuffix), filesEndingWith(store, tempSuffix)]),
+    ([entries, temps]) =>
+      Effect.as(
+        Effect.forEach([...entries, ...temps], (file) => removeFile(store, file), {
+          concurrency: "unbounded",
+          discard: true,
+        }),
+        entries.length,
+      ),
+  );
+
 const make = Effect.fn("FileCache.make")(function* (
   options: Options,
   encryptionKey: Option.Option<Effect.Effect<Redacted.Redacted<Uint8Array>, CacheError>>,
 ) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-
   const lock = yield* CacheLock.make({
     directory: options.directory,
     wait: options.lockWait ?? defaultLockWait,
@@ -80,121 +206,24 @@ const make = Effect.fn("FileCache.make")(function* (
     ),
   });
 
-  // The key and the 1Password client are both slow. Envi reads the key on the first use only.
-  const keyring: CacheEntry.Keyring = Option.isNone(encryptionKey)
-    ? Option.none()
-    : Option.some(yield* Effect.cached(Effect.flatMap(encryptionKey.value, CacheEntry.importKey)));
-
-  const ensureDirectory = fs
-    .makeDirectory(options.directory, { recursive: true, mode: directoryMode })
-    .pipe(Effect.mapError(() => unwritable("Envi cannot create the cache directory.")));
-
-  const readEntry = (file: string): Effect.Effect<Option.Option<CacheEntry.Entry>> =>
-    fs.readFileString(file).pipe(
-      Effect.flatMap(CacheEntry.parse),
-      Effect.orElseSucceed(() => Option.none()),
-    );
-
-  /** A missing, a corrupt, a moved, and an edited entry are all absent. */
-  const readRecord = (key: string): Effect.Effect<Option.Option<Cache.CacheRecord>, CacheError> =>
-    Effect.gen(function* () {
-      const file = path.join(options.directory, yield* fileNameOf(key));
-      const found = Option.filter(yield* readEntry(file), (entry) => entry.key === key);
-
-      return Option.isNone(found)
-        ? Option.none()
-        : yield* CacheEntry.toRecord(found.value, keyring);
-    });
-
-  /**
-   * Writes a temp file and renames it, so a reader never sees a partial entry. The release
-   * removes the temp file also after an interrupt, because a plaintext entry holds a secret.
-   */
-  const writeRecord = (key: string, record: Cache.CacheRecord): Effect.Effect<void, CacheError> =>
-    Effect.gen(function* () {
-      const file = path.join(options.directory, yield* fileNameOf(key));
-      const suffix = Hex.encode(crypto.getRandomValues(new Uint8Array(tempNameBytes)));
-      const temp = `${file}.${suffix}${tempSuffix}`;
-      const text = yield* CacheEntry.encode(key, record, keyring);
-
-      yield* Effect.acquireUseRelease(
-        Effect.as(fs.writeFileString(temp, text, { flag: "wx", mode: fileMode }), temp),
-        () => fs.rename(temp, file),
-        () => Effect.ignore(fs.remove(temp, { force: true })),
-      ).pipe(Effect.mapError(() => unwritable("Envi cannot write a cache entry.")));
-    });
-
-  /** The files of the cache directory whose names end with the suffix. */
-  const filesEndingWith = (suffix: string) =>
-    fs.readDirectory(options.directory).pipe(
-      Effect.map((names) =>
-        names
-          .filter((name) => name.endsWith(suffix))
-          .map((name) => path.join(options.directory, name)),
-      ),
-      Effect.catchIf(
-        (error) => Predicate.isTagged(error.reason, "NotFound"),
-        () => Effect.succeed([]),
-      ),
-      Effect.mapError(() => unreadable("Envi cannot read the cache directory.")),
-    );
-
-  const entryFiles = filesEndingWith(entrySuffix);
-
-  const tempFiles = filesEndingWith(tempSuffix);
-
-  const remove = (file: string) =>
-    fs
-      .remove(file, { force: true })
-      .pipe(Effect.mapError(() => unwritable("Envi cannot remove a cache entry.")));
+  const store: Store = {
+    fs: yield* FileSystem.FileSystem,
+    path: yield* Path.Path,
+    directory: options.directory,
+    // The key and the 1Password client are both slow. Envi reads the key on the first use only.
+    keyring: Option.isNone(encryptionKey)
+      ? Option.none()
+      : Option.some(
+          yield* Effect.cached(Effect.flatMap(encryptionKey.value, CacheEntry.importKey)),
+        ),
+  };
 
   return Cache.Cache.of({
-    getMany: (keys) =>
-      Effect.map(
-        Effect.forEach(
-          keys,
-          (key) => Effect.map(readRecord(key), (found) => [key, found] as const),
-          {
-            concurrency: "unbounded",
-          },
-        ),
-        (entries) =>
-          Object.fromEntries(
-            entries.flatMap(([key, found]) =>
-              Option.toArray(Option.map(found, (record) => [key, record])),
-            ),
-          ),
-      ),
-    setMany: (records) =>
-      Effect.andThen(
-        ensureDirectory,
-        Effect.forEach(Object.entries(records), ([key, record]) => writeRecord(key, record), {
-          concurrency: "unbounded",
-          discard: true,
-        }),
-      ),
-    list: () =>
-      Effect.flatMap(entryFiles, (files) =>
-        Effect.map(Effect.forEach(files, readEntry, { concurrency: "unbounded" }), (entries) =>
-          entries.flatMap(Option.toArray).map((entry) => ({
-            key: entry.key,
-            provider: entry.provider,
-            reference: entry.reference,
-            resolvedAt: entry.resolvedAt,
-          })),
-        ),
-      ),
-    clear: () =>
-      Effect.flatMap(Effect.all([entryFiles, tempFiles]), ([entries, temps]) =>
-        Effect.as(
-          Effect.forEach([...entries, ...temps], remove, {
-            concurrency: "unbounded",
-            discard: true,
-          }),
-          entries.length,
-        ),
-      ),
-    withResolveLock: (effect) => Effect.andThen(ensureDirectory, lock.around(effect)),
+    getMany: (keys) => getMany(store, keys),
+    setMany: (records) => setMany(store, records),
+    list: () => list(store),
+    clear: () => clear(store),
+    withResolveLock: (effect) => Effect.andThen(ensureDirectory(store), lock.around(effect)),
   });
 });
 

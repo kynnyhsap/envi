@@ -45,64 +45,67 @@ export interface Lock {
   readonly around: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | CacheError, R>;
 }
 
-export const make = Effect.fn("CacheLock.make")(function* (options: Options) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const lockFile = path.join(options.directory, lockFileName);
+/** The lock file of one cache directory, and what its operations need. */
+interface LockFile {
+  readonly fs: FileSystem.FileSystem;
+  readonly file: string;
+  readonly options: Options;
+}
 
-  const writeLockTemp = (now: number) => {
-    const temp = `${lockFile}.${crypto.randomUUID()}`;
+const writeLockTemp = (lock: LockFile, now: number) => {
+  const temp = `${lock.file}.${crypto.randomUUID()}`;
 
-    return Effect.as(fs.writeFileString(temp, String(now), { flag: "wx", mode: 0o600 }), temp);
-  };
+  return Effect.as(lock.fs.writeFileString(temp, String(now), { flag: "wx", mode: 0o600 }), temp);
+};
 
-  /** The text of the lock file. None when the lock file is missing or does not read. */
-  const lockText = Effect.option(fs.readFileString(lockFile));
+/** The text of the lock file. None when the lock file is missing or does not read. */
+const lockText = (lock: LockFile) => Effect.option(lock.fs.readFileString(lock.file));
 
-  /**
-   * Removes a stale lock. The rename to a unique name is atomic, so only one process moves the
-   * file. When the moved file holds another text, another process took the lock after the read:
-   * the link puts its lock back, unless a third process holds the lock already.
-   */
-  const removeStaleLock = (observed: string) =>
-    Effect.gen(function* () {
-      const moved = `${lockFile}.${crypto.randomUUID()}.stale`;
+/**
+ * Removes a stale lock. The rename to a unique name is atomic, so only one process moves the
+ * file. When the moved file holds another text, another process took the lock after the read:
+ * the link puts its lock back, unless a third process holds the lock already.
+ */
+const removeStaleLock = (lock: LockFile, observed: string) =>
+  Effect.gen(function* () {
+    const moved = `${lock.file}.${crypto.randomUUID()}.stale`;
 
-      const renamed = yield* fs.rename(lockFile, moved).pipe(
-        Effect.as(true),
-        Effect.orElseSucceed(() => false),
-      );
+    const renamed = yield* lock.fs.rename(lock.file, moved).pipe(
+      Effect.as(true),
+      Effect.orElseSucceed(() => false),
+    );
 
-      if (!renamed) {
-        return;
-      }
+    if (!renamed) {
+      return;
+    }
 
-      const text = yield* Effect.orElseSucceed(fs.readFileString(moved), () => observed);
+    const text = yield* Effect.orElseSucceed(lock.fs.readFileString(moved), () => observed);
 
-      if (text !== observed) {
-        yield* Effect.ignore(fs.link(moved, lockFile));
-      }
+    if (text !== observed) {
+      yield* Effect.ignore(lock.fs.link(moved, lock.file));
+    }
 
-      yield* Effect.ignore(fs.remove(moved, { force: true }));
-    });
+    yield* Effect.ignore(lock.fs.remove(moved, { force: true }));
+  });
 
-  /** Takes the lock once. Some holds the time that this process wrote into the lock file. */
-  const tryTakeLock: Effect.Effect<Option.Option<number>, CacheError> = Effect.gen(function* () {
+/** Takes the lock once. Some holds the time that this process wrote into the lock file. */
+const tryTakeLock = (lock: LockFile): Effect.Effect<Option.Option<number>, CacheError> =>
+  Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
 
     // A lock file always holds a complete time: Envi writes a temp file and links it. A reader
     // never sees a lock file that is empty or half written.
     const taken = yield* Effect.acquireUseRelease(
-      writeLockTemp(now),
+      writeLockTemp(lock, now),
       (temp) =>
-        fs.link(temp, lockFile).pipe(
+        lock.fs.link(temp, lock.file).pipe(
           Effect.as(true),
           Effect.catchIf(
             (error) => Predicate.isTagged(error.reason, "AlreadyExists"),
             () => Effect.succeed(false),
           ),
         ),
-      (temp) => Effect.ignore(fs.remove(temp, { force: true })),
+      (temp) => Effect.ignore(lock.fs.remove(temp, { force: true })),
     ).pipe(
       Effect.mapError(
         () =>
@@ -118,96 +121,97 @@ export const make = Effect.fn("CacheLock.make")(function* (options: Options) {
     }
 
     // A lock file without a readable time, or with an old time, belongs to a crashed owner.
-    const observed = yield* lockText;
+    const observed = yield* lockText(lock);
 
     if (Option.isNone(observed)) {
-      return yield* Effect.suspend(() => tryTakeLock);
+      return yield* tryTakeLock(lock);
     }
 
     const heldSince = Number(observed.value);
 
-    if (Number.isNaN(heldSince) || now - heldSince > Duration.toMillis(options.staleAfter)) {
-      yield* removeStaleLock(observed.value);
+    if (Number.isNaN(heldSince) || now - heldSince > Duration.toMillis(lock.options.staleAfter)) {
+      yield* removeStaleLock(lock, observed.value);
 
-      return yield* Effect.suspend(() => tryTakeLock);
+      return yield* tryTakeLock(lock);
     }
 
     return Option.none();
   });
 
-  /** Tries to take the lock at each retry interval until it holds the time of this process. */
-  const waitForLock: Effect.Effect<number, CacheError> = Effect.flatMap(
-    tryTakeLock,
+/** Tries to take the lock at each retry interval until it holds the time of this process. */
+const waitForLock = (lock: LockFile): Effect.Effect<number, CacheError> =>
+  Effect.flatMap(
+    tryTakeLock(lock),
     Option.match({
       onSome: Effect.succeed,
-      onNone: () =>
-        Effect.andThen(
-          Effect.sleep(retryInterval),
-          Effect.suspend(() => waitForLock),
-        ),
+      onNone: () => Effect.andThen(Effect.sleep(retryInterval), waitForLock(lock)),
     }),
   );
 
-  const takeLock = waitForLock.pipe(
+const takeLock = (lock: LockFile) =>
+  waitForLock(lock).pipe(
     Effect.timeoutOrElse({
-      duration: options.wait,
+      duration: lock.options.wait,
       orElse: () =>
         Effect.fail(
           new CacheError({
             reason: CacheFailure.LockTimeout,
-            detail: `Another Envi process holds ${lockFile}. Remove the file if no Envi process runs.`,
+            detail: `Another Envi process holds ${lock.file}. Remove the file if no Envi process runs.`,
           }),
         ),
     }),
   );
 
-  /** `true` while the lock file holds the time that this process wrote last. */
-  const ownsLock = (owned: Ref.Ref<number>) =>
-    Effect.map(Effect.all([lockText, Ref.get(owned)]), ([text, time]) =>
-      Option.contains(text, String(time)),
+/** `true` while the lock file holds the time that this process wrote last. */
+const ownsLock = (lock: LockFile, owned: Ref.Ref<number>) =>
+  Effect.map(Effect.all([lockText(lock), Ref.get(owned)]), ([text, time]) =>
+    Option.contains(text, String(time)),
+  );
+
+/**
+ * The owner renews the time in the lock file, so a long provider prompt does not look crashed.
+ * It renews only its own lock: after a steal, the lock belongs to the other process. One renewal
+ * is uninterruptible, so the lock file and `owned` always hold the same time for the release.
+ */
+const renewLock = (lock: LockFile, owned: Ref.Ref<number>) => {
+  const renew = Effect.gen(function* () {
+    if (!(yield* ownsLock(lock, owned))) {
+      return;
+    }
+
+    const now = yield* Clock.currentTimeMillis;
+
+    yield* Effect.acquireUseRelease(
+      writeLockTemp(lock, now),
+      (temp) => lock.fs.rename(temp, lock.file),
+      (temp) => Effect.ignore(lock.fs.remove(temp, { force: true })),
     );
 
-  /**
-   * The owner renews the time in the lock file, so a long provider prompt does not look crashed.
-   * It renews only its own lock: after a steal, the lock belongs to the other process. One renewal
-   * is uninterruptible, so the lock file and `owned` always hold the same time for the release.
-   */
-  const renewLock = (owned: Ref.Ref<number>) => {
-    const interval = renewalInterval(options.staleAfter);
+    yield* Ref.set(owned, now);
+  }).pipe(Effect.ignore, Effect.uninterruptible);
 
-    const renew = Effect.gen(function* () {
-      if (!(yield* ownsLock(owned))) {
-        return;
-      }
+  return Effect.andThen(Effect.sleep(renewalInterval(lock.options.staleAfter)), renew).pipe(
+    Effect.repeat(Schedule.forever),
+  );
+};
 
-      const now = yield* Clock.currentTimeMillis;
+/** Removes the lock only while it holds the time of this process. */
+const releaseLock = (lock: LockFile, owned: Ref.Ref<number>) =>
+  Effect.flatMap(ownsLock(lock, owned), (owns) =>
+    owns ? Effect.ignore(lock.fs.remove(lock.file, { force: true })) : Effect.void,
+  );
 
-      yield* Effect.acquireUseRelease(
-        writeLockTemp(now),
-        (temp) => fs.rename(temp, lockFile),
-        (temp) => Effect.ignore(fs.remove(temp, { force: true })),
-      );
+export const make = Effect.fn("CacheLock.make")(function* (options: Options) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const lock: LockFile = { fs, file: path.join(options.directory, lockFileName), options };
 
-      yield* Ref.set(owned, now);
-    }).pipe(Effect.ignore, Effect.uninterruptible);
-
-    return Effect.andThen(Effect.sleep(interval), renew).pipe(Effect.repeat(Schedule.forever));
-  };
-
-  /** Removes the lock only while it holds the time of this process. */
-  const releaseLock = (owned: Ref.Ref<number>) =>
-    Effect.flatMap(ownsLock(owned), (owns) =>
-      owns ? Effect.ignore(fs.remove(lockFile, { force: true })) : Effect.void,
+  const around: Lock["around"] = (effect) =>
+    Effect.acquireUseRelease(
+      Effect.flatMap(takeLock(lock), (time) => Ref.make(time)),
+      (owned) => Effect.raceFirst(effect, Effect.andThen(renewLock(lock, owned), Effect.never)),
+      (owned) => releaseLock(lock, owned),
     );
 
-  const lock: Lock = {
-    around: (effect) =>
-      Effect.acquireUseRelease(
-        Effect.flatMap(takeLock, (time) => Ref.make(time)),
-        (owned) => Effect.raceFirst(effect, Effect.andThen(renewLock(owned), Effect.never)),
-        releaseLock,
-      ),
-  };
-
-  return lock;
+  return { around } satisfies Lock;
 });

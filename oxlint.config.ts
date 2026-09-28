@@ -97,9 +97,14 @@ export default defineConfig({
   overrides: [
     {
       // A number in the code of a package or a script has a name. A test states its values in place.
+      // A function of that code fits on one screen. A test lists its steps in one scenario.
       files: ["packages/*/src/**/*.ts", "scripts/**/*.ts"],
       excludeFiles: ["**/*.test.ts", "**/fixtures/**"],
       rules: {
+        "eslint/max-lines-per-function": [
+          "error",
+          { max: 80, skipBlankLines: true, skipComments: true, IIFEs: true },
+        ],
         "eslint/no-magic-numbers": [
           "error",
           {
