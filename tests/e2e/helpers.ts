@@ -19,9 +19,9 @@ export const fixture = (name: string): string =>
 
 export const runtimes = ["node", "bun"] as const;
 
-/** The README link of an error section, as the `docs` field of the error shows it. */
-export const docsOf = (section: string): string =>
-  `https://github.com/kynnyhsap/envi#error-${section}`;
+/** The docs link of an error page, as the `docs` field of the error shows it. */
+export const docsOf = (page: string): string =>
+  `https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/errors/${page}.md`;
 
 /**
  * Decodes the JSON output of a command with its schema, such as a report schema of Envi.

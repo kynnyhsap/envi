@@ -48,7 +48,7 @@ export type InspectReport = typeof InspectReport.Type;
 
 /**
  * One failed var. `reason` is a reason code, or the expected type of a schema. `hint` names the
- * next action, and `docs` links to the section of the error in the README. It never holds a value.
+ * next action, and `docs` links to the docs page of the error. It never holds a value.
  */
 export const VarFailure = Schema.Struct({
   key: Schema.String,

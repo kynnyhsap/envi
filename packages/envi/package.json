@@ -7,6 +7,7 @@
   },
   "files": [
     "dist",
+    "docs",
     "src",
     "!src/**/*.test.ts",
     "!src/core/fixtures"
@@ -22,14 +23,15 @@
       "@envi/source": "./src/testing.ts",
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "build": "bun ../../scripts/build.ts",
-    "prepack": "bun ../../scripts/prepack.ts LICENSE README.md"
+    "prepack": "bun ../../scripts/prepack.ts LICENSE README.md packages/docs/content=docs"
   },
   "dependencies": {
     "@effect/platform-node-shared": "catalog:"

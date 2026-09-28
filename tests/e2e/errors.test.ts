@@ -1,4 +1,4 @@
-// One scenario for each error section of the README that no other end-to-end test reaches. Each
+// One scenario for each error page of the docs that no other end-to-end test reaches. Each
 // scenario checks the exit code, the reason, and the docs link on stderr.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";

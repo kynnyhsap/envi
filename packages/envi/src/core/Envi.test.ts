@@ -161,7 +161,7 @@ describe("Envi", () => {
       expect(error.failures[1]?.error).toMatchObject({ key: "PORT", expected: "a finite number" });
       expect(error.message).toContain("MISSING");
       expect(error.message).toContain(hints.SecretReferenceError.NotFound);
-      expect(error.message).toContain(`${docsBase}error-secret-reference-not-found`);
+      expect(error.message).toContain(`${docsBase}errors/secret-reference-not-found.md`);
       expect(error.message).not.toContain("not-a-number-secret");
     }).pipe(Effect.provide(layer)),
   );
@@ -300,7 +300,7 @@ describe("Envi", () => {
           reason: "a finite number",
           summary: "Envi value does not match its schema: BAD expects a finite number",
           hint: hints.DecodeError,
-          docs: `${docsBase}error-decode`,
+          docs: `${docsBase}errors/decode.md`,
         },
         {
           key: "MISSING",
@@ -310,7 +310,7 @@ describe("Envi", () => {
           reason: "NotFound",
           summary: expect.stringContaining("memory://missing"),
           hint: hints.SecretReferenceError.NotFound,
-          docs: `${docsBase}error-secret-reference-not-found`,
+          docs: `${docsBase}errors/secret-reference-not-found.md`,
         },
       ]);
       expect(JSON.stringify(first)).not.toContain("not-a-number");

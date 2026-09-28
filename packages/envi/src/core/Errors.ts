@@ -1,10 +1,10 @@
 // Every error of Envi. Each error has a reason code, a one-line summary, a hint with the next
-// action, and a link to its section in the README. `hints` is the catalog: one hint for each error
+// action, and a link to its docs page. `hints` is the catalog: one hint for each error
 // and reason. An error never holds a secret value or a rejected input.
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
-import { anchorOf, EnviError, ReasonError } from "./ErrorClass.ts";
+import { EnviError, pageOf, ReasonError } from "./ErrorClass.ts";
 import * as Package from "./Package.ts";
 
 /** The reasons why a provider cannot resolve one reference. */
@@ -122,7 +122,7 @@ interface Catalog {
   readonly ConfigLoadError: Readonly<Record<ConfigLoadFailure, string>>;
 }
 
-/** The catalog of hints. Each hint names the next action. The README explains each entry. */
+/** The catalog of hints. Each hint names the next action. A docs page explains each entry. */
 export const hints: Catalog = {
   SecretReferenceError: {
     NotFound:
@@ -435,23 +435,23 @@ export type AnyEnviError = typeof AnyEnviErrorSchema.Type;
 /** `true` for every Envi error. The CLI uses it to print each one in the same way. */
 export const isEnviError = Schema.is(AnyEnviErrorSchema);
 
-/** One entry of the catalog: the error, the reason, the hint, and the README anchor. */
+/** One entry of the catalog: the error, the reason, the hint, and the docs page. */
 export interface CatalogEntry {
   readonly error: string;
   readonly reason: string | undefined;
   readonly hint: string;
-  readonly anchor: string;
+  readonly page: string;
 }
 
-/** Every entry of the catalog. The README has one section for each anchor. */
+/** Every entry of the catalog. Each entry has its own docs page. */
 export const catalog: ReadonlyArray<CatalogEntry> = Object.entries(hints).flatMap(
   ([error, entry]: [string, string | Readonly<Record<string, string>>]): Array<CatalogEntry> =>
     Predicate.isString(entry)
-      ? [{ error, reason: undefined, hint: entry, anchor: anchorOf(error) }]
+      ? [{ error, reason: undefined, hint: entry, page: pageOf(error) }]
       : Object.entries(entry).map(([reason, hint]) => ({
           error,
           reason,
           hint,
-          anchor: anchorOf(error, reason),
+          page: pageOf(error, reason),
         })),
 );

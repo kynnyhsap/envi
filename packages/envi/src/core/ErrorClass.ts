@@ -1,5 +1,5 @@
 // The two factories of the Envi errors. Each error explains itself: a one-line summary, a hint with
-// the next action, and a link to its section in the README. An error class gives only its fields,
+// the next action, and a link to its docs page. An error class gives only its fields,
 // its summary, and its hints. The factory derives the docs link and the message.
 import type * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
@@ -11,21 +11,20 @@ export interface Explained {
   readonly docs: string;
 }
 
-/** The base of every docs link. Each error links to its section in the README. */
-export const docsBase = "https://github.com/kynnyhsap/envi#";
+/**
+ * The base of every docs link: the docs pages on GitHub. The npm package ships the same pages in
+ * its `docs` folder, so the part of a link after the base is the path of a local page.
+ */
+export const docsBase = "https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/";
 
 const kebab = (text: string): string =>
   text.replaceAll(/([a-z0-9])([A-Z])/gu, "$1-$2").toLowerCase();
 
-/** The README anchor of an error, such as `error-secret-reference-not-found`. */
-export const anchorOf = (tag: string, reason?: string): string =>
-  [
-    "error",
-    kebab(tag.replace(/Error$/u, "")),
-    ...(reason === undefined ? [] : [kebab(reason)]),
-  ].join("-");
+/** The docs page of an error, such as `errors/secret-reference-not-found.md`. */
+export const pageOf = (tag: string, reason?: string): string =>
+  `errors/${[kebab(tag.replace(/Error$/u, "")), ...(reason === undefined ? [] : [kebab(reason)])].join("-")}.md`;
 
-const docsOf = (tag: string, reason?: string): string => `${docsBase}${anchorOf(tag, reason)}`;
+const docsOf = (tag: string, reason?: string): string => `${docsBase}${pageOf(tag, reason)}`;
 
 /** The text of an error: what failed, what to do next, and where the docs explain it. */
 export const explain = (error: Explained): string =>
@@ -133,7 +132,7 @@ export const EnviError =
 
 /**
  * An error with a `reason` field and one hint for each reason, such as `ProviderError`. Each
- * reason has its own section in the README.
+ * reason has its own docs page.
  */
 export const ReasonError =
   <Self>() =>

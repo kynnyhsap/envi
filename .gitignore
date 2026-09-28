@@ -20,3 +20,4 @@ bun-error.log
 # Copies that `prepack` puts into each package.
 packages/*/LICENSE
 packages/envi/README.md
+packages/envi/docs/

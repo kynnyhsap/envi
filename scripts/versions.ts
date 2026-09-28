@@ -4,15 +4,15 @@ import { Command, Flag } from "effect/cli";
 // - The root manifest holds the version. Every package has that version, the way the Effect v4
 //   packages share one version. A provider asks for `workspace:^` Envi as its peer.
 // - The `engines` of the root manifest hold the runtime floors. Every package has those `engines`,
-//   the READMEs name the floors, and the `floors` job of CI tests them.
+//   the docs name the floors, and the `floors` job of CI tests them.
 // - `workspaces.catalog` holds every dependency version. A package manifest uses only `catalog:`
 //   and `workspace:` specs. `effect` and every `@effect/*` entry share one version.
 // - While Effect is a prerelease, the `effect` entry is the exact version, because a release
 //   candidate can break imports. After it, the entry is a `~` range of one minor version.
-// - The READMEs ask for the `effect` spec of the catalog.
+// - The docs ask for the `effect` spec of the catalog. The docs are the READMEs and the docs pages.
 //
 //   bun run versions           writes the root version and engines into every package, and the
-//                              range and the floors into the READMEs
+//                              range and the floors into the docs
 //   bun run versions --check   fails when a file differs or a rule breaks, without a change
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
@@ -57,10 +57,10 @@ const Spec = {
   WorkspacePeer: "workspace:^",
 } as const;
 
-/** An `effect` spec in a README, such as `effect@4.0.0-rc.117`. */
+/** An `effect` spec in a doc, such as `effect@4.0.0-rc.117`. */
 const effectSpec = /(?<![\w@/-])effect@[^\s"'`]+/gu;
 
-/** A runtime floor in a README, such as `Node 22.19.0`. */
+/** A runtime floor in a doc, such as `Node 22.19.0`. */
 const floor = (runtime: string) => new RegExp(`\\b${runtime} \\d+\\.\\d+\\.\\d+`, "gu");
 
 /** The indent of a manifest, as oxfmt formats it. */
@@ -161,11 +161,16 @@ interface Rewrite {
   readonly text: string;
 }
 
-/** The READMEs in git. The prepack copy of the root README in `packages/envi` is ignored. */
-const trackedReadmes = Effect.flatMap(trackedFiles(["README.md", "*/README.md"]), (files) =>
-  files.length === 0
-    ? Effect.fail(new ScriptError({ detail: "git lists no README. Run the script in a checkout." }))
-    : Effect.succeed(files),
+/**
+ * The READMEs and the docs pages in git. Git ignores the prepack copies in `packages/envi`. A `*`
+ * of a git pathspec also matches `/`.
+ */
+const trackedDocs = Effect.flatMap(
+  trackedFiles(["README.md", "*/README.md", "packages/docs/content/*.md"]),
+  (files) =>
+    files.length === 0
+      ? Effect.fail(new ScriptError({ detail: "git lists no doc. Run the script in a checkout." }))
+      : Effect.succeed(files),
 );
 
 const check = Flag.Boolean("check").pipe(
@@ -219,9 +224,9 @@ const command = Command.make("versions", { check }, (input) =>
       .filter((item) => item.rewritten !== item.text)
       .map((item) => ({ file: item.file, text: item.rewritten }));
 
-    const readmes = yield* trackedReadmes;
+    const docs = yield* trackedDocs;
 
-    const readmeRewrites = yield* Effect.forEach(readmes, (file) =>
+    const docRewrites = yield* Effect.forEach(docs, (file) =>
       Effect.map(fs.readFileString(path.join(root, file)), (text) => ({
         file,
         text,
@@ -234,9 +239,9 @@ const command = Command.make("versions", { check }, (input) =>
 
     const rewrites: ReadonlyArray<Rewrite> = [
       ...manifestRewrites,
-      ...readmeRewrites
-        .filter((readme) => readme.rewritten !== readme.text)
-        .map((readme) => ({ file: readme.file, text: readme.rewritten })),
+      ...docRewrites
+        .filter((doc) => doc.rewritten !== doc.text)
+        .map((doc) => ({ file: doc.file, text: doc.rewritten })),
     ];
 
     if (input.check) {
