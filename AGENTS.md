@@ -234,8 +234,10 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   the merge commit on `main` with `v<version>`, and push the tag.
 - `bun run release --tag v<version> --dry-run` packs both packages and checks them with
   `npm publish --dry-run`.
-- `bun run verify` runs format check, lint, typecheck, the unit tests on Node and on Bun, and the
-  end-to-end tests, all in parallel.
+- `bun run verify` runs the lint first. Then it runs format check, typecheck, the unit tests on
+  Node and on Bun, and the end-to-end tests, all in parallel. The import plugin of the lint
+  follows `@kynnyhsap/envi` into `dist`, and the build of the end-to-end tests deletes `dist`, so
+  the lint must finish before the build starts.
 - `bun run test:onepassword` runs the tests against real 1Password. It needs
   `ENVI_TEST_ONEPASSWORD_TOKEN` in `.env.local`. `bun fixture:onepassword <status|setup|teardown>`
   manages the fake vaults.
