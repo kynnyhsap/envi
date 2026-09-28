@@ -185,9 +185,11 @@ describe("Envi", () => {
         expect(error.location).toMatch(/Envi\.test\.ts:\d+:\d+$/u);
         expect(error.message).not.toContain("fake-secret-in-vars");
       }).pipe(Effect.provide(layer)),
-    // On Bun under load, the location is sometimes missing: in CI and in a loaded local run since
-    // Effect 4.0.0-rc.118. The cause is unknown, and the test never failed alone or on Node. The
-    // retry keeps the rule under test until a fix removes the retry.
+    // Bun 1.4.2 on Linux x86_64 (the CI images) sometimes gives a stack without the `vars` frame,
+    // so the location is undefined. It never failed on Node, or on arm64 with or without load.
+    // The likely cause, not confirmed, is the stack that JavaScriptCore renders when a garbage
+    // collection ends before the first `.stack` read (oven-sh/bun#34398). oven-sh/bun#33584 fixes
+    // that path after Bun 1.4.2. Issue #28 tracks the removal of the retry.
     { retry: 2 },
   );
 
