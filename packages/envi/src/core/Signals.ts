@@ -3,11 +3,11 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type { PlatformError } from "effect/PlatformError";
 import * as Predicate from "effect/Predicate";
+import type * as ChildProcess from "effect/process/ChildProcess";
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
 import * as Record from "effect/Record";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import type * as ChildProcess from "effect/unstable/process/ChildProcess";
-import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
 /** The signals that `run` handles, with their numbers. */
 const signalNumbers = { SIGHUP: 1, SIGINT: 2, SIGTERM: 15 } as const;

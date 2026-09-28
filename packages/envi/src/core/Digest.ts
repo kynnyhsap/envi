@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 
 /** The SHA-256 digest of a text. WebCrypto exists on Node and on Bun. */
 export const sha256 = (text: string): Effect.Effect<Uint8Array> =>
@@ -10,4 +10,4 @@ export const sha256 = (text: string): Effect.Effect<Uint8Array> =>
 
 /** The SHA-256 digest of a text as hex. */
 export const sha256Hex = (text: string): Effect.Effect<string> =>
-  Effect.map(sha256(text), Encoding.encodeHex);
+  Effect.map(sha256(text), Hex.encode);

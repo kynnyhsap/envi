@@ -1,3 +1,4 @@
+import { Argument, Command, Flag } from "effect/cli";
 import * as EffectConfig from "effect/Config";
 import * as Console from "effect/Console";
 import * as Context from "effect/Context";
@@ -10,7 +11,6 @@ import * as Record from "effect/Record";
 import * as Ref from "effect/Ref";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
-import { Argument, Command, Flag } from "effect/unstable/cli";
 
 import * as CacheSettings from "./core/CacheSettings.ts";
 import type * as Config from "./core/Config.ts";

@@ -1,3 +1,4 @@
+import { Command, Flag } from "effect/cli";
 // Renames the npm packages of the workspace to the names in `scripts/packages.ts`. It reads the
 // current name of each package from its manifest, replaces each old name with the new name in
 // every tracked text file, and runs `bun install` to update the lockfile.
@@ -9,7 +10,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { Command, Flag } from "effect/unstable/cli";
 
 import { packageNames } from "./packages.ts";
 import { exec, root, runCommand, ScriptError, trackedFiles } from "./Workspace.ts";

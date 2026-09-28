@@ -1,3 +1,4 @@
+import { Command, Flag } from "effect/cli";
 // Publishes every package of the workspace at the root version. The `release` workflow runs it
 // when a tag `v<version>` arrives.
 //
@@ -18,7 +19,6 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { Command, Flag } from "effect/unstable/cli";
 
 import { packageNames } from "./packages.ts";
 import { capture, exec, output, root, runCommand, ScriptError, version } from "./Workspace.ts";

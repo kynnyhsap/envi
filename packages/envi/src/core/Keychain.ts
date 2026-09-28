@@ -1,14 +1,14 @@
 import * as EffectConfig from "effect/Config";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as ChildProcess from "effect/process/ChildProcess";
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
 import * as Redacted from "effect/Redacted";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import * as ChildProcess from "effect/unstable/process/ChildProcess";
-import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
 import * as Digest from "./Digest.ts";
 import { CacheError, CacheFailure } from "./Errors.ts";
@@ -141,7 +141,7 @@ const fromBackend = (backend: Backend) =>
     const find = run(backend.find, Option.none());
 
     const decodeKey = (text: string): Effect.Effect<Redacted.Redacted<Uint8Array>, CacheError> => {
-      const decoded = Encoding.decodeHex(text.trim());
+      const decoded = Hex.decode(text.trim());
 
       return Result.isSuccess(decoded) && decoded.success.length === keyLength
         ? Effect.succeed(Redacted.make(decoded.success))
@@ -154,7 +154,7 @@ const fromBackend = (backend: Backend) =>
 
     const create = Effect.suspend(() => {
       const { args, stdin } = backend.add(
-        Encoding.encodeHex(crypto.getRandomValues(new Uint8Array(keyLength))),
+        Hex.encode(crypto.getRandomValues(new Uint8Array(keyLength))),
       );
 
       return run(args, Option.some(stdin));
