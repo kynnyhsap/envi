@@ -32,7 +32,8 @@
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "typecheck": "tsc --noEmit && tsc --noEmit -p examples/tsconfig.json",
-    "check": "bun run --parallel fmt:check lint typecheck names:check versions:check",
+    "check:static": "bun run --parallel fmt:check typecheck names:check versions:check",
+    "check": "bun run --parallel lint check:static",
     "test:unit": "vitest run --project unit",
     "test:e2e": "bun run build && bun run test:e2e:built",
     "test:e2e:built": "vitest run --project e2e",
@@ -40,7 +41,7 @@
     "test:linux": "sh tests/linux/run.sh",
     "test:unit:bun": "bun --bun vitest run --project unit",
     "test": "bun run --parallel test:unit test:unit:bun test:e2e",
-    "verify": "bun run --parallel check test",
+    "verify": "bun run lint && bun run --parallel check:static test",
     "fixture:onepassword": "bun packages/onepassword/scripts/fixture.ts"
   },
   "devDependencies": {
