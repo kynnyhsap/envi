@@ -52,13 +52,15 @@ interface Backend {
   readonly add: (hex: string) => { readonly args: ReadonlyArray<string>; readonly stdin: string };
 }
 
+/** The exit code of `security find-generic-password` for a missing item. */
+const securityItemNotFound = 44;
+
 const backends: Readonly<Record<Exclude<Store, typeof Store.None>, Backend>> = {
   [Store.MacOs]: {
     name: "the macOS Keychain",
     command: "security",
     find: ["find-generic-password", "-s", keychainService, "-a", keychainAccount, "-w"],
-    // The exit code of `security find-generic-password` for a missing item.
-    isMissing: (exitCode) => exitCode === 44,
+    isMissing: (exitCode) => exitCode === securityItemNotFound,
     add: (hex) => ({
       args: ["-i"],
       stdin: `add-generic-password -s ${keychainService} -a ${keychainAccount} -w ${hex}\n`,

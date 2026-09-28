@@ -87,14 +87,15 @@ const runAndSignal = Effect.fn("runAndSignal")(function* (
 });
 
 /**
- * Waits for the child, types Ctrl-C, and keeps the input open, because `script` ends at the end
- * of its input. The input is a shell pipe, because `script` rejects the socket that Node gives
- * to a child as stdin.
+ * Waits for the child, and types Ctrl-C. Then it keeps the input open until `script` exits,
+ * because `script` ends at the end of its input. The input is a shell pipe, because `script`
+ * rejects the socket that Node gives to a child as stdin.
  */
 const pressControlC = [
-  '(while [ ! -f "$ENVI_E2E_READY_FILE" ]; do sleep 0.1; done; sleep 0.2; printf "\\003"; sleep 2)',
-  'script -q /dev/null "$@"',
-].join(" | ");
+  '(while [ ! -f "$ENVI_E2E_READY_FILE" ]; do sleep 0.1; done; printf "\\003";',
+  'while [ ! -f "$ENVI_E2E_READY_FILE.exited" ]; do sleep 0.1; done)',
+  '| { script -q /dev/null "$@"; code=$?; : > "$ENVI_E2E_READY_FILE.exited"; exit $code; }',
+].join(" ");
 
 /**
  * Starts `envi run` under a pseudo terminal through the BSD `script` command, and types Ctrl-C.

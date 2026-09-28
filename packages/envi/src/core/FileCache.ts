@@ -37,9 +37,11 @@ export const layerEncryptionKey = (
   key: Redacted.Redacted<Uint8Array>,
 ): Layer.Layer<EncryptionKey> => Layer.succeed(EncryptionKey, Effect.succeed(key));
 
-const defaultLockWait = Duration.minutes(2);
+/** The longest wait for the lock of another process. */
+const defaultLockWait: Duration.Input = "2 minutes";
 
-const defaultLockStaleAfter = Duration.seconds(30);
+/** The age at which a lock counts as the lock of a crashed owner. */
+const defaultLockStaleAfter: Duration.Duration = Duration.fromInputUnsafe("30 seconds");
 
 const entrySuffix = ".json";
 

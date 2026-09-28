@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -23,12 +24,17 @@ const MainLayer = Layer.mergeAll(
   Layer.succeed(KeyStore, keyStoreOf(process.platform)),
 );
 
-const argv = process.argv.slice(2);
+// The arguments after the runtime and the script.
+const [, , ...argv] = process.argv;
 
 const runHere = Effect.gen(function* () {
   const exitCode = yield* Ref.make(0);
 
-  yield* Effect.provideService(main(argv, Math.round(process.uptime() * 1000)), ExitCode, exitCode);
+  yield* Effect.provideService(
+    main(argv, Math.round(Duration.toMillis(Duration.seconds(process.uptime())))),
+    ExitCode,
+    exitCode,
+  );
 
   return yield* Ref.get(exitCode);
 });

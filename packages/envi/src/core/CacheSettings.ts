@@ -55,11 +55,11 @@ export const expected: Readonly<Record<keyof typeof CacheSettings.fields, string
   maxStale: 'a duration, such as "7 days"',
 };
 
-/** The default refresh interval of a cache entry. */
-const defaultTtl: Duration.Duration = Duration.hours(24);
+/** The default refresh interval of a cache entry: 24 hours. */
+const defaultTtl: Duration.Duration = Duration.days(1);
 
-/** The default limit of the stale fallback. */
-export const defaultMaxStale: Duration.Duration = Duration.days(7);
+/** The default limit of the stale fallback: 7 days. */
+export const defaultMaxStale: Duration.Duration = Duration.weeks(1);
 
 /** The variable that turns the cache on or off. */
 const enabledVariable = "ENVI_CACHE_ENABLED";

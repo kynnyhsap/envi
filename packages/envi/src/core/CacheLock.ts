@@ -22,10 +22,14 @@ import { CacheError, CacheFailure } from "./Errors.ts";
 export const lockFileName = "resolve.lock";
 
 /** The time between two attempts to take a held lock. */
-const retryInterval = Duration.millis(100);
+export const retryInterval: Duration.Input = "100 millis";
 
 /** The number of renewals within the stale age, so one late renewal does not lose the lock. */
 const renewalsPerStaleAge = 3;
+
+/** The time between two renewals of a held lock. */
+export const renewalInterval = (staleAfter: Duration.Duration): Duration.Duration =>
+  Duration.divideUnsafe(staleAfter, renewalsPerStaleAge);
 
 export interface Options {
   readonly directory: string;
@@ -169,7 +173,7 @@ export const make = Effect.fn("CacheLock.make")(function* (options: Options) {
    * is uninterruptible, so the lock file and `owned` always hold the same time for the release.
    */
   const renewLock = (owned: Ref.Ref<number>) => {
-    const interval = Duration.divideUnsafe(options.staleAfter, renewalsPerStaleAge);
+    const interval = renewalInterval(options.staleAfter);
 
     const renew = Effect.gen(function* () {
       if (!(yield* ownsLock(owned))) {

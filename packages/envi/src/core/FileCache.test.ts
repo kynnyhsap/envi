@@ -13,11 +13,14 @@ import * as Cache from "./Cache.ts";
 import * as CacheLock from "./CacheLock.ts";
 import { CacheError, CacheFailure } from "./Errors.ts";
 import * as FileCache from "./FileCache.ts";
-import { cacheRecord, nodePlatform } from "./fixtures/Support.ts";
+import { cacheRecord, makeManualClock, nodePlatform } from "./fixtures/Support.ts";
 
 const keyA = Redacted.make(new Uint8Array(32).fill(1));
 
 const keyB = Redacted.make(new Uint8Array(32).fill(2));
+
+/** The longest wait of a test process for the lock. */
+const lockWait: Duration.Input = "5 seconds";
 
 /** Runs one effect against a new instance of the file cache, as a new process does. */
 const withCache = <A, E>(
@@ -27,17 +30,8 @@ const withCache = <A, E>(
   lockStaleAfter: Duration.Input = "1 minute",
 ) =>
   effect.pipe(
-    Effect.provide(FileCache.layer({ directory, lockWait: "5 seconds", lockStaleAfter })),
+    Effect.provide(FileCache.layer({ directory, lockWait, lockStaleAfter })),
     Effect.provide(FileCache.layerEncryptionKey(key)),
-  );
-
-/** Waits for a fiber. It moves the test clock while the fiber does real file I/O between sleeps. */
-const joinWithClock = <A, E>(fiber: Fiber.Fiber<A, E>) =>
-  Effect.raceFirst(
-    Fiber.join(fiber),
-    Effect.forever(
-      Effect.andThen(TestClock.adjust("1 second"), TestClock.withLive(Effect.sleep("5 millis"))),
-    ),
   );
 
 const valueOf = (records: Cache.CacheRecords, key: string): string | undefined =>
@@ -247,6 +241,7 @@ describe("FileCache", () => {
       const entered = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
       const order: Array<string> = [];
+      const clock = yield* makeManualClock;
 
       const first = yield* Effect.forkChild(
         withCache(
@@ -261,7 +256,7 @@ describe("FileCache", () => {
               }),
             ),
           ),
-        ),
+        ).pipe(clock.provide),
       );
 
       yield* Deferred.await(entered);
@@ -272,17 +267,17 @@ describe("FileCache", () => {
           Effect.flatMap(Cache.Cache, (cache) =>
             cache.withResolveLock(Effect.sync(() => order.push("second"))),
           ),
-        ),
+        ).pipe(clock.provide),
       );
 
-      yield* TestClock.withLive(Effect.sleep("50 millis"));
-      yield* TestClock.adjust("1 second");
-      yield* TestClock.withLive(Effect.sleep("50 millis"));
+      // The second process found the lock held, and sleeps before it tries again.
+      yield* clock.whenSleeping(CacheLock.retryInterval);
       expect(order).toEqual(["first in"]);
 
       yield* Deferred.succeed(release, undefined);
       yield* Fiber.join(first);
-      yield* joinWithClock(second);
+      yield* clock.adjust(CacheLock.retryInterval);
+      yield* Fiber.join(second);
 
       expect(order).toEqual(["first in", "first out", "second"]);
     }).pipe(Effect.provide(nodePlatform)),
@@ -292,6 +287,7 @@ describe("FileCache", () => {
     Effect.gen(function* () {
       const directory = yield* tempDirectory;
       const entered = yield* Deferred.make<void>();
+      const clock = yield* makeManualClock;
 
       yield* Effect.forkChild(
         withCache(
@@ -301,7 +297,7 @@ describe("FileCache", () => {
               Effect.andThen(Deferred.succeed(entered, undefined), Effect.never),
             ),
           ),
-        ),
+        ).pipe(clock.provide),
       );
 
       yield* Deferred.await(entered);
@@ -312,10 +308,13 @@ describe("FileCache", () => {
             directory,
             Effect.flatMap(Cache.Cache, (cache) => cache.withResolveLock(Effect.void)),
           ),
-        ),
+        ).pipe(clock.provide),
       );
 
-      const error = yield* joinWithClock(waiting);
+      yield* clock.whenSleeping(CacheLock.retryInterval);
+      yield* clock.adjust(lockWait);
+
+      const error = yield* Fiber.join(waiting);
 
       expect(error).toBeInstanceOf(CacheError);
       expect(error).toMatchObject({ reason: CacheFailure.LockTimeout });
@@ -383,6 +382,8 @@ describe("FileCache", () => {
       const entered = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
       const staleAfter = Duration.seconds(3);
+      const interval = CacheLock.renewalInterval(staleAfter);
+      const clock = yield* makeManualClock;
 
       const owner = yield* Effect.forkChild(
         withCache(
@@ -394,18 +395,22 @@ describe("FileCache", () => {
           ),
           keyA,
           staleAfter,
-        ),
+        ).pipe(clock.provide),
       );
 
       yield* Deferred.await(entered);
 
-      // Each renewal writes the time of the test clock. The loop moves the clock until the owner
-      // has renewed its lock past the stale age. When the owner never renews, the test times out.
+      // Each renewal writes the time of the clock. The loop moves the clock by one renewal
+      // interval while the owner sleeps, until the owner has renewed its lock past the stale age.
+      // When the owner never renews, the test times out.
       const renewedAt = yield* Effect.repeat(
-        TestClock.adjust("1 second").pipe(
-          Effect.andThen(TestClock.withLive(Effect.sleep("5 millis"))),
-          Effect.andThen(Effect.map(fs.readFileString(lockFile), Number)),
-        ),
+        clock
+          .whenSleeping(interval)
+          .pipe(
+            Effect.andThen(clock.adjust(interval)),
+            Effect.andThen(clock.whenSleeping(interval)),
+            Effect.andThen(Effect.map(fs.readFileString(lockFile), Number)),
+          ),
         { until: (time) => time > Duration.toMillis(staleAfter) },
       );
 
@@ -423,6 +428,9 @@ describe("FileCache", () => {
       const lockFile = `${directory}/${CacheLock.lockFileName}`;
       const entered = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
+      const staleAfter = Duration.seconds(3);
+      const interval = CacheLock.renewalInterval(staleAfter);
+      const clock = yield* makeManualClock;
 
       const owner = yield* Effect.forkChild(
         withCache(
@@ -433,17 +441,20 @@ describe("FileCache", () => {
             ),
           ),
           keyA,
-          "3 seconds",
-        ),
+          staleAfter,
+        ).pipe(clock.provide),
       );
 
       yield* Deferred.await(entered);
       yield* fs.writeFileString(lockFile, "424242");
 
+      // Each tick wakes one renewal, and waits until the owner sleeps again after it.
       for (let tick = 0; tick < 5; tick++) {
-        yield* TestClock.adjust("1 second");
-        yield* TestClock.withLive(Effect.sleep("20 millis"));
+        yield* clock.whenSleeping(interval);
+        yield* clock.adjust(interval);
       }
+
+      yield* clock.whenSleeping(interval);
 
       expect(yield* fs.readFileString(lockFile)).toBe("424242");
 

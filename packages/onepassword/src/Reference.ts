@@ -59,9 +59,9 @@ const parseUri = (uri: string): Effect.Effect<OpReference, SchemaIssue.Issue> =>
     return unsupported("A 1Password reference has no empty part");
   }
 
-  const [vault, item, third, fourth] = parts;
+  const [vault, item, third, fourth, ...extra] = parts;
 
-  if (vault === undefined || item === undefined || third === undefined || parts.length > 4) {
+  if (vault === undefined || item === undefined || third === undefined || extra.length > 0) {
     return unsupported(
       "A 1Password reference is op://vault/item/field or op://vault/item/section/field",
     );

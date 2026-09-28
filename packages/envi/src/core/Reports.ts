@@ -2,6 +2,9 @@
 // `--json` prints the encoded report. This file holds real schemas, because every type comes from one.
 import * as Schema from "effect/Schema";
 
+/** The indent of every JSON document that Envi prints: a report, an error, and an export. */
+export const jsonIndent = 2;
+
 /** The text that stands for a redacted value in a report and in an export. */
 export const redactedText = "<redacted>";
 
