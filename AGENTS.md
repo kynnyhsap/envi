@@ -119,7 +119,7 @@ This repository is public. These rules have no exception.
 - Use the Effect building blocks instead of custom code: `Context.Service` and `Layer` for every
   dependency, `Schema` for every data structure, `Schema.TaggedError` for every error, `Config`
   for every `ENVI_*` variable, `Redacted` for every secret value in memory, `Duration` for time,
-  the Effect logger, `effect/unstable/cli`, and the platform services. Do not use `async`
+  the Effect logger, `effect/cli`, and the platform services. Do not use `async`
   functions, `try`/`catch`, or `throw` in `src`.
 - Design data first. Define each data structure as an Effect `Schema`. Derive every type from its
   schema.

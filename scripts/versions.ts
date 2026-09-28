@@ -1,3 +1,4 @@
+import { Command, Flag } from "effect/cli";
 // Keeps every version of the workspace in one place.
 //
 // - The root manifest holds the version. Every package has that version, the way the Effect v4
@@ -16,7 +17,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { Command, Flag } from "effect/unstable/cli";
 
 import { packageNames } from "./packages.ts";
 import { exec, root, runCommand, ScriptError, trackedFiles } from "./Workspace.ts";

@@ -1,3 +1,4 @@
+import { Argument, Command } from "effect/cli";
 // Creates, checks, and deletes the fake 1Password vaults of the end-to-end tests.
 //
 //   ENVI_TEST_ONEPASSWORD_ACCOUNT=<account> bun fixture:onepassword status
@@ -13,7 +14,6 @@ import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
-import { Argument, Command } from "effect/unstable/cli";
 
 import { runCommand, ScriptError, version } from "../../../scripts/Workspace.ts";
 import {

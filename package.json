@@ -8,11 +8,11 @@
     ],
     "catalog": {
       "@1password/sdk": "0.5.0",
-      "@effect/platform-node": "4.0.0-rc.117",
-      "@effect/platform-node-shared": "4.0.0-rc.117",
-      "@effect/vitest": "4.0.0-rc.117",
+      "@effect/platform-node": "4.0.0-rc.118",
+      "@effect/platform-node-shared": "4.0.0-rc.118",
+      "@effect/vitest": "4.0.0-rc.118",
       "@types/node": "26.6.2",
-      "effect": "^4.0.0-rc.117",
+      "effect": "^4.0.0-rc.118",
       "typescript": "7.0.2",
       "vitest": "5.0.1"
     }

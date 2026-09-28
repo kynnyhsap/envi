@@ -2,8 +2,8 @@ import { describe, expect, layer } from "@effect/vitest";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import { ChildProcess } from "effect/process";
 import * as Stream from "effect/Stream";
-import { ChildProcess } from "effect/unstable/process";
 
 import * as Platform from "../platform.ts";
 import * as Signals from "./Signals.ts";

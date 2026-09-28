@@ -2,11 +2,11 @@
 // child processes, and the entry point. Bun runs each script, and each script uses this module.
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Command } from "effect/cli";
 import * as Effect from "effect/Effect";
+import { ChildProcess } from "effect/process";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { Command } from "effect/unstable/cli";
-import { ChildProcess } from "effect/unstable/process";
 import { fileURLToPath } from "node:url";
 
 import rootManifest from "../package.json" with { type: "json" };

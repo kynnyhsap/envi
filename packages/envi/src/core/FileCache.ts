@@ -3,7 +3,7 @@
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -111,7 +111,7 @@ const make = Effect.fn("FileCache.make")(function* (
   const writeRecord = (key: string, record: Cache.CacheRecord): Effect.Effect<void, CacheError> =>
     Effect.gen(function* () {
       const file = path.join(options.directory, yield* fileNameOf(key));
-      const suffix = Encoding.encodeHex(crypto.getRandomValues(new Uint8Array(tempNameBytes)));
+      const suffix = Hex.encode(crypto.getRandomValues(new Uint8Array(tempNameBytes)));
       const temp = `${file}.${suffix}${tempSuffix}`;
       const text = yield* CacheEntry.encode(key, record, keyring);
 

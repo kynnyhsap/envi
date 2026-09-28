@@ -5,9 +5,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
+import * as ChildProcess from "effect/process/ChildProcess";
+import type { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
 import * as Tuple from "effect/Tuple";
-import * as ChildProcess from "effect/unstable/process/ChildProcess";
-import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
 import * as Cache from "./Cache.ts";
 import * as CacheSettings from "./CacheSettings.ts";
