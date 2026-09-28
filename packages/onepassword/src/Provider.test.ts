@@ -302,16 +302,24 @@ describe("onePasswordProvider", () => {
     }).pipe(withEnv({})),
   );
 
-  it.effect("reports a failed desktop connection as Unavailable", () =>
+  it.effect("fails the authentication after an expired session, and is Unavailable otherwise", () =>
     Effect.gen(function* () {
-      const provider = makeProvider(
-        { account: "my-team" },
-        Effect.succeed(fakeSdk(secrets, () => Promise.reject(new Error("the app is locked")))),
-      );
+      const failureOf = (rejection: Error) => {
+        const sdk = fakeSdk(secrets, () => Promise.reject(rejection));
+        const provider = makeProvider({ account: "my-team" }, Effect.succeed(sdk));
 
-      const error = yield* Effect.flip(provider.resolveMany(requests, { interactive: true }));
+        return Effect.flip(provider.resolveMany(requests, { interactive: true }));
+      };
 
-      expect(error).toMatchObject({ reason: ProviderFailure.Unavailable });
+      const expired = yield* failureOf(new FakeDesktopSessionExpiredError("session expired"));
+      const locked = yield* failureOf(new Error("the app is locked"));
+      // Only a service account has a token that 1Password can reject.
+      const tokenText = yield* failureOf(new Error("invalid service account token"));
+
+      expect(expired).toMatchObject({ reason: ProviderFailure.AuthenticationFailed });
+      expect(expired.message).toContain("Unlock the app");
+      expect(locked).toMatchObject({ reason: ProviderFailure.Unavailable });
+      expect(tokenText).toMatchObject({ reason: ProviderFailure.Unavailable });
     }).pipe(withEnv({})),
   );
 

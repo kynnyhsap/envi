@@ -14,16 +14,19 @@ const account = process.env[accountVariable];
 
 const token = process.env[tokenVariable];
 
-/** The provider variables of the CLI process. The token wins over the account name. */
+/**
+ * The credential of the CLI process. The token wins over the account name. The token goes into
+ * `OP_SERVICE_ACCOUNT_TOKEN`, the variable that a CI system sets, so `run` must remove it too.
+ */
 const credential: Record<string, string> =
   token === undefined
     ? { ENVI_PROVIDER_ONEPASSWORD_ACCOUNT: account ?? "" }
-    : { ENVI_PROVIDER_ONEPASSWORD_SERVICE_ACCOUNT_TOKEN: token };
+    : { OP_SERVICE_ACCOUNT_TOKEN: token };
 
 const cwd = fileURLToPath(new URL("./fixtures/app", import.meta.url));
 
 const printVars =
-  "console.log([process.env.PORT, process.env.API_TOKEN, process.env.STRIPE_KEY, Object.keys(process.env).some((name) => name.startsWith('ENVI_PROVIDER_')) ? 'leaked' : 'removed'].join('|'))";
+  "console.log([process.env.PORT, process.env.API_TOKEN, process.env.STRIPE_KEY, Object.keys(process.env).some((name) => name.startsWith('ENVI_PROVIDER_') || name === 'OP_SERVICE_ACCOUNT_TOKEN') ? 'leaked' : 'removed'].join('|'))";
 
 /** Runs one command of the built CLI. A flag follows the command. */
 const runCli = (
