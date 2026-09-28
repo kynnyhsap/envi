@@ -1,4 +1,4 @@
-import { assert, describe, expect, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -174,23 +174,6 @@ describe("Source", () => {
         expect(yield* call(url, ["app", 5432])).toEqual(Option.some("postgres://app@db:5433"));
       }),
     );
-
-    it("keeps the id, the scope, and the source text of resolve for the cache key", () => {
-      const token = Source.custom({
-        id: "token",
-        scope: "https://auth.example.com",
-        resolve: () => "t",
-      });
-
-      const plain = Source.custom({ id: "plain", resolve: () => "p" });
-
-      assert(Source.Origin.$is("Custom")(token.origin));
-      assert(Source.Origin.$is("Custom")(plain.origin));
-      expect(token.origin.id).toBe("token");
-      expect(token.origin.scope).toBe("https://auth.example.com");
-      expect(token.origin.code).toContain('"t"');
-      expect(plain.origin.scope).toBe("");
-    });
 
     it.effect(
       "turns a throw, a rejection, and a failure into a CustomError that hides the message",

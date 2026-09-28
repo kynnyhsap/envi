@@ -1,8 +1,10 @@
 import { describe, expect, layer } from "@effect/vitest";
-import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import { ChildProcess } from "effect/process";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 
 import * as Platform from "../platform.ts";
@@ -20,16 +22,10 @@ const node = (script: string) =>
 const endsItselfWith = (name: string) =>
   `process.kill(process.pid, '${name}'); setInterval(() => {}, 1000);`;
 
-const handlesSigterm = "process.on('SIGTERM', () => process.exit(7)); setInterval(() => {}, 1000);";
-
-const ignoresSighup =
-  "process.on('SIGHUP', () => {}); process.on('SIGTERM', () => process.exit(7)); setInterval(() => {}, 1000);";
-
 const withSignals = (signals: Stream.Stream<Signals.Received>) =>
   Effect.provideService(Signals.Signals, signals);
 
-const after = (delay: Duration.Input, name: Signals.SignalName) =>
-  Stream.fromEffect(Effect.as(Effect.sleep(delay), { name, forward: true }));
+const forwarded = (name: Signals.SignalName): Signals.Received => ({ name, forward: true });
 
 layer(Platform.layer, { excludeTestServices: true })("Signals.supervise", (it) => {
   describe("with real child processes", () => {
@@ -57,27 +53,30 @@ layer(Platform.layer, { excludeTestServices: true })("Signals.supervise", (it) =
       }),
     );
 
-    it.effect("forwards a signal, and the child decides the exit code", () =>
-      Effect.gen(function* () {
-        // The delay lets the child install its handler before the signal arrives.
-        const delayed = Stream.fromEffect(
-          Effect.as(Effect.sleep("700 millis"), { name: "SIGTERM", forward: true } as const),
-        );
-
-        const code = yield* Signals.supervise(node(handlesSigterm)).pipe(withSignals(delayed));
-
-        expect(code).toEqual(Option.some(7));
-      }),
-    );
-
     it.effect("forwards a second signal while the child still runs after the first", () =>
       Effect.gen(function* () {
-        const signals = Stream.concat(
-          after("700 millis", "SIGHUP"),
-          after("300 millis", "SIGTERM"),
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const ready = path.join(yield* fs.makeTempDirectoryScoped(), "ready");
+
+        // The child ignores SIGHUP and exits on SIGTERM. It writes `ready` after it installs both
+        // handlers, and the first signal waits for that file.
+        const child = node(
+          `process.on('SIGHUP', () => {}); process.on('SIGTERM', () => process.exit(7)); require('node:fs').writeFileSync(${JSON.stringify(ready)}, ''); setInterval(() => {}, 1000);`,
         );
 
-        const code = yield* Signals.supervise(node(ignoresSighup)).pipe(withSignals(signals));
+        const whenReady = Effect.repeat(fs.exists(ready), {
+          until: (exists) => exists,
+          schedule: Schedule.spaced("10 millis"),
+        }).pipe(Effect.orDie);
+
+        // A forward that waited for the exit of the child would never send SIGTERM.
+        const signals = Stream.concat(
+          Stream.fromEffect(Effect.as(whenReady, forwarded("SIGHUP"))),
+          Stream.make(forwarded("SIGTERM")),
+        );
+
+        const code = yield* Signals.supervise(child).pipe(withSignals(signals));
 
         expect(code).toEqual(Option.some(7));
       }),

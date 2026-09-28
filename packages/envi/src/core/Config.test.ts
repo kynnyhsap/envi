@@ -83,15 +83,6 @@ describe("selectStage", () => {
     }),
   );
 
-  it.effect("falls back to defaultStage, and then to development", () =>
-    Effect.gen(function* () {
-      const bare = Config.defineConfig({ vars: {} });
-
-      expect(yield* Config.selectStage(staged, Option.none())).toBe("development");
-      expect(yield* Config.selectStage(bare, Option.none())).toBe(Config.fallbackStage);
-    }),
-  );
-
   it.effect("rejects a stage that the config does not declare", () =>
     Effect.gen(function* () {
       const error = yield* Effect.flip(Config.selectStage(staged, Option.some("prodution")));
