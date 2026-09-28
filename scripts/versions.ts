@@ -7,7 +7,9 @@ import { Command, Flag } from "effect/cli";
 //   the READMEs name the floors, and the `floors` job of CI tests them.
 // - `workspaces.catalog` holds every dependency version. A package manifest uses only `catalog:`
 //   and `workspace:` specs. `effect` and every `@effect/*` entry share one version.
-// - The READMEs ask for the `effect` range of the catalog.
+// - While Effect is a prerelease, the `effect` entry is the exact version, because a release
+//   candidate can break imports. After it, the entry is a `~` range of one minor version.
+// - The READMEs ask for the `effect` spec of the catalog.
 //
 //   bun run versions           writes the root version and engines into every package, and the
 //                              range and the floors into the READMEs
@@ -55,7 +57,7 @@ const Spec = {
   WorkspacePeer: "workspace:^",
 } as const;
 
-/** An `effect` spec in a README, such as `effect@^4.0.0-rc.117`. */
+/** An `effect` spec in a README, such as `effect@4.0.0-rc.117`. */
 const effectSpec = /(?<![\w@/-])effect@[^\s"'`]+/gu;
 
 /** A runtime floor in a README, such as `Node 22.19.0`. */
@@ -82,6 +84,33 @@ const dependenciesOf = (
   dependencyKinds.flatMap((kind) =>
     Object.entries(manifest[kind] ?? {}).map(([name, spec]) => ({ file, kind, name, spec })),
   );
+
+/** A version without a range, such as `4.0.0-rc.118`. */
+const exactVersion = /^\d+\.\d+\.\d+(?:-[\w.]+)?$/u;
+
+/** A range of the patch versions of one minor version, such as `~4.0.0`. */
+const patchRange = /^~\d+\.\d+\.\d+$/u;
+
+/** The rule for the `effect` entry of the catalog. */
+const effectSpecProblems = (spec: string | undefined): ReadonlyArray<string> => {
+  if (spec === undefined) {
+    return ["package.json: the catalog has no effect."];
+  }
+
+  if (spec.includes("-")) {
+    return exactVersion.test(spec)
+      ? []
+      : [
+          `package.json: the catalog asks for effect "${spec}". Effect is a prerelease, so use the exact version.`,
+        ];
+  }
+
+  return patchRange.test(spec)
+    ? []
+    : [
+        `package.json: the catalog asks for effect "${spec}". Use a "~" range of the tested minor version.`,
+      ];
+};
 
 /** The rules that no script can fix. Each problem is one line. */
 const specProblems = (
@@ -113,7 +142,7 @@ const specProblems = (
   const effectVersions = new Set(
     Object.entries(catalog)
       .filter(([name]) => name === "effect" || name.startsWith("@effect/"))
-      .map(([, version]) => version.replace(/^\^/u, "")),
+      .map(([, version]) => version.replace(/^[~^]/u, "")),
   );
 
   const effectProblems =
@@ -123,7 +152,7 @@ const specProblems = (
         ]
       : [];
 
-  return [...wrongSpecs, ...effectProblems];
+  return [...wrongSpecs, ...effectProblems, ...effectSpecProblems(catalog["effect"])];
 };
 
 /** A file whose text differs from the text that the rules give it. */

@@ -7,7 +7,7 @@ references through the official `@1password/sdk`, in one batch for each run. It 
 ## Install
 
 ```sh
-bun add @kynnyhsap/envi @kynnyhsap/envi-1password "effect@^4.0.0-rc.118"
+bun add @kynnyhsap/envi @kynnyhsap/envi-1password "effect@4.0.0-rc.118"
 ```
 
 `@kynnyhsap/envi-1password` installs `@1password/sdk`. `envi` and `effect` are peer dependencies.

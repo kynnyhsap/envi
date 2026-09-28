@@ -72,11 +72,16 @@ This repository is public. These rules have no exception.
 - **Never fall back from encryption to plaintext.** Plaintext is an explicit opt-in.
 - **One precedence order for every setting:** CLI flag or call option, client option,
   environment variable, config key, default.
-- **One copy of `effect`.** `effect` is a required peer dependency. The build never bundles. A
-  global `envi` starts the local `envi` of the project. `envi` depends on
-  `@effect/platform-node-shared`, pinned to the Effect version of the catalog. It does not depend
-  on `@effect/platform-node`, because that package asks for `redis` as a peer, and npm installs
-  every peer.
+- **One copy of `effect`.** `effect` is a required peer dependency. The config, the SDK, and the
+  code of the user share one copy, because the CLI loads the config and its schemas into its own
+  process. The build never bundles. While Effect 4 is a prerelease, the peer is the exact version
+  that CI tests, because a release candidate can break imports. After Effect 4.0.0, the peer is a
+  `~` range of the minor version that CI tests, because `effect/cli` and `effect/process` can
+  break in a minor version. Envi releases a new version for each new Effect release. The
+  `effect-release` workflow opens an issue when npm has a newer Effect. A global `envi` starts
+  the local `envi` of the project. `envi` depends on `@effect/platform-node-shared`, pinned to the
+  Effect version of the catalog. It does not depend on `@effect/platform-node`, because that
+  package asks for `redis` as a peer, and npm installs every peer.
 - **One version for every package.** Envi and every provider package share one version, the way
   the Effect v4 packages do. A release bumps every package together. A provider asks for `^` that
   version of Envi as its peer. A user never matches a provider version to an Envi version.
@@ -177,9 +182,10 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 - A package manifest uses only `catalog:` and `workspace:` specs. A provider asks for
   `workspace:^` Envi as its peer. The root manifest uses `catalog:` for every dependency that a
   package also uses.
-- `effect` and every `@effect/*` entry of the catalog share one version. The `effect` entry is a
-  caret range, and it is the peer range of the packages.
-- Each README asks for the `effect` range of the catalog in its install command, and names the
+- `effect` and every `@effect/*` entry of the catalog share one version. While Effect is a
+  prerelease, the `effect` entry is an exact version. After it, the entry is a `~` range. The
+  entry is the peer range of the packages.
+- Each README asks for the `effect` spec of the catalog in its install command, and names the
   floors of `engines`.
 
 - Every change goes through a pull request against `main`. Do not commit to `main` directly.

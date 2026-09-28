@@ -60,7 +60,7 @@
     "@effect/platform-node-shared": "4.0.0-rc.118",
     "@effect/vitest": "4.0.0-rc.118",
     "@types/node": "26.6.2",
-    "effect": "^4.0.0-rc.118",
+    "effect": "4.0.0-rc.118",
     "typescript": "7.0.2",
     "vitest": "5.0.1",
   },
