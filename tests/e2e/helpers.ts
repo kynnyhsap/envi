@@ -19,6 +19,10 @@ export const fixture = (name: string): string =>
 
 export const runtimes = ["node", "bun"] as const;
 
+/** The README link of an error section, as the `docs` field of the error shows it. */
+export const docsOf = (section: string): string =>
+  `https://github.com/kynnyhsap/envi#error-${section}`;
+
 /** The fake secrets of the file provider. */
 export const secrets = {
   "token-development": "dev-token-value",
@@ -53,30 +57,35 @@ export interface Sandbox {
   readonly directory: string;
   readonly secretsFile: string;
   readonly callsFile: string;
+  readonly interactiveFile: string;
   readonly cacheDirectory: string;
   /** The environment that points the file provider at this sandbox. */
   readonly env: Readonly<Record<string, string>>;
 }
 
-/** A temp folder with a secrets file, an empty call log, and a cache directory path. */
+/** A temp folder with a secrets file, two empty batch logs, and a cache directory path. */
 export const makeSandbox = Effect.fn("makeSandbox")(function* (encryption: "none" | "keychain") {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const directory = yield* fs.makeTempDirectoryScoped({ prefix: "envi-e2e-" });
   const secretsFile = path.join(directory, "secrets.json");
   const callsFile = path.join(directory, "calls.log");
+  const interactiveFile = path.join(directory, "interactive.log");
 
   yield* fs.writeFileString(secretsFile, JSON.stringify(secrets));
   yield* fs.writeFileString(callsFile, "");
+  yield* fs.writeFileString(interactiveFile, "");
 
   const sandbox: Sandbox = {
     directory,
     secretsFile,
     callsFile,
+    interactiveFile,
     cacheDirectory: path.join(directory, "cache"),
     env: {
       ENVI_E2E_SECRETS_FILE: secretsFile,
       ENVI_E2E_CALLS_FILE: callsFile,
+      ENVI_E2E_INTERACTIVE_FILE: interactiveFile,
       ENVI_E2E_ENCRYPTION: encryption,
     },
   };
@@ -93,6 +102,17 @@ export const providerCalls = (sandbox: Sandbox) =>
         .split("\n")
         .filter((line) => line !== "")
         .map((line) => line.split(",").toSorted()),
+  );
+
+/** The `interactive` value of each provider call. */
+export const providerInteractive = (sandbox: Sandbox) =>
+  Effect.map(
+    Effect.flatMap(FileSystem.FileSystem, (fs) => fs.readFileString(sandbox.interactiveFile)),
+    (text) =>
+      text
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line) => line === "true"),
   );
 
 const EntryFile = Schema.fromJsonString(

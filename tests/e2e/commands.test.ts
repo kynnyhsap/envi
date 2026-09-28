@@ -9,9 +9,11 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import {
   cacheFiles,
+  docsOf,
   fixture,
   makeSandbox,
   providerCalls,
+  providerInteractive,
   runCli,
   runtimes,
   type Sandbox,
@@ -132,7 +134,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
               summary:
                 "Envi reference failed: NotFound for file://token-development (provider file)",
               hint: expect.stringContaining("existing secret"),
-              docs: "https://github.com/kynnyhsap/envi#error-secret-reference-not-found",
+              docs: docsOf("secret-reference-not-found"),
             },
           ]);
         }),
@@ -308,6 +310,25 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
       );
     });
 
+    describe("interactive", () => {
+      it.effect("allows a prompt outside CI, forbids it in CI, and the flags win", () =>
+        Effect.gen(function* () {
+          const sandbox = yield* makeSandbox("none");
+          const inCi = { ...sandbox.env, CI: "true" };
+
+          const check = (args: ReadonlyArray<string>, env: Readonly<Record<string, string>>) =>
+            runCli(runtime, app, ["check", "--no-cache", ...args], env);
+
+          yield* check([], sandbox.env);
+          yield* check([], inCi);
+          yield* check(["--interactive"], inCi);
+          yield* check(["--no-interactive"], sandbox.env);
+
+          expect(yield* providerInteractive(sandbox)).toEqual([true, false, true, false]);
+        }),
+      );
+    });
+
     describe("cache", () => {
       it.effect("prints the directory from --cache-dir and ENVI_CACHE_DIR, also in CI", () =>
         Effect.gen(function* () {
@@ -354,6 +375,22 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
 
           expect(JSON.parse(cleared.stdout)).toMatchObject({ removed: 7 });
           expect(JSON.parse(after.stdout).entries).toEqual([]);
+          expect(yield* cacheFiles(sandbox.cacheDirectory)).toEqual([]);
+        }),
+      );
+
+      it.effect("lists and clears the entries in CI, where the cache is off", () =>
+        Effect.gen(function* () {
+          const sandbox = yield* makeSandbox("none");
+          const inCi = { ...sandbox, env: { ...sandbox.env, CI: "true" } };
+
+          yield* cli(runtime, sandbox, ["sync"]);
+
+          const list = yield* cli(runtime, inCi, ["cache", "list", "--json"]);
+          const cleared = yield* cli(runtime, inCi, ["cache", "clear", "--json"]);
+
+          expect(JSON.parse(list.stdout).entries.length).toBe(7);
+          expect(JSON.parse(cleared.stdout)).toMatchObject({ removed: 7 });
           expect(yield* cacheFiles(sandbox.cacheDirectory)).toEqual([]);
         }),
       );

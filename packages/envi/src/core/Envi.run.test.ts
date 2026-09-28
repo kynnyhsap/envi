@@ -16,17 +16,24 @@ import * as Provider from "./Provider.ts";
 
 const spawned: Array<ChildProcess.StandardCommand> = [];
 
-/** A spawner that records each command and exits with the code 7. The command `nope` is missing. */
+/** The commands that the test spawner fails to start, with the error of the OS. */
+const unstartable = new Map<string, PlatformError.SystemErrorTag>([
+  ["nope", "NotFound"],
+  ["locked", "PermissionDenied"],
+  ["broken", "BadResource"],
+]);
+
+/** A spawner that records each command and exits with the code 7, except an unstartable one. */
 const spawner = ChildProcessSpawner.make((command) => {
   if (!ChildProcess.isStandardCommand(command)) {
     return Effect.die("the test spawner accepts only a standard command");
   }
 
-  if (command.command === "nope") {
+  const spawnError = unstartable.get(command.command);
+
+  if (spawnError !== undefined) {
     return Effect.fail(
-      // The `_tag` is the input of the constructor of Effect. No other constructor exists.
-      // oxlint-disable-next-line anti-slop-effect/no-manual-tagged-construction
-      PlatformError.systemError({ _tag: "NotFound", module: "ChildProcess", method: "spawn" }),
+      PlatformError.systemError({ _tag: spawnError, module: "ChildProcess", method: "spawn" }),
     );
   }
 
@@ -125,13 +132,17 @@ describe("Envi.run", () => {
     }).pipe(Effect.provide(layer)),
   );
 
-  it.effect("reports a missing command without its arguments", () =>
+  it.effect.each([
+    ["nope", RunFailure.CommandNotFound],
+    ["locked", RunFailure.CommandNotExecutable],
+    ["broken", RunFailure.SpawnFailed],
+  ] as const)("reports %s as %s without its arguments", ([command, reason]) =>
     Effect.gen(function* () {
       const envi = yield* Envi.Envi;
-      const error = yield* Effect.flip(envi.run(config, "nope", ["--token", "abc"]));
+      const error = yield* Effect.flip(envi.run(config, command, ["--token", "abc"]));
 
       expect(error).toBeInstanceOf(RunError);
-      expect(error).toMatchObject({ reason: RunFailure.CommandNotFound, command: "nope" });
+      expect(error).toMatchObject({ reason, command });
       expect(error.message).not.toContain("abc");
     }).pipe(Effect.provide(layer)),
   );

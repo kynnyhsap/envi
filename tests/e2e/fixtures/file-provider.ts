@@ -6,7 +6,7 @@ import {
   ReferenceFailure,
 } from "@kynnyhsap/envi";
 // A custom provider for the end-to-end tests. It reads fake secrets from a real JSON file and
-// appends the keys of each batch to a real log file. A test sees each provider call across
+// appends the keys and the `interactive` value of each batch to real log files. A test sees each provider call across
 // several CLI processes this way. Both paths come from the environment of the test.
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
@@ -18,6 +18,9 @@ export const fileProviderId = "file";
 export const secretsVariable = "ENVI_E2E_SECRETS_FILE";
 
 export const callsVariable = "ENVI_E2E_CALLS_FILE";
+
+/** The log of the `interactive` value of each batch, one line for each batch. */
+export const interactiveVariable = "ENVI_E2E_INTERACTIVE_FILE";
 
 /** A fake credential of the file provider. `run` must remove it from the child. */
 export const tokenVariable = "ENVI_E2E_FILE_TOKEN";
@@ -42,7 +45,7 @@ export const fileProvider = Provider.make({
   // Each secrets file is its own source of values.
   scope: Effect.sync(() => process.env[secretsVariable] ?? ""),
   credentialVariables: [tokenVariable],
-  resolveMany: (requests) =>
+  resolveMany: (requests, context) =>
     Effect.gen(function* () {
       const text = yield* Effect.try({
         try: () => {
@@ -50,6 +53,7 @@ export const fileProvider = Provider.make({
             process.env[callsVariable] ?? "",
             `${requests.map((request) => request.reference).join(",")}\n`,
           );
+          appendFileSync(process.env[interactiveVariable] ?? "", `${context.interactive}\n`);
 
           return readFileSync(process.env[secretsVariable] ?? "", "utf8");
         },

@@ -2,7 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import { enviVersion, fixture, runCli, runtimes } from "./helpers.ts";
+import { docsOf, enviVersion, fixture, runCli, runtimes } from "./helpers.ts";
 
 layer(NodeServices.layer)("envi CLI", (it) => {
   describe.each(runtimes)("on %s", (runtime) => {
@@ -79,9 +79,7 @@ layer(NodeServices.layer)("envi CLI", (it) => {
           "✗ TOKEN: Envi reference failed: NotFound for memory://token",
         );
         expect(result.stderr).toContain("hint: ");
-        expect(result.stderr).toContain(
-          "docs: https://github.com/kynnyhsap/envi#error-secret-reference-not-found",
-        );
+        expect(result.stderr).toContain(`docs: ${docsOf("secret-reference-not-found")}`);
       }),
     );
 
@@ -94,7 +92,7 @@ layer(NodeServices.layer)("envi CLI", (it) => {
         expect(report.error).toMatchObject({
           error: "VarsError",
           reason: null,
-          docs: "https://github.com/kynnyhsap/envi#error-vars",
+          docs: docsOf("vars"),
           failures: [
             {
               key: "TOKEN",

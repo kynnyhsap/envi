@@ -2,6 +2,7 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +16,9 @@ import {
   defineConfig,
   Envi,
   layer,
+  Provider,
+  ProviderError,
+  ProviderFailure,
   SecretReferenceError,
   SettingsError,
   syncAll,
@@ -22,7 +26,7 @@ import {
   type CacheKey,
   type EnviOptions,
 } from "./index.ts";
-import { mem, memoryProvider } from "./testing.ts";
+import { mem, memoryProvider, memoryProviderId } from "./testing.ts";
 
 const provider = memoryProvider({ "db/url": "postgres://fake", port: "5432" });
 
@@ -223,6 +227,67 @@ describe("the cache settings of a client", () => {
 
     expect(await valid.load()).toEqual({ DATABASE_URL: "postgres://fake" });
     await valid.dispose();
+  });
+});
+
+/** A provider that records `interactive` for each batch, and fails as a whole while `down`. */
+const switchable = () => {
+  const state = { down: false, interactive: new Array<boolean>() };
+
+  const source = Provider.make({
+    id: memoryProviderId,
+    scope: "switchable",
+    resolveMany: (requests, context) =>
+      Effect.suspend(() => {
+        state.interactive.push(context.interactive);
+
+        return state.down
+          ? Effect.fail(
+              new ProviderError({
+                reason: ProviderFailure.Unavailable,
+                provider: memoryProviderId,
+                detail: "The test provider is down.",
+              }),
+            )
+          : Effect.succeed(
+              Object.fromEntries(requests.map((request) => [request.key, Result.succeed("1")])),
+            );
+      }),
+    helpers: {},
+  });
+
+  return { state, oneConfig: defineConfig({ providers: [source], vars: { A: mem("a") } }) };
+};
+
+describe("the overrides of a client", () => {
+  it("wins over ENVI_INTERACTIVE", async () => {
+    vi.stubEnv("ENVI_INTERACTIVE", "true");
+
+    const { state, oneConfig } = switchable();
+    const envi = createEnvi(oneConfig, { cache: false, interactive: false });
+
+    await envi.load();
+    await envi.dispose();
+
+    expect(state.interactive).toEqual([false]);
+  });
+
+  it("wins over ENVI_STRICT for the stale fallback", async () => {
+    vi.stubEnv("ENVI_STRICT", "true");
+
+    const { state, oneConfig } = switchable();
+    // With a ttl of 0, every entry has expired at the next load.
+    const cache = { directory: cacheDirectory(), encryption: "none", ttl: 0 } as const;
+    const lenient = createEnvi(oneConfig, { cache, strict: false });
+    const strict = createEnvi(oneConfig, { cache, strict: true });
+
+    await lenient.load();
+    state.down = true;
+
+    expect(await lenient.load()).toEqual({ A: "1" });
+    await expect(strict.load()).rejects.toBeInstanceOf(VarsError);
+    await lenient.dispose();
+    await strict.dispose();
   });
 });
 

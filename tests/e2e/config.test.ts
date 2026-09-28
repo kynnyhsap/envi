@@ -7,7 +7,15 @@ import * as Path from "effect/Path";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { fileURLToPath } from "node:url";
 
-import { enviVersion, fixture, makeSandbox, runCli, runProcess, runtimes } from "./helpers.ts";
+import {
+  docsOf,
+  enviVersion,
+  fixture,
+  makeSandbox,
+  runCli,
+  runProcess,
+  runtimes,
+} from "./helpers.ts";
 
 const app = fixture("cached");
 
@@ -173,9 +181,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
         expect(text.exitCode).toBe(1);
         expect(text.stderr).toContain("ConfigSyntax");
         expect(text.stderr).toMatch(/envi\.config\.ts:4/u);
-        expect(text.stderr).toContain(
-          "docs: https://github.com/kynnyhsap/envi#error-config-load-config-syntax",
-        );
+        expect(text.stderr).toContain(`docs: ${docsOf("config-load-config-syntax")}`);
         expect(text.stderr + json.stdout).not.toContain("secret-in-source");
         expect(json.exitCode).toBe(1);
         expect(JSON.parse(json.stdout).error).toMatchObject({
