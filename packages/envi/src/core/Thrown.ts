@@ -40,5 +40,9 @@ export const describe = (
 ): { readonly thrown: string; readonly location: string | undefined } =>
   Option.match(thrown, {
     onNone: () => ({ thrown: "a value that is not an Error", location: undefined }),
-    onSome: (error) => ({ thrown: nameOf(error), location: locationOf(error.stack ?? "") }),
+    onSome: (error) => {
+      const location = locationOf(error.stack ?? "");
+      if (location === undefined) globalThis.process?.stderr.write(`\nPROBE limit=${Error.stackTraceLimit} stack=${JSON.stringify(error.stack)}\n`);
+      return { thrown: nameOf(error), location };
+    },
   });
