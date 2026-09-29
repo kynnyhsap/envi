@@ -24,7 +24,7 @@
     },
     "packages/envi": {
       "name": "@kynnyhsap/envi",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "bin": {
         "envi": "./dist/bin.js",
       },
@@ -40,7 +40,7 @@
     },
     "packages/onepassword": {
       "name": "@kynnyhsap/envi-1password",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@1password/sdk": "catalog:",
       },
