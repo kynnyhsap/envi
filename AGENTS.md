@@ -238,9 +238,12 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   proposes the updates of the actions.
 - `.github/workflows/release.yml` runs when a tag `v<version>` arrives. It runs every job of CI,
   checks that the tag is on `main`, and runs `bun run release` with provenance. Its `publish` job
-  uses the GitHub environment `npm`, and only a `v*` tag can use that environment. The first
-  publish needs the secret `NPM_TOKEN` in that environment. After it, configure trusted
-  publishing on npm for `release.yml` and the environment `npm`, and delete the token.
+  uses the GitHub environment `npm`, and only a `v*` tag can use that environment. npm trusts
+  `release.yml` in the environment `npm` for each package, so a release needs no token. npm
+  trusts only a package that exists. A new package needs one first publish with a short-lived
+  token: store it in the secret `NPM_TOKEN` of the environment, and pass it as `NODE_AUTH_TOKEN`
+  to the release step. After that release, add the trusted publisher of the package on npm,
+  remove the line, delete the secret, and revoke the token.
 - `tests/e2e/` holds the end-to-end tests of the CLI and the SDK. They run the built CLI on Node
   and on Bun on real files in scoped temp folders. `fixtures/file-provider.ts` logs each batch
   to a file, so a test counts the provider calls of several processes. `package.test.ts` packs
