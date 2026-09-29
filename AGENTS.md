@@ -202,6 +202,11 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 
 - Every change goes through a pull request against `main`. Do not commit to `main` directly.
   CI must pass before a merge.
+- Before you open a pull request, and again before you merge it, review the text that describes
+  the changed code: the docs pages, the skills in `skills/`, the READMEs, the examples, and this
+  file. Search them for each changed command, flag, setting, error, API name, and behavior. If a
+  text no longer matches the code, update it in the same pull request. The tests catch only a
+  missing error page and a broken link, not a wrong sentence.
 
 | Package                     | Folder                 | Holds                                                                    |
 | --------------------------- | ---------------------- | ------------------------------------------------------------------------ |
