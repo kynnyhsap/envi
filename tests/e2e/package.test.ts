@@ -1,5 +1,6 @@
-// The published packages. The test packs both packages the way `bun run release` does, installs
-// the tarballs into a fresh project with npm and with Bun, and uses them there as a user does: the
+// The published packages. The test packs both packages the way `bun run release` does, without
+// the `prepack` script, which rewrites the `docs` folder that the other tests read. It installs the
+// tarballs into a fresh project with npm and with Bun, and uses them there as a user does: the
 // command, the SDK, and the types. The install reads the dependencies from the npm registry.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
@@ -152,7 +153,7 @@ const installedProject = (installer: Installer) =>
       yield* Effect.forEach(packages, (item) =>
         exec(
           workspaceBun,
-          ["pm", "pack", "--destination", tarballs],
+          ["pm", "pack", "--ignore-scripts", "--destination", tarballs],
           path.join(repoRoot, item.folder),
         ),
       );

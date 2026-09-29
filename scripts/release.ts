@@ -3,7 +3,8 @@ import { Command, Flag } from "effect/cli";
 // when a tag `v<version>` arrives.
 //
 // - The Bun of the workspace packs each package, because only Bun resolves the `catalog:` and
-//   `workspace:` specs. `tests/e2e/package.test.ts` packs and tests the same way.
+//   `workspace:` specs. `tests/e2e/package.test.ts` packs and tests the same way. The build
+//   makes every file of a tarball, the `prepack` copies too, so the pack runs no script.
 // - npm publishes each tarball, because only npm signs a provenance statement and supports
 //   trusted publishing. The workflow sets `NPM_CONFIG_PROVENANCE`.
 // - Envi goes first, because the provider asks for it as a peer: `scripts/packages.ts` lists it
@@ -51,7 +52,7 @@ const publish = Effect.fn("publish")(function* (folder: string, tarballs: string
 
   const packed = yield* output(
     process.execPath,
-    ["pm", "pack", "--destination", tarballs, "--quiet"],
+    ["pm", "pack", "--ignore-scripts", "--destination", tarballs, "--quiet"],
     path.join(root, folder),
   );
 

@@ -24,7 +24,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "bun ../../scripts/build.ts",
+    "build": "bun ../../scripts/build.ts && bun run prepack",
     "prepack": "bun ../../scripts/prepack.ts LICENSE"
   },
   "dependencies": {

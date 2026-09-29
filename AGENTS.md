@@ -220,8 +220,10 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   `@kynnyhsap/envi/testing`. Every other module of `src/core` is internal.
 - A published package holds `dist`, and `src` for the declaration maps. `@kynnyhsap/envi-1password` has its
   own `README.md`. `scripts/prepack.ts` copies the root `LICENSE` into each package, and the root
-  `README.md`, the docs pages, and the skills into `envi`. `scripts/release.ts` publishes: the Bun of the workspace packs each
-  package, because npm does not resolve `workspace:` and `catalog:`. npm publishes each tarball,
+  `README.md`, the docs pages, and the skills into `envi`. The build of each package runs it.
+  `scripts/release.ts` publishes: the Bun of the workspace packs each package with
+  `--ignore-scripts`, because npm does not resolve `workspace:` and `catalog:`, and a pack must not
+  rewrite a folder that a test reads. npm publishes each tarball,
   because `bun publish` signs no provenance and supports no trusted publishing.
   Each package manifest names the GitHub repo and its folder in `repository`, because npm
   rejects a provenance whose repo differs from `repository.url`.
