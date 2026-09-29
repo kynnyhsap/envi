@@ -4,17 +4,19 @@ import * as NodeFileSystem from "@effect/platform-node-shared/NodeFileSystem";
 import * as NodePath from "@effect/platform-node-shared/NodePath";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
 import * as Docs from "./Docs.ts";
+import * as Package from "./Package.ts";
 
 const content = new URL("../../../docs/content/", import.meta.url).pathname;
 
 /** A relative link to a page, such as `](../cache.md)` or `](./errors/vars.md#usage)`. */
 const relativeLink = /\]\((?<target>(?!https?:)[^)\s#]+\.md)(?:#[^)\s]*)?\)/gu;
 
-const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, FetchHttpClient.layer);
 
 describe("Docs", () => {
   it.effect("reads the title and the description of every page", () =>
@@ -22,7 +24,7 @@ describe("Docs", () => {
       const pages = yield* Docs.Docs.use((docs) => docs.list);
 
       expect(pages.map((page) => page.page)).toContain(Docs.indexPage);
-    }).pipe(Effect.provide(Docs.layer(content)), Effect.provide(platform)),
+    }).pipe(Effect.provide(Docs.layer(content, Package.docsUrl)), Effect.provide(platform)),
   );
 
   it.effect("starts the text of every page with its title as the heading", () =>
@@ -32,7 +34,7 @@ describe("Docs", () => {
       expect(
         pages.filter((page) => !page.text.startsWith(`# ${page.title}\n`)).map((page) => page.page),
       ).toEqual([]);
-    }).pipe(Effect.provide(Docs.layer(content)), Effect.provide(platform)),
+    }).pipe(Effect.provide(Docs.layer(content, Package.docsUrl)), Effect.provide(platform)),
   );
 
   it.effect("links only to pages that exist", () =>
@@ -50,6 +52,6 @@ describe("Docs", () => {
       );
 
       expect(broken).toEqual([]);
-    }).pipe(Effect.provide(Docs.layer(content)), Effect.provide(platform)),
+    }).pipe(Effect.provide(Docs.layer(content, Package.docsUrl)), Effect.provide(platform)),
   );
 });

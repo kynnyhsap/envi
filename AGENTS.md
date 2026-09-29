@@ -119,6 +119,8 @@ This repository is public. These rules have no exception.
   page. Each page starts with a frontmatter of a JSON string `title` and `description`, and a
   relative link names a page. `Docs.test.ts` enforces the page rules. `envi docs` reads the
   folder offline. The build of `envi` copies the pages too, so the CLI of the repo finds them.
+  Without a complete folder, `envi docs` and `envi docs show` read one page from GitHub at the
+  tag of the version. `config.docsUrl` of the manifest of `envi` holds that URL.
   Envi never writes a file of the user, such as `AGENTS.md`.
 - **Thin agent skills.** `skills/` holds the agent skills `envi` and `envi-setup`, in the format
   of the Agent Skills spec. `npx skills add kynnyhsap/envi` installs them from the repo, and the

@@ -3,6 +3,7 @@ import * as EffectConfig from "effect/Config";
 import * as Console from "effect/Console";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
@@ -451,11 +452,12 @@ const cache = Command.make(CommandName.Cache).pipe(
 const docsFolder = new URL("../docs/", import.meta.url);
 
 const docsLayer = Layer.unwrap(
-  Effect.map(
-    Effect.flatMap(Path.Path, (path) => Effect.orDie(path.fromFileUrl(docsFolder))),
-    Docs.layer,
+  Effect.flatMap(Path.Path, (path) =>
+    Effect.map(Effect.orDie(path.fromFileUrl(docsFolder)), (folder) =>
+      Docs.layer(path.resolve(folder), Package.docsUrl),
+    ),
   ),
-);
+).pipe(Layer.provide(FetchHttpClient.layer));
 
 const docsList = Command.make(CommandName.DocsList, { json: jsonFlag }, (flags) =>
   Effect.gen(function* () {
@@ -506,12 +508,7 @@ const docsPath = Command.make(
   { page: pageArgument.pipe(Argument.optional), json: jsonFlag },
   (input) =>
     Effect.gen(function* () {
-      const docs = yield* Docs.Docs;
-
-      const path = yield* Option.match(input.page, {
-        onNone: () => Effect.succeed(docs.folder),
-        onSome: (page) => Effect.map(docs.show(page), (report) => report.path),
-      });
+      const path = yield* Docs.Docs.use((docs) => docs.path(input.page));
 
       yield* print(input.json, DocsPathReport, { path }, (report) => report.path);
     }).pipe(measureCommand(CommandName.Docs, CommandName.DocsPath)),
