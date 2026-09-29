@@ -70,6 +70,7 @@ its `docs` folder, so they always match the installed version. `envi docs` reads
 - [1Password](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/providers/1password.md)
 - SDK: [client](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/sdk/index.md), [Effect](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/sdk/effect.md),
   [custom providers and caches](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/sdk/custom-providers.md)
+- [Coding agents](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/agents.md): the agent skills, installed with `npx skills add kynnyhsap/envi`
 - [Known limits](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/known-limits.md)
 - [Errors](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/errors/index.md): one page for each error
 

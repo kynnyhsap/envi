@@ -31,17 +31,6 @@ Each subcommand takes `--json`. `list` prints `{ folder, pages }`, `search` prin
 An agent can also read the folder with its own tools. `envi docs path` prints the folder, and
 `require.resolve("@kynnyhsap/envi/package.json")` finds the package.
 
-## Point an agent at the docs
-
-Envi never writes a file of your project. To point a coding agent at the docs, add a block such as
-this one to your `AGENTS.md` or `CLAUDE.md`:
-
-```md
-## Envi
-
-This project loads its env with Envi. Before you change `envi.config.ts` or the env setup, run
-`envi docs` and read the page of the task. To read the page of an error, run
-`envi docs show <docs link>`. Never print a secret value.
-```
+[Coding agents](../agents.md) shows how to point an agent at these docs.
 
 A name that no page has fails with [DocsError NotFound](../errors/docs-not-found.md).

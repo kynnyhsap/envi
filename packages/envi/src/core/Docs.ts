@@ -1,6 +1,6 @@
 // The docs pages that ship with Envi. `envi docs` reads them offline, so an agent reads the docs of
-// the installed version. Each page starts with a frontmatter of a JSON string `title` and a JSON
-// string `description`. The text of a page starts at its first heading.
+// the installed version. Each page starts with a frontmatter of a `title` and a `description`. The
+// text of a page starts at its first heading.
 import * as Arr from "effect/Array";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -13,6 +13,7 @@ import * as Schema from "effect/Schema";
 
 import { docsBase } from "./ErrorClass.ts";
 import { DocsError, DocsFailure } from "./Errors.ts";
+import * as Frontmatter from "./Frontmatter.ts";
 import type { DocsPageReport } from "./Reports.ts";
 
 /** The file suffix of a page. A page name has no suffix, such as `errors/vars`. */
@@ -21,48 +22,16 @@ export const pageSuffix = ".md";
 /** The page that maps each task to a page. `envi docs` prints it. */
 export const indexPage = "README";
 
-/** The frontmatter at the start of a page, and the rest of the page. */
-const frontmatter = /^---\n(?<block>[\s\S]*?)\n---\n(?<body>[\s\S]*)$/u;
-
-/** One line of the frontmatter, such as `title: "Cache"`. */
-const frontmatterLine = /^(?<key>[a-z]+): (?<value>".*")$/u;
-
 /** The anchor of a link, such as `#usage`. */
 const anchor = /#.*$/u;
 
-const Frontmatter = Schema.Struct({
-  title: Schema.NonEmptyString,
-  description: Schema.NonEmptyString,
-});
-
-const decodeFrontmatter = Schema.decodeUnknownOption(Schema.fromJsonString(Frontmatter));
-
-/** The fields of a page: the lines of its frontmatter as one JSON object. */
-const frontmatterOf = (block: string) =>
-  decodeFrontmatter(
-    `{${block
-      .split("\n")
-      .flatMap((line) => {
-        const groups = frontmatterLine.exec(line)?.groups;
-
-        return groups === undefined ? [] : [`"${groups["key"]}": ${groups["value"]}`];
-      })
-      .join(", ")}}`,
-  );
+const parseFrontmatter = Frontmatter.parser(
+  Schema.Struct({ title: Schema.NonEmptyString, description: Schema.NonEmptyString }),
+);
 
 /** One page with its fields and its text. `None` when the page has no valid frontmatter. */
-const parse = (page: string, path: string, text: string): Option.Option<DocsPageReport> => {
-  const { block, body } = frontmatter.exec(text)?.groups ?? {};
-
-  return block === undefined || body === undefined
-    ? Option.none()
-    : Option.map(frontmatterOf(block), (fields) => ({
-        page,
-        ...fields,
-        path,
-        text: body.trimStart(),
-      }));
-};
+const parse = (page: string, path: string, text: string): Option.Option<DocsPageReport> =>
+  Option.map(parseFrontmatter(text), ({ fields, body }) => ({ page, ...fields, path, text: body }));
 
 /**
  * The page name of a name, a file name, or a docs link, such as `errors/vars`, `errors/vars.md`,

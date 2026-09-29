@@ -37,6 +37,12 @@ const effectRange = workspaceManifest.workspaces.catalog.effect;
 const tarballName = (manifest: { readonly name: string; readonly version: string }) =>
   `${manifest.name.replace("@", "").replace("/", "-")}-${manifest.version}.tgz`;
 
+/** The folders of the repo that the Envi package ships, each in a folder of its own. */
+const shippedFolders = [
+  { source: "packages/docs/content", folder: "docs" },
+  { source: "skills", folder: "skills" },
+] as const;
+
 const installers = [
   { manager: "npm", runtime: "node", install: ["npm", "install", "--no-audit", "--no-fund"] },
   { manager: "bun", runtime: "bun", install: ["bun", "install"] },
@@ -189,25 +195,34 @@ describe.each(installers)("the published packages installed with $manager", (ins
       }),
     );
 
-    it.effect("ships every docs page of its version in the docs folder of Envi", () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const { directory: project } = yield* Project;
-        const source = path.join(repoRoot, "packages/docs/content");
-        const shipped = path.join(project, "node_modules", ...enviManifest.name.split("/"), "docs");
-        const pages = yield* fs.readDirectory(source, { recursive: true });
+    it.effect.each(shippedFolders)(
+      "ships the $folder of its version in the $folder folder of Envi",
+      ({ source, folder }) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const { directory: project } = yield* Project;
+          const from = path.join(repoRoot, source);
 
-        expect((yield* fs.readDirectory(shipped, { recursive: true })).toSorted()).toEqual(
-          pages.toSorted(),
-        );
-
-        for (const page of pages.filter((name) => name.endsWith(".md"))) {
-          expect(yield* fs.readFileString(path.join(shipped, page)), page).toBe(
-            yield* fs.readFileString(path.join(source, page)),
+          const shipped = path.join(
+            project,
+            "node_modules",
+            ...enviManifest.name.split("/"),
+            folder,
           );
-        }
-      }),
+
+          const names = yield* fs.readDirectory(from, { recursive: true });
+
+          expect((yield* fs.readDirectory(shipped, { recursive: true })).toSorted()).toEqual(
+            names.toSorted(),
+          );
+
+          for (const file of names.filter((name) => name.endsWith(".md"))) {
+            expect(yield* fs.readFileString(path.join(shipped, file)), file).toBe(
+              yield* fs.readFileString(path.join(from, file)),
+            );
+          }
+        }),
     );
 
     it.effect("lets an agent find the folder of Envi through its manifest", () =>

@@ -4,7 +4,7 @@ import { Argument, Command } from "effect/cli";
 // `=` names the target: `packages/docs/content=docs` copies the docs pages into `docs`. The script
 // removes the old target first, so a deleted page leaves no copy. Git ignores the copies.
 //
-//   bun ../../scripts/prepack.ts LICENSE README.md packages/docs/content=docs
+//   bun ../../scripts/prepack.ts LICENSE README.md packages/docs/content=docs skills
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";

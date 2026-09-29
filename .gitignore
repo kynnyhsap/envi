@@ -21,3 +21,4 @@ bun-error.log
 packages/*/LICENSE
 packages/envi/README.md
 packages/envi/docs/
+packages/envi/skills/
