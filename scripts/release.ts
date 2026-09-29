@@ -10,9 +10,9 @@ import { Command, Flag } from "effect/cli";
 //   first. A package that the registry has at this version stays as it is, so a second run
 //   finishes a failed release.
 //
-//   bun run release --tag v1.0.0             publishes, and fails when the tag differs from
+//   bun run release --tag v0.1.0             publishes, and fails when the tag differs from
 //                                            the root version
-//   bun run release --tag v1.0.0 --dry-run   packs and runs `npm publish --dry-run`
+//   bun run release --tag v0.1.0 --dry-run   packs and runs `npm publish --dry-run`
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";

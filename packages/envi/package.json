@@ -1,7 +1,12 @@
 {
   "name": "@kynnyhsap/envi",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kynnyhsap/envi.git",
+    "directory": "packages/envi"
+  },
   "bin": {
     "envi": "./dist/bin.js"
   },

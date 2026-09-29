@@ -223,6 +223,8 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   `README.md`, the docs pages, and the skills into `envi`. `scripts/release.ts` publishes: the Bun of the workspace packs each
   package, because npm does not resolve `workspace:` and `catalog:`. npm publishes each tarball,
   because `bun publish` signs no provenance and supports no trusted publishing.
+  Each package manifest names the GitHub repo and its folder in `repository`, because npm
+  rejects a provenance whose repo differs from `repository.url`.
 - `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/Workspace.ts`
   holds their shared parts: the root, the version, `ScriptError`, the child process helpers, and
   the entry points `runScript` and `runCommand`. The end-to-end tests use its `capture`.
