@@ -120,6 +120,11 @@ This repository is public. These rules have no exception.
   relative link names a page. `Docs.test.ts` enforces the page rules. `envi docs` reads the
   folder offline. The build of `envi` copies the pages too, so the CLI of the repo finds them.
   Envi never writes a file of the user, such as `AGENTS.md`.
+- **Thin agent skills.** `skills/` holds the agent skills `envi` and `envi-setup`, in the format
+  of the Agent Skills spec. `npx skills add kynnyhsap/envi` installs them from the repo, and the
+  npm package of `envi` ships them in `skills`. A skill holds the workflow and the rules for
+  secrets, and it points at `envi docs` for the details, so it never repeats a docs page. A skill
+  names no version. `skills.test.ts` checks the spec.
 - **A throw in user code hides its message.** `derive()`, `custom()`, and `vars` show only the
   class name and the location of the throw. `CustomFailure` carries a safe message.
 
@@ -208,7 +213,7 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   `@kynnyhsap/envi/testing`. Every other module of `src/core` is internal.
 - A published package holds `dist`, and `src` for the declaration maps. `@kynnyhsap/envi-1password` has its
   own `README.md`. `scripts/prepack.ts` copies the root `LICENSE` into each package, and the root
-  `README.md` and the docs pages into `envi`. `scripts/release.ts` publishes: the Bun of the workspace packs each
+  `README.md`, the docs pages, and the skills into `envi`. `scripts/release.ts` publishes: the Bun of the workspace packs each
   package, because npm does not resolve `workspace:` and `catalog:`. npm publishes each tarball,
   because `bun publish` signs no provenance and supports no trusted publishing.
 - `scripts/` holds the Effect scripts of the workspace, and Bun runs them. `scripts/Workspace.ts`

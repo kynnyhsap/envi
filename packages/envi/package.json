@@ -8,6 +8,7 @@
   "files": [
     "dist",
     "docs",
+    "skills",
     "src",
     "!src/**/*.test.ts",
     "!src/core/fixtures"
@@ -31,7 +32,7 @@
   },
   "scripts": {
     "build": "bun ../../scripts/build.ts && bun run prepack",
-    "prepack": "bun ../../scripts/prepack.ts LICENSE README.md packages/docs/content=docs"
+    "prepack": "bun ../../scripts/prepack.ts LICENSE README.md packages/docs/content=docs skills"
   },
   "dependencies": {
     "@effect/platform-node-shared": "catalog:"
