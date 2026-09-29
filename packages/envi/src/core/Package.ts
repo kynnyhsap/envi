@@ -17,3 +17,9 @@ export const minimumNodeVersion: string = manifest.engines.node.replace(">=", ""
 
 /** The lowest Bun version that Envi supports. */
 export const minimumBunVersion: string = manifest.engines.bun.replace(">=", "");
+
+/** The placeholder of the version in `config.docsUrl` of the manifest. */
+const versionPlaceholder = "{version}";
+
+/** The URL of the docs folder of this version on GitHub, for a package that lost its `docs` folder. */
+export const docsUrl: string = manifest.config.docsUrl.replace(versionPlaceholder, version);

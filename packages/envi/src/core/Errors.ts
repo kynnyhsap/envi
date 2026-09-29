@@ -197,7 +197,7 @@ export const hints: Catalog = {
   DocsError: {
     NotFound: "Run `envi docs list` to see every page, or `envi docs search <words>` to find one.",
     Unreadable:
-      "Reinstall Envi, so that its `docs` folder is complete. In the Envi repo, run `bun run build` first.",
+      "The error names the folder or the page to fix. A tool that prunes `node_modules`, a bundler, or a Dockerfile can drop the `docs` folder of Envi: keep that folder, or reinstall Envi. In the Envi repo, run `bun run build` first.",
   },
   ConfigLoadError: {
     NotFound: "Check the path in `--config` or `ENVI_CONFIG`.",

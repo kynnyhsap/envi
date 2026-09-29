@@ -173,7 +173,10 @@ export const DocsSearchReport = Schema.Struct({
 
 export type DocsSearchReport = typeof DocsSearchReport.Type;
 
-/** One docs page with its file and its Markdown text from the first heading. */
+/**
+ * One docs page with its Markdown text from the first heading. `path` is the file of the page, or
+ * its URL on GitHub when the docs folder is missing.
+ */
 export const DocsPageReport = Schema.Struct({
   ...DocsPage.fields,
   path: Schema.String,
