@@ -80,7 +80,7 @@ export const makeProvider = <DesktopAuth>(
         }
 
         const sdk = yield* loadSdk;
-        const [unknown, known] = Arr.partition(requests, withAccount(credential.account));
+        const [known, unknown] = Arr.partition(requests, withAccount(credential.account));
 
         if (Arr.isReadonlyArrayNonEmpty(unknown)) {
           return yield* failure(

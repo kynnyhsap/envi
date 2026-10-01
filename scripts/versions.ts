@@ -7,8 +7,8 @@ import { Command, Flag } from "effect/cli";
 //   the docs name the floors, and the `floors` job of CI tests them.
 // - `workspaces.catalog` holds every dependency version. A package manifest uses only `catalog:`
 //   and `workspace:` specs. `effect` and every `@effect/*` entry share one version.
-// - While Effect is a prerelease, the `effect` entry is the exact version, because a release
-//   candidate can break imports. After it, the entry is a `~` range of one minor version.
+// - The `effect` entry is a `~` range of one minor version, because a minor version of Effect can
+//   break `effect/cli` and `effect/process`.
 // - The docs ask for the `effect` spec of the catalog. The docs are the READMEs and the docs pages.
 //
 //   bun run versions           writes the root version and engines into every package, and the
@@ -57,7 +57,7 @@ const Spec = {
   WorkspacePeer: "workspace:^",
 } as const;
 
-/** An `effect` spec in a doc, such as `effect@4.0.0-rc.117`. */
+/** An `effect` spec in a doc, such as `effect@~4.0.0`. */
 const effectSpec = /(?<![\w@/-])effect@[^\s"'`]+/gu;
 
 /** A runtime floor in a doc, such as `Node 22.19.0`. */
@@ -85,9 +85,6 @@ const dependenciesOf = (
     Object.entries(manifest[kind] ?? {}).map(([name, spec]) => ({ file, kind, name, spec })),
   );
 
-/** A version without a range, such as `4.0.0-rc.118`. */
-const exactVersion = /^\d+\.\d+\.\d+(?:-[\w.]+)?$/u;
-
 /** A range of the patch versions of one minor version, such as `~4.0.0`. */
 const patchRange = /^~\d+\.\d+\.\d+$/u;
 
@@ -95,14 +92,6 @@ const patchRange = /^~\d+\.\d+\.\d+$/u;
 const effectSpecProblems = (spec: string | undefined): ReadonlyArray<string> => {
   if (spec === undefined) {
     return ["package.json: the catalog has no effect."];
-  }
-
-  if (spec.includes("-")) {
-    return exactVersion.test(spec)
-      ? []
-      : [
-          `package.json: the catalog asks for effect "${spec}". Effect is a prerelease, so use the exact version.`,
-        ];
   }
 
   return patchRange.test(spec)

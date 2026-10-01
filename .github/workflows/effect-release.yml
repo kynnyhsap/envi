@@ -27,8 +27,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           current=$(jq -r '.workspaces.catalog.effect' package.json)
-          # The versions at or above the catalog entry. A prerelease entry also matches the later
-          # release candidates of the same version.
+          # The versions at or above the catalog entry.
           newest=$(npm view "effect@>=${current#\~}" version --json | jq -r 'if type == "array" then last else . end')
 
           if [ "$newest" = "${current#\~}" ]; then
