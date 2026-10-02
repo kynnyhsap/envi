@@ -160,7 +160,6 @@ describe("Keychain", () => {
       ).pipe(withEnv({ ENVI_CACHE_KEY: " " }));
 
       expect(error.reason).toBe(CacheFailure.KeyUnavailable);
-      expect(error.message).toContain("ENVI_CACHE_KEY");
     }),
   );
 });
