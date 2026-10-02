@@ -21,7 +21,8 @@ const key = await envi.resolve(op("payments", "stripe", "secret-key")); // one s
 
 The client also has `run`, `sync`, `check`, `inspect`, `export`, and `cache.path`, `cache.list`,
 and `cache.clear`. Each returns the report that `--json` prints. `syncAll(clients)` syncs several
-clients with one call for each shared provider. `createEnvi(config, overrides)` takes
+clients with one call for each shared provider. A var that names a provider outside its own config
+fails with `UnknownProvider`, as in `check`. `createEnvi(config, overrides)` takes
 `providers`, `cache`, `strict`, and `interactive`, which win over the config. The `cache` override
 replaces the whole `cache` key of the config: `false` turns the cache off, and an object turns a
 `cache: false` of the config into a cache with these settings.

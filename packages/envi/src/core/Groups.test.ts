@@ -15,6 +15,7 @@ const member = (file: string, stage: string, provider = shared): Groups.Member =
   stage,
   providers: [provider],
   vars: { A: mem("a") },
+  rejected: {},
 });
 
 describe("Groups", () => {
