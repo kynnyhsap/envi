@@ -201,20 +201,17 @@ export const selectPolicy = (
   Effect.map(decide(overrides, configKey), ({ policy }) => policy);
 
 /**
- * Selects the policy and the directory of the default cache, with the same order. Without a
- * setting that decides, the cache is off in CI.
+ * The policy of the default cache, and the directory that a setting names. Without a setting that
+ * decides, the cache is off in CI. A directory of none selects the default folder in `HOME`.
  */
-export const select = Effect.fn("CacheSettings.select")(function* (
+const decideStorage = Effect.fn("CacheSettings.decideStorage")(function* (
   overrides: Overrides,
   configKey: Option.Option<unknown>,
 ) {
-  const path = yield* Path.Path;
   const { option, config, decided, policy } = yield* decide(overrides, configKey);
   const isCi = yield* Settings.isCi;
 
   const directoryFromVariable = yield* Settings.readString(directoryVariable, expected.directory);
-
-  const home = yield* Settings.home;
 
   const selection: Selection = {
     ...policy,
@@ -224,9 +221,81 @@ export const select = Effect.fn("CacheSettings.select")(function* (
       fieldAt(option, "directory"),
       directoryFromVariable,
       fieldAt(config, "directory"),
-      Option.map(home, (value) => path.join(value, ".cache", "envi")),
     ]),
   };
 
   return selection;
+});
+
+/**
+ * Selects the policy and the directory of the default cache, with the same order. Without a
+ * setting that decides, the cache is off in CI.
+ */
+export const select = Effect.fn("CacheSettings.select")(function* (
+  overrides: Overrides,
+  configKey: Option.Option<unknown>,
+) {
+  const path = yield* Path.Path;
+  const selection = yield* decideStorage(overrides, configKey);
+  const home = yield* Settings.home;
+
+  return {
+    ...selection,
+    directory: Option.orElse(selection.directory, () =>
+      Option.map(home, (value) => path.join(value, ".cache", "envi")),
+    ),
+  } satisfies Selection;
+});
+
+/** One config of a sync: its file and its `cache` key. */
+export interface ConfigCache {
+  readonly path: Option.Option<string>;
+  readonly cache: Option.Option<unknown>;
+}
+
+/**
+ * The storage settings that every config of one sync must share, each as an error shows it. Two
+ * configs share a setting when it shows the same text. It is never a secret.
+ */
+const storage: Readonly<Record<"encryption" | "directory", (selection: Selection) => string>> = {
+  encryption: (selection) => `"${selection.encryption}"`,
+  directory: (selection) =>
+    Option.match(selection.directory, {
+      onNone: () => "the default folder",
+      onSome: (directory) => `"${directory}"`,
+    }),
+};
+
+/**
+ * Fails when two configs of one sync select another encryption or another directory. One sync
+ * fills one cache, so a config never gets the storage of another config. A config with the cache
+ * off writes nothing, so its storage does not count.
+ */
+export const requireOneStorage = Effect.fn("CacheSettings.requireOneStorage")(function* (
+  overrides: Overrides,
+  configs: ReadonlyArray<ConfigCache>,
+) {
+  const selected = yield* Effect.forEach(configs, (config, index) =>
+    Effect.map(decideStorage(overrides, config.cache), (selection) => ({
+      name: Option.getOrElse(config.path, () => `config ${index + 1}`),
+      selection,
+    })),
+  );
+
+  const [first, ...rest] = selected.filter(({ selection }) => selection.enabled);
+
+  if (first === undefined) {
+    return;
+  }
+
+  for (const [field, show] of Object.entries(storage)) {
+    const other = rest.find(({ selection }) => show(selection) !== show(first.selection));
+
+    if (other !== undefined) {
+      yield* new SettingsError({
+        name: `cache.${field}`,
+        expected: `one value for every config of a sync, but ${first.name} selects ${show(first.selection)} and ${other.name} selects ${show(other.selection)}`,
+      });
+    }
+  }
 });

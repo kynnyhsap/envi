@@ -130,7 +130,9 @@ export const createEnvi = <C extends Config.Config>(
 
 /**
  * Syncs the configs of several clients in one run, with one call for each shared provider.
- * It uses the cache and the overrides of the first client.
+ * It uses the cache and the overrides of the first client. Every config that uses the cache must
+ * select the same encryption and directory under those overrides, or it rejects with a
+ * `SettingsError` before it resolves anything.
  */
 export const syncAll = (
   clients: readonly [AnyEnvi, ...ReadonlyArray<AnyEnvi>],

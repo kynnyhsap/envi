@@ -62,7 +62,8 @@ export const layerOf = (
 /**
  * The `Envi` service on Node or Bun for any config. The cache directory and the encryption come
  * from `options.cache`. The `cache` key of each config still sets its `ttl`, its `maxStale`, and
- * `false`, unless `options.cache` replaces it.
+ * `false`, unless `options.cache` replaces it. `sync` of several configs still requires that every
+ * config that uses the cache selects the same encryption and directory.
  *
  * @example
  * program.pipe(Effect.provide(layer({ strict: true })));

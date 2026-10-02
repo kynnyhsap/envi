@@ -21,10 +21,13 @@ const key = await envi.resolve(op("payments", "stripe", "secret-key")); // one s
 
 The client also has `run`, `sync`, `check`, `inspect`, `export`, and `cache.path`, `cache.list`,
 and `cache.clear`. Each returns the report that `--json` prints. `syncAll(clients)` syncs several
-clients with one call for each shared provider. `createEnvi(config, overrides)` takes
-`providers`, `cache`, `strict`, and `interactive`, which win over the config. The `cache` override
-replaces the whole `cache` key of the config: `false` turns the cache off, and an object turns a
-`cache: false` of the config into a cache with these settings.
+clients with one call for each shared provider. It uses the cache and the overrides of the first
+client, and every config that uses the cache must select the same encryption and directory under
+those overrides, or it rejects with a [`SettingsError`](../errors/settings.md).
+`createEnvi(config, overrides)` takes `providers`, `cache`, `strict`, and `interactive`, which win
+over the config. The `cache` override replaces the whole `cache` key of the config: `false` turns
+the cache off, and an object turns a `cache: false` of the config into a cache with these
+settings.
 
 - Envi never changes `process.env`. The caller assigns the result of `loadRaw`.
 - `Env<typeof config>`, `RawEnv<typeof config>`, and `StageOf<typeof config>` are the types of a

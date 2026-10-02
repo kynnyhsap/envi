@@ -226,7 +226,10 @@ const loadOneConfig = (flags: ResolveFlags) =>
     return yield* Effect.flatMap(ConfigLoader.ConfigLoader, (loader) => loader.load(file));
   });
 
-/** The `Envi` service of one run. The cache settings come from the first config. */
+/**
+ * The `Envi` service of one run. The cache settings come from the first config. `sync` fails when
+ * another config selects another encryption or directory.
+ */
 const enviLayer = (flags: ResolveFlags, configKey: Config.Config["cache"]) =>
   Layer.unwrap(
     Effect.map(KeyStore, (store) => {
