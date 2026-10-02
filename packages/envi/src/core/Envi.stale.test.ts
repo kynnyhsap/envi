@@ -182,4 +182,32 @@ describe("the stale fallback", () => {
       expect(report.failures).toMatchObject([{ key: "A", error: "SecretReferenceError", reason }]);
     }),
   );
+
+  it.effect.each(["loose first", "strict first"] as const)(
+    "serves the expired value in a sync only to the config without strict, %s",
+    (order) =>
+      Effect.gen(function* () {
+        const { state, provider } = switchable();
+        const loose = defineConfig({ providers: [provider], vars: { A: mem("a") } });
+
+        const strict = defineConfig({
+          providers: [provider],
+          strict: true,
+          vars: { B: mem("b") },
+        });
+
+        const configs = order === "loose first" ? [loose, strict] : [strict, loose];
+        const envi = yield* Envi.Envi;
+
+        yield* envi.sync(configs);
+        yield* TestClock.adjust(expired);
+        state.mode = "down";
+
+        const report = yield* envi.sync(configs);
+        const alone = yield* envi.check(strict);
+
+        expect(report.failures).toMatchObject([{ key: "B", ...unavailable }]);
+        expect(alone.failures).toMatchObject([{ key: "B", ...unavailable }]);
+      }).pipe(Effect.provide(enviLayer()), withEnv({})),
+  );
 });
