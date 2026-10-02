@@ -294,6 +294,28 @@ describe("the overrides of a client", () => {
   });
 });
 
+describe("the options of a layer", () => {
+  it.each<{ readonly variable: string; readonly options: EnviOptions }>([
+    { variable: "ENVI_STRICT", options: { strict: false } },
+    { variable: "ENVI_INTERACTIVE", options: { interactive: false } },
+    { variable: "ENVI_CACHE_ENABLED", options: { cache: false } },
+  ])("win over a $variable value that is not valid", async ({ variable, options }) => {
+    const { oneConfig } = oneSecret();
+
+    const loadWith = (layerOptions: EnviOptions) =>
+      Envi.Envi.use((envi) => envi.load(oneConfig)).pipe(
+        Effect.provide(layer(layerOptions)),
+        withEnv({ [variable]: "maybe" }),
+      );
+
+    const error = await Effect.runPromise(Effect.flip(loadWith({})));
+
+    expect(await Effect.runPromise(loadWith(options))).toEqual({ DATABASE_URL: "postgres://fake" });
+    expect(error).toBeInstanceOf(SettingsError);
+    expect(error).toMatchObject({ name: variable });
+  });
+});
+
 describe("the cache of a sync report", () => {
   /** The environment of the default layer: a temp home and a key from `ENVI_CACHE_KEY`. */
   const environment = () => withEnv({ HOME: cacheDirectory(), ENVI_CACHE_KEY: "a test key" });
