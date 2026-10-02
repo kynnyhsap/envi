@@ -33,12 +33,16 @@ const prepare = Effect.fn("prepare")(function* (sandbox: Sandbox) {
   yield* fs.symlink(repoModules, path.join(sandbox.directory, "node_modules"));
 });
 
-/** Writes the config of the folder `name` with one secret and the `cache` key. */
+/**
+ * Writes the config of the folder `name` with one secret and the `cache` key. `provider` is the
+ * code of its provider: a copy of the file provider puts the config into a group of its own.
+ */
 const writeConfig = Effect.fn("writeConfig")(function* (
   sandbox: Sandbox,
   name: string,
   secret: string,
-  cache: Readonly<Record<string, string>>,
+  cache: false | Readonly<Record<string, string>>,
+  provider = "fileProvider",
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -53,7 +57,7 @@ const writeConfig = Effect.fn("writeConfig")(function* (
       'import { defineConfig } from "@kynnyhsap/envi";',
       'import { fileProvider } from "../file-provider.ts";',
       "export default defineConfig({",
-      "  providers: [fileProvider],",
+      `  providers: [${provider}],`,
       `  cache: ${JSON.stringify(cache)},`,
       `  vars: ({ file }) => ({ TOKEN: file(${JSON.stringify(secret)}) }),`,
       "});",
@@ -158,6 +162,32 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi sync of several c
 
         expect(synced.exitCode).toBe(0);
         expect((yield* cacheFiles(sandbox.cacheDirectory)).length).toBe(configs.length);
+      }),
+    );
+
+    it.effect("caches the configs that use the cache when the first config turns it off", () =>
+      Effect.gen(function* () {
+        const sandbox = yield* makeSandbox("none");
+        const cached = "token-development";
+
+        yield* prepare(sandbox);
+
+        const configs = [
+          yield* writeConfig(sandbox, "off", "db-password", false, "{ ...fileProvider }"),
+          yield* writeConfig(sandbox, "cached", cached, { encryption: "none" }),
+        ];
+
+        const result = yield* runCli(
+          runtime,
+          sandbox.directory,
+          syncArgs(configs, ["--cache-dir", sandbox.cacheDirectory]),
+          { ...sandbox.env, HOME: sandbox.directory },
+        );
+
+        const files = yield* cacheFiles(sandbox.cacheDirectory);
+
+        expect(result.exitCode).toBe(0);
+        expect(files.map((entry) => entry.reference)).toEqual([`file://${cached}`]);
       }),
     );
   });

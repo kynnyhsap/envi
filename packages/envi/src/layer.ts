@@ -1,7 +1,9 @@
+import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import * as CacheSettings from "./core/CacheSettings.ts";
+import type * as Config from "./core/Config.ts";
 import * as DefaultCache from "./core/DefaultCache.ts";
 import * as Envi from "./core/Envi.ts";
 import type { SettingsError } from "./core/Errors.ts";
@@ -33,6 +35,12 @@ export const keyStoreOf = (platform: string): Keychain.Store => {
 /** The services of the `Envi` layer. `run` needs the environment and the platform services. */
 export type Services = Envi.Envi | Envi.ParentEnvironment | Platform.Services;
 
+/** The cache settings of a client or a layer. */
+const overridesOf = (options: EnviOptions): CacheSettings.Overrides => ({
+  ...CacheSettings.noOverrides,
+  option: Option.fromUndefinedOr(options.cache),
+});
+
 /**
  * The `Envi` service on Node or Bun of one config: the default cache with its key from
  * `ENVI_CACHE_KEY` or the OS keychain, the environment of the process, the signals of the
@@ -43,10 +51,7 @@ export const layerOf = (
   options: EnviOptions,
   configKey: Option.Option<CacheSettings.CacheKey>,
 ): Layer.Layer<Services, SettingsError> => {
-  const overrides: CacheSettings.Overrides = {
-    ...CacheSettings.noOverrides,
-    option: Option.fromUndefinedOr(options.cache),
-  };
+  const overrides = overridesOf(options);
 
   const cache = DefaultCache.layer(overrides, configKey).pipe(
     Layer.provide(Keychain.layer(keyStoreOf(process.platform))),
@@ -58,6 +63,21 @@ export const layerOf = (
     Layer.succeed(Envi.ParentEnvironment, process.env),
   ).pipe(Layer.provideMerge(Platform.layer));
 };
+
+/**
+ * The `Envi` service of a sync of several configs. The first config that uses the cache selects
+ * the cache, so a config with the cache off never turns it off for the others. It fails when the
+ * configs select another encryption or directory.
+ */
+export const syncLayerOf = (
+  options: EnviOptions,
+  configs: ReadonlyArray<Config.Config>,
+): Layer.Layer<Services, SettingsError> =>
+  Layer.unwrap(
+    Effect.map(CacheSettings.requireOneStorage(overridesOf(options), configs), (configKey) =>
+      layerOf(options, configKey),
+    ),
+  );
 
 /**
  * The `Envi` service on Node or Bun for any config. The cache directory and the encryption come

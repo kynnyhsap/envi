@@ -250,7 +250,7 @@ export const select = Effect.fn("CacheSettings.select")(function* (
 /** One config of a sync: its file and its `cache` key. */
 export interface ConfigCache {
   readonly path: Option.Option<string>;
-  readonly cache: Option.Option<unknown>;
+  readonly cache: Option.Option<CacheKey>;
 }
 
 /**
@@ -270,6 +270,10 @@ const storage: Readonly<Record<"encryption" | "directory", (selection: Selection
  * Fails when two configs of one sync select another encryption or another directory. One sync
  * fills one cache, so a config never gets the storage of another config. A config with the cache
  * off writes nothing, so its storage does not count.
+ *
+ * Returns the `cache` key that selects the cache of the sync: the key of the first config that
+ * uses the cache, or the key of the first config when none does. A config with the cache off thus
+ * never turns the cache off for the others.
  */
 export const requireOneStorage = Effect.fn("CacheSettings.requireOneStorage")(function* (
   overrides: Overrides,
@@ -278,6 +282,7 @@ export const requireOneStorage = Effect.fn("CacheSettings.requireOneStorage")(fu
   const selected = yield* Effect.forEach(configs, (config, index) =>
     Effect.map(decideStorage(overrides, config.cache), (selection) => ({
       name: Option.getOrElse(config.path, () => `config ${index + 1}`),
+      cache: config.cache,
       selection,
     })),
   );
@@ -285,17 +290,19 @@ export const requireOneStorage = Effect.fn("CacheSettings.requireOneStorage")(fu
   const [first, ...rest] = selected.filter(({ selection }) => selection.enabled);
 
   if (first === undefined) {
-    return;
+    return Option.flatMap(Option.fromUndefinedOr(configs[0]), (config) => config.cache);
   }
 
   for (const [field, show] of Object.entries(storage)) {
     const other = rest.find(({ selection }) => show(selection) !== show(first.selection));
 
     if (other !== undefined) {
-      yield* new SettingsError({
+      return yield* new SettingsError({
         name: `cache.${field}`,
         expected: `one value for every config of a sync, but ${first.name} selects ${show(first.selection)} and ${other.name} selects ${show(other.selection)}`,
       });
     }
   }
+
+  return first.cache;
 });
