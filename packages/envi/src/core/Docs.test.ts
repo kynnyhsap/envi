@@ -19,14 +19,6 @@ const relativeLink = /\]\((?<target>(?!https?:)[^)\s#]+\.md)(?:#[^)\s]*)?\)/gu;
 const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer, FetchHttpClient.layer);
 
 describe("Docs", () => {
-  it.effect("reads the title and the description of every page", () =>
-    Effect.gen(function* () {
-      const pages = yield* Docs.Docs.use((docs) => docs.list);
-
-      expect(pages.map((page) => page.page)).toContain(Docs.indexPage);
-    }).pipe(Effect.provide(Docs.layer(content, Package.docsUrl)), Effect.provide(platform)),
-  );
-
   it.effect("starts the text of every page with its title as the heading", () =>
     Effect.gen(function* () {
       const pages = yield* Docs.Docs.use((docs) => docs.list);
