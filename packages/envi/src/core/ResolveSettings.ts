@@ -27,28 +27,39 @@ export interface Selection {
 /**
  * Selects `strict` from the call, the client or the layer, `ENVI_STRICT`, the config, and the
  * default `false`. CI is always strict. Selects `interactive` from the client or the layer,
- * `ENVI_INTERACTIVE`, and the default: `true` outside CI.
+ * `ENVI_INTERACTIVE`, and the default: `true` outside CI. Envi reads a variable only when no
+ * setting above it decides.
  */
 export const select = Effect.fn("ResolveSettings.select")(function* (
   overrides: Overrides,
   configStrict: Option.Option<boolean>,
 ): Effect.fn.Return<Selection, SettingsError> {
   const isCi = yield* Settings.isCi;
-  const strictFromEnvironment = yield* Settings.readBoolean(strictVariable);
-  const interactiveFromEnvironment = yield* Settings.interactive;
 
-  const strict = Option.firstSomeOf([
-    overrides.callStrict,
-    overrides.strict,
-    strictFromEnvironment,
-    configStrict,
-  ]);
+  // CI is always strict, so it decides before every other setting.
+  const strictAbove = isCi
+    ? Option.some(true)
+    : Option.orElse(overrides.callStrict, () => overrides.strict);
 
-  return {
-    strict: isCi || Option.getOrElse(strict, () => false),
-    interactive: Option.getOrElse(
-      Option.orElse(overrides.interactive, () => interactiveFromEnvironment),
-      () => !isCi,
-    ),
-  };
+  const strictFromEnvironment = yield* Option.match(strictAbove, {
+    onSome: () => Effect.succeedNone,
+    onNone: () => Settings.readBoolean(strictVariable),
+  });
+
+  const interactiveFromEnvironment = yield* Option.match(overrides.interactive, {
+    onSome: () => Effect.succeedNone,
+    onNone: () => Settings.interactive,
+  });
+
+  const strict = Option.getOrElse(
+    Option.firstSomeOf([strictAbove, strictFromEnvironment, configStrict]),
+    () => false,
+  );
+
+  const interactive = Option.getOrElse(
+    Option.orElse(overrides.interactive, () => interactiveFromEnvironment),
+    () => !isCi,
+  );
+
+  return { strict, interactive };
 });
