@@ -40,7 +40,10 @@ export interface Interface {
   readonly list: () => Effect.Effect<ReadonlyArray<CacheEntry>, CacheError>;
   /** Removes every entry. Returns the number of removed entries. */
   readonly clear: () => Effect.Effect<number, CacheError>;
-  /** Runs one resolution at a time across processes. A layer without files runs it directly. */
+  /**
+   * Runs one resolution at a time across processes, as a best effort. A layer without files runs
+   * it directly.
+   */
   readonly withResolveLock: <A, E, R>(
     effect: Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | CacheError, R>;
