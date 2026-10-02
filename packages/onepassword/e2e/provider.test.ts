@@ -9,34 +9,31 @@ import {
   ValueOrigin,
 } from "@kynnyhsap/envi";
 // Tests against real 1Password. They need the fixture: `bun fixture:onepassword setup`.
-// The service account token or the account name comes from the environment. Without both, the
-// suite skips itself. With a token, no test asks for an approval.
+// Each suite runs once for each credential of the environment. Without one, the suite skips
+// itself. Only a desktop run asks for an approval in the 1Password app.
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 
-import { onePasswordProvider, op } from "../src/index.ts";
+import { type OnePasswordSettings, onePasswordProvider, op } from "../src/index.ts";
+import { testCredentials } from "./credentials.ts";
 import { expected } from "./expected.ts";
-import { accountVariable, primaryVault, secondaryVault, tokenVariable } from "./fixture.ts";
+import { primaryVault, secondaryVault } from "./fixture.ts";
 
-const account = process.env[accountVariable];
-
-const token = process.env[tokenVariable];
-
-const settings = token === undefined ? { account: account ?? "" } : { serviceAccountToken: token };
-
-const config = defineConfig({
-  providers: [onePasswordProvider(settings)],
-  vars: ({ op: secret }) => ({
-    DATABASE_URL: secret(`op://${primaryVault}/app/DATABASE_URL`),
-    PORT: secret(primaryVault, "app", "PORT").schema(Schema.FiniteFromString),
-    SENTRY_DSN: secret({ vault: primaryVault, item: "app", section: "web", field: "SENTRY_DSN" }),
-    PRIVATE_KEY: secret(primaryVault, "multiline", "PRIVATE_KEY"),
-    STRIPE_KEY: secret(secondaryVault, "payments", "STRIPE_KEY"),
-    MISSING: secret(primaryVault, "app", "DOES_NOT_EXIST").optional(),
-  }),
-});
+const configOf = (settings: OnePasswordSettings) =>
+  defineConfig({
+    providers: [onePasswordProvider(settings)],
+    vars: ({ op: secret }) => ({
+      DATABASE_URL: secret(`op://${primaryVault}/app/DATABASE_URL`),
+      PORT: secret(primaryVault, "app", "PORT").schema(Schema.FiniteFromString),
+      SENTRY_DSN: secret({ vault: primaryVault, item: "app", section: "web", field: "SENTRY_DSN" }),
+      PRIVATE_KEY: secret(primaryVault, "multiline", "PRIVATE_KEY"),
+      STRIPE_KEY: secret(secondaryVault, "payments", "STRIPE_KEY"),
+      MISSING: secret(primaryVault, "app", "DOES_NOT_EXIST").optional(),
+    }),
+  });
 
 // Plaintext in a scoped temp directory: the test never touches the Keychain or ~/.cache/envi.
 const TempFileCache = Layer.unwrap(
@@ -48,14 +45,16 @@ const TempFileCache = Layer.unwrap(
   }),
 );
 
+// No variable of the shell reaches the provider, so only the settings select the credential.
 const TestLayer = Layer.provideMerge(
   Layer.provide(Envi.layer(), TempFileCache),
-  NodeServices.layer,
+  Layer.merge(NodeServices.layer, ConfigProvider.layer(ConfigProvider.fromUnknown({}))),
 );
 
-describe.skipIf(account === undefined && token === undefined)(
-  "1Password provider against a real account",
-  () => {
+describe.skipIf(testCredentials.length === 0)("1Password provider against a real account", () => {
+  describe.each(testCredentials)("with the $mode", ({ settings }) => {
+    const config = configOf(settings);
+
     layer(TestLayer, { excludeTestServices: true })((it) => {
       it.effect(
         "resolves all three reference forms from two vaults, and then reads the cache",
@@ -105,5 +104,5 @@ describe.skipIf(account === undefined && token === undefined)(
         }),
       );
     });
-  },
-);
+  });
+});

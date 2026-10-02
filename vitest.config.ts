@@ -27,7 +27,7 @@ export default defineConfig({
         test: {
           name: "onepassword",
           include: ["packages/onepassword/e2e/**/*.test.ts"],
-          // Without a service account token, the first test waits for an approval in the 1Password app.
+          // A desktop run waits for an approval in the 1Password app.
           testTimeout: 120_000,
         },
       },

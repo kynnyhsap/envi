@@ -256,7 +256,11 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 - `tests/linux/` holds two Docker images: `linux-secret-service` with GNOME Keyring, and
   `linux-bare` without a keychain. Each runs the unit tests and the end-to-end tests.
 - `packages/onepassword/e2e/` holds the tests against real 1Password, with fake public vaults.
-  The files run one after another, because the 1Password app rejects parallel connections.
+  The files run one after another, because the 1Password app rejects parallel connections. Each
+  suite runs once for each credential that is set: the service account of
+  `ENVI_TEST_ONEPASSWORD_TOKEN`, and the desktop app of `ENVI_TEST_ONEPASSWORD_ACCOUNT`. A desktop
+  run clears the token variables, so a token never replaces the app. The service account creates
+  the vaults, so the desktop user needs "View items" on them.
 - `examples/` holds config and SDK examples with compile-time type assertions. Change an example
   in the same change as the API.
 - In the workspace, a package resolves to its source through the export condition
@@ -280,9 +284,9 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   Node and on Bun, and the end-to-end tests, all in parallel. The import plugin of the lint
   follows `@kynnyhsap/envi` into `dist`, and the build of the end-to-end tests deletes `dist`, so
   the lint must finish before the build starts.
-- `bun run test:onepassword` runs the tests against real 1Password. It needs
-  `ENVI_TEST_ONEPASSWORD_TOKEN` in `.env.local`. `bun fixture:onepassword <status|setup|teardown>`
-  manages the fake vaults.
+- `bun run test:onepassword` runs the tests against real 1Password. It reads
+  `ENVI_TEST_ONEPASSWORD_TOKEN`, `ENVI_TEST_ONEPASSWORD_ACCOUNT`, or both from `.env.local`.
+  `bun fixture:onepassword <status|setup|teardown>` manages the fake vaults.
 - `bun run test:linux [target]` builds and runs the Linux images. It needs Docker. `bun run
 verify` does not run it. CI runs each image in its own job.
 - Use `bun run build` and `bun run test`. Bare `bun build` and `bun test` start Bun built-ins.
