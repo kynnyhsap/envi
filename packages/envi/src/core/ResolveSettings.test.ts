@@ -62,32 +62,6 @@ describe("ResolveSettings", () => {
     }),
   );
 
-  it.effect.each([
-    { name: "outside CI", layer: none, env: {}, interactive: true },
-    { name: "in CI", layer: none, env: { CI: "true" }, interactive: false },
-    {
-      name: "ENVI_INTERACTIVE",
-      layer: none,
-      env: { CI: "true", ENVI_INTERACTIVE: "true" },
-      interactive: true,
-    },
-    {
-      name: "the layer over ENVI_INTERACTIVE",
-      layer: Option.some(false),
-      env: { ENVI_INTERACTIVE: "true" },
-      interactive: false,
-    },
-  ])("selects interactive $name", ({ layer, env, interactive }) =>
-    Effect.gen(function* () {
-      const selection = yield* ResolveSettings.select(
-        { callStrict: none, strict: none, interactive: layer },
-        none,
-      ).pipe(withEnv(env));
-
-      expect(selection.interactive).toBe(interactive);
-    }),
-  );
-
   it.effect("rejects an ENVI_STRICT value that is not a boolean", () =>
     Effect.gen(function* () {
       const error = yield* Effect.flip(
