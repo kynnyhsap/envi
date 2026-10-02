@@ -237,7 +237,9 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 - Each workflow pins every action to a commit SHA, with the version in a comment. Dependabot
   proposes the updates of the actions.
 - `.github/workflows/release.yml` runs when a tag `v<version>` arrives. It runs every job of CI,
-  checks that the tag is on `main`, and runs `bun run release` with provenance. Its `publish` job
+  checks that the tag is on `main`, and runs `bun run release` with provenance. After the
+  publish, its `release-page` job creates the GitHub release of the tag, with the pull requests
+  since the previous release. Every release tag has a release page. Its `publish` job
   uses the GitHub environment `npm`, and only a `v*` tag can use that environment. npm trusts
   `release.yml` in the environment `npm` for each package, so a release needs no token. The
   trusted publisher of each package must have "Allow npm publish" on. npm allows only
@@ -270,7 +272,8 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   `effect` range and the floors into every README and docs page. `bun run check` fails while a
   file differs or a rule breaks.
 - To release, change the root version, run `bun run versions`, and merge the change. Then tag
-  the merge commit on `main` with `v<version>`, and push the tag.
+  the merge commit on `main` with `v<version>`, and push the tag. The workflow publishes the
+  packages and creates the release page.
 - `bun run release --tag v<version> --dry-run` packs both packages and checks them with
   `npm publish --dry-run`.
 - `bun run verify` runs the lint first. Then it runs format check, typecheck, the unit tests on
