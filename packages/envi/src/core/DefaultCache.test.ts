@@ -10,7 +10,7 @@ import * as CacheSettings from "./CacheSettings.ts";
 import { defineConfig } from "./Config.ts";
 import * as DefaultCache from "./DefaultCache.ts";
 import * as Envi from "./Envi.ts";
-import { CacheError, CacheFailure } from "./Errors.ts";
+import { CacheError, CacheFailure, hints } from "./Errors.ts";
 import { EncryptionKey } from "./FileCache.ts";
 import { cacheRecord, nodePlatform, withEnv } from "./fixtures/Support.ts";
 import { mem, memoryProvider } from "./Memory.ts";
@@ -71,7 +71,7 @@ describe("DefaultCache", () => {
 
         expect(found).toEqual({});
         expect(warnings.length).toBe(1);
-        expect(warnings[0]).toContain("ENVI_CACHE_KEY");
+        expect(warnings[0]).toContain(hints.CacheError.KeyUnavailable);
       }).pipe(Effect.provide(noKey)),
     );
 
