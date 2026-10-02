@@ -1,5 +1,9 @@
 // The resolve lock of the file cache. It runs one resolution at a time across processes, also
-// across worktrees that run different Envi versions against one cache directory.
+// across worktrees that run different Envi versions against one cache directory. The exclusion is
+// best effort: in two rare races, two processes hold the lock and both call a provider. An owner
+// that misses its renewals past the stale age, such as in a laptop sleep, loses the lock while it
+// still runs. The takeover of a stale lock has a race, see `removeStaleLock`. The cache stays
+// consistent, because each entry write is atomic.
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -64,7 +68,13 @@ const lockText = (lock: LockFile) => Effect.option(lock.fs.readFileString(lock.f
 /**
  * Removes a stale lock. The rename to a unique name is atomic, so only one process moves the
  * file. When the moved file holds another text, another process took the lock after the read:
- * the link puts its lock back, unless a third process holds the lock already.
+ * the link tries to put its lock back.
+ *
+ * The read and the rename are two steps, not one compare-and-swap, so three contenders can race.
+ * B reads a stale lock. A replaces it with a fresh lock of its own. B moves the lock of A away,
+ * and C takes the empty path before B links the lock of A back. The link fails, and A and C both
+ * hold the lock. A stops its renewals and leaves the lock of C at release. A fix needs a new lock
+ * protocol, and so a new lock file name.
  */
 const removeStaleLock = (lock: LockFile, observed: string) =>
   Effect.gen(function* () {

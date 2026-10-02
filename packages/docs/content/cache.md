@@ -21,8 +21,9 @@ of the config selects another directory, in this order.
   [`KeyUnavailable`](errors/cache-key-unavailable.md).
 - Envi never falls back from encryption to plaintext. `encryption: "none"` writes plaintext files
   with the mode `0600`, as an explicit opt-in.
-- A lock serializes the resolution of several processes on an empty cache, so a provider gets one
-  call. Envi recovers the lock of a crashed process.
+- A lock serializes the resolution of several processes on an empty cache, so a provider usually
+  gets one call. Envi recovers the lock of a crashed process. The lock is best effort. See
+  [Known limits](known-limits.md).
 - The cache serves the trust level of a `.env` file. Any process of the OS user can use it, a coding
   agent too. The encryption protects the files against file reads, searches, and backups.
 - The cache is off in CI by default. `cache path`, `cache list`, and `cache clear` always use the
