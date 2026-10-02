@@ -59,8 +59,8 @@ This repository is public. These rules have no exception.
   secret and does no I/O. The key is `vars`, not `env` or `envs`. There is one `defineConfig`.
 - **Two primitives for code.** `derive(input, fn)` is a pure synchronous function of other
   values, and Envi never caches it. `custom({ id, from, scope, resolve })` runs effectful user
-  code, and Envi caches it for the stage, the scope, the code, and the input values. Do not add
-  `map`, `combine`, or `template`.
+  code, and Envi caches it for the stage, the scope, the source text of `resolve`, and the raw
+  input strings. Do not add `map`, `combine`, or `template`.
 - **Batches.** Envi makes one call per provider for each operation. Never resolve references
   one by one in a loop. The resolver uses explicit batches, not `Request` and `RequestResolver`.
 - **One client, one config.** Every SDK operation comes from `createEnvi(config, overrides?)`. No

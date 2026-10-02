@@ -28,8 +28,13 @@ vars: ({ op, derive, custom }) => ({
 
 - `id` names a `custom()` value in the cache and in errors. `scope` names everything outside the
   inputs that selects the value, such as a host.
-- Envi keeps one entry for each `id`, stage, and `scope`. The entry holds a digest of the code of
-  `resolve` and of the input values. A changed input or a changed `resolve` computes a new value.
+- Envi keeps one entry for each `id`, stage, and `scope`. The entry holds a digest of the source
+  text of `resolve` and of the raw string of each input. A changed raw input or a changed source
+  text of `resolve` computes a new value.
+- The digest does not cover the schema of an input, the code that `resolve` calls, or a value
+  that `resolve` captures from outside. After such an edit, Envi still serves the cached value
+  until it expires. Run `envi sync --refresh`, or change `scope`, such as from `v1` to `v2`, to
+  compute a new value.
 - A throw shows only the class name and the location, never the message, because a message can
   hold a secret. A `CustomFailure({ message, transient })` shows its message. `transient: true`
   allows an expired entry of the same inputs.
