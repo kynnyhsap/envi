@@ -40,6 +40,8 @@ op({ account: "partner-team", vault: "app", item: "postgres", section: "prod", f
 - A name with `/` or `?` needs its ID, because the reference syntax cannot escape them.
 - Envi supports no query attribute, such as `?attribute=otp`.
 - A missing vault, item, or field gives `NotFound`, so `.optional()` and `.default()` apply.
+- An item that the credential cannot read gives `AccessDenied`. A malformed reference gives
+  `Invalid`.
 
 ## Authentication
 

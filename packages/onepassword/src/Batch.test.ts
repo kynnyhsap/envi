@@ -34,24 +34,27 @@ const request = (key: string, field: string) => ({
 });
 
 describe("Batch", () => {
-  it.effect("maps each answer to a value, NotFound, or Invalid", () =>
+  it.effect("maps each answer to a value, NotFound, AccessDenied, or Invalid", () =>
     Effect.gen(function* () {
       const client = clientOf({
         "op://app/postgres/url": { content: { secret: "postgres://fake" }, error: null },
         "op://app/postgres/port": { content: null, error: { type: "itemNotFound" } },
-        "op://app/postgres/user": { content: null, error: { type: "somethingElse" } },
+        "op://app/postgres/user": { content: null, error: { type: "other" } },
+        "op://app/postgres/host": { content: null, error: { type: "tooManyItems" } },
       });
 
       const results = yield* Batch.resolve(sdk, CredentialKind.ServiceAccount, client, [
         request("a", "url"),
         request("b", "port"),
         request("c", "user"),
+        request("d", "host"),
       ]);
 
       expect(results).toEqual({
         a: Result.succeed("postgres://fake"),
         b: Result.fail(ReferenceFailure.NotFound),
-        c: Result.fail(ReferenceFailure.Invalid),
+        c: Result.fail(ReferenceFailure.AccessDenied),
+        d: Result.fail(ReferenceFailure.Invalid),
       });
     }),
   );

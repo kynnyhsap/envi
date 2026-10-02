@@ -27,20 +27,25 @@ const NotFoundType = {
 
 const notFoundTypes: ReadonlySet<string> = new Set(Object.values(NotFoundType));
 
+/** The SDK gives this error type, without a message, to a credential that cannot read the item. */
+const accessDeniedType = "other";
+
 const decodeAnswer = Schema.decodeUnknownEffect(Sdk.ResolveAllResponse);
 
-/** The result of one answer. Any other SDK error means that the reference is invalid. */
-const resultOf = (response: Sdk.SdkResponse): Result.Result<string, ReferenceFailure> => {
-  if (Predicate.isNotNullish(response.content)) {
-    return Result.succeed(response.content.secret);
+/** The failure of one SDK error type. The remaining types, such as `parsing`, mean `Invalid`. */
+const failureOf = (type: string): ReferenceFailure => {
+  if (notFoundTypes.has(type)) {
+    return ReferenceFailure.NotFound;
   }
 
-  return Result.fail(
-    notFoundTypes.has(response.error?.type ?? "")
-      ? ReferenceFailure.NotFound
-      : ReferenceFailure.Invalid,
-  );
+  return type === accessDeniedType ? ReferenceFailure.AccessDenied : ReferenceFailure.Invalid;
 };
+
+/** The result of one answer. */
+const resultOf = (response: Sdk.SdkResponse): Result.Result<string, ReferenceFailure> =>
+  Predicate.isNotNullish(response.content)
+    ? Result.succeed(response.content.secret)
+    : Result.fail(failureOf(response.error?.type ?? ""));
 
 /** Resolves one batch of references with one SDK call. */
 export const resolve = <DesktopAuth>(
