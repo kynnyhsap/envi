@@ -158,7 +158,10 @@ export interface Interface {
       options?: ResolveOptions,
     ): Effect.Effect<ResolvedRecord<R>, EnviError>;
   };
-  /** Fills the cache. A list of configs gives one call for each shared provider. */
+  /**
+   * Fills the cache. A list of configs gives one call for each shared provider. Each config
+   * resolves only against its own providers.
+   */
   readonly sync: (
     configs: Config.Config | ReadonlyArray<Config.Config>,
     options?: LoadOptions<string>,
@@ -419,13 +422,10 @@ const sync = Effect.fn("Envi.sync")(function* (
   const members = yield* Effect.forEach(list, (config) =>
     Effect.gen(function* () {
       const stage = yield* stageOf(config, options?.stage);
+      const providers = providersOf(runtime, config);
+      const own = yield* Groups.ownVars(providers, yield* Config.varsFor(config, stage));
 
-      return {
-        config,
-        stage,
-        providers: providersOf(runtime, config),
-        vars: yield* Config.varsFor(config, stage),
-      } satisfies Groups.Member;
+      return { config, stage, providers, ...own } satisfies Groups.Member;
     }),
   );
 
@@ -456,9 +456,14 @@ const sync = Effect.fn("Envi.sync")(function* (
       cached: Arr.reduce(entries, 0, (sum, entry) => sum + entry.cached),
       resolved: Arr.reduce(entries, 0, (sum, entry) => sum + entry.resolved),
     })),
-    failures: resolved.flatMap(({ group, resolution }) =>
-      Outcomes.failuresOf(resolution.vars, (groupKey) => Groups.originOf(group, groupKey)),
-    ),
+    failures: [
+      ...resolved.flatMap(({ group, resolution }) =>
+        Outcomes.failuresOf(resolution.vars, (groupKey) => Groups.originOf(group, groupKey)),
+      ),
+      ...members.flatMap((member) =>
+        Outcomes.failuresOf(member.rejected, (key) => ({ key, config: member.config.path })),
+      ),
+    ],
     cache: (yield* runtime.status.active) && policies.every((policy) => policy.enabled),
     durationMillis: finishedAt - startedAt,
   } satisfies SyncReport;
