@@ -14,6 +14,10 @@ batch when they have the same stage, the same provider instances, the same cache
 same `strict`. Configs with different cache settings or `strict` resolve in separate batches, so
 each config gets the cache and the stale fallback of a run of that config alone.
 
+Each config still resolves only against its own `providers`. A var that names a provider of
+another config fails with [UnknownProvider](../errors/provider-unknown-provider.md), as `envi check`
+of its config does, and the sync report lists it with its config.
+
 `envi sync` fills one cache for every config. Each config that uses the cache must select the same
 `cache.encryption` and `cache.directory`, so a shared module is a good home for the `cache` key.
 Otherwise `sync` fails with a [`SettingsError`](../errors/settings.md) and writes nothing. See

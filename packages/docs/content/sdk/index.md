@@ -21,7 +21,8 @@ const key = await envi.resolve(op("payments", "stripe", "secret-key")); // one s
 
 The client also has `run`, `sync`, `check`, `inspect`, `export`, and `cache.path`, `cache.list`,
 and `cache.clear`. Each returns the report that `--json` prints. `syncAll(clients)` syncs several
-clients with one call for each shared provider. Configs with different cache settings or `strict`
+clients with one call for each shared provider. A var that names a provider outside its own config
+fails with `UnknownProvider`, as in `check`. Configs with different cache settings or `strict`
 resolve in separate batches. It uses the overrides of the first client, and the cache of the first
 config that uses the cache, so a client with `cache: false` never turns the cache off for the
 others. Every config that uses the cache must select the same encryption and directory under those

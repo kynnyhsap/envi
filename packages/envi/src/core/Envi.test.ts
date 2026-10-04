@@ -13,6 +13,7 @@ import {
   DecodeError,
   ExportError,
   hints,
+  ProviderFailure,
   ReferenceFailure,
   SecretReferenceError,
   SettingsError,
@@ -361,6 +362,33 @@ describe("Envi", () => {
       expect(report.failures).toMatchObject([
         { key: "MISSING", config: "/repo/tools/envi.config.ts", reason: "NotFound" },
       ]);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("syncs a config only against its own providers, like check of that config", () =>
+    Effect.gen(function* () {
+      const envi = yield* Envi.Envi;
+      const provider = memoryProvider({ a: "1", b: "2" });
+      const web = defineConfig({ providers: [provider], vars: { A: mem("a") } });
+
+      const api = {
+        ...defineConfig({ vars: { PORT: "3000", B: mem("b") } }),
+        path: Option.some("/repo/api/envi.config.ts"),
+      };
+
+      const alone = yield* envi.check(api);
+      const report = yield* envi.sync([web, api]);
+
+      expect(alone.failures).toMatchObject([
+        { key: "B", error: "ProviderError", reason: ProviderFailure.UnknownProvider },
+      ]);
+      expect(report.failures).toEqual(alone.failures);
+      expect(provider.calls()).toEqual([["a"]]);
+
+      const fixed = yield* envi.sync([web, { ...api, providers: [provider] }]);
+
+      expect(fixed.failures).toEqual([]);
+      expect(provider.calls()).toEqual([["a"], ["b"]]);
     }).pipe(Effect.provide(layer)),
   );
 

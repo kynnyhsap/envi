@@ -5,6 +5,8 @@ description: "A descriptor names a provider that is not in `providers` of the co
 
 # ProviderError UnknownProvider
 
-A descriptor names a provider that is not in `providers` of the config.
+A descriptor names a provider that is not in `providers` of the config. `envi sync` reports this
+too when another config of the repo declares the provider: each config resolves only against its
+own providers.
 
 Next action: Add the provider to `providers` in the config, or fix the provider id of the descriptor.
