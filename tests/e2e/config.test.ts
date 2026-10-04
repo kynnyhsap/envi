@@ -1,10 +1,11 @@
 // Config loading, the global flags, the install hint, and the delegation to a local `envi`.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
-import { CheckReport, ErrorReport, SyncReport } from "@kynnyhsap/envi";
+import { CheckReport, ConfigLoadFailure, ErrorReport, SyncReport } from "@kynnyhsap/envi";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -18,6 +19,7 @@ import {
   runCli,
   runProcess,
   runtimes,
+  secrets,
 } from "./helpers.ts";
 
 const app = fixture("cached");
@@ -29,6 +31,27 @@ const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const enviPackage = fileURLToPath(new URL("../../packages/envi", import.meta.url));
 
 const globalVersion = "9.9.9-global";
+
+/** The two formats of the logs on stderr. */
+type LogLines = "logfmt" | "json";
+
+/** One log line of `--log-format json`. A timing line names its step in the annotations. */
+const JsonLogLine = Schema.Struct({
+  level: Schema.String,
+  annotations: Schema.Struct({ step: Schema.optional(Schema.String) }),
+});
+
+/** The steps of the timing lines on stderr. Each line must have the given format. */
+const loggedSteps = (stderr: string, format: LogLines) => {
+  const lines = stderr.split("\n").filter((line) => line.trim() !== "");
+
+  return format === "json"
+    ? Effect.map(
+        Effect.forEach(lines, (line) => decodeJson(JsonLogLine, line)),
+        (logs) => logs.flatMap((log) => log.annotations.step ?? []),
+      )
+    : Effect.succeed(lines.flatMap((line) => /\bstep=(\S+)/u.exec(line)?.[1] ?? []));
+};
 
 layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags", (it) => {
   describe.each(runtimes)("on %s", (runtime) => {
@@ -335,35 +358,63 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
       }),
     );
 
-    it.effect("writes every log to stderr, as logfmt or as JSON", () =>
+    it.effect(
+      "writes every log to stderr, as logfmt or as JSON, for each spelling of the flags",
+      () =>
+        Effect.gen(function* () {
+          const sandbox = yield* makeSandbox("none");
+          const args = ["export", "--cache-dir", sandbox.cacheDirectory, "--format", "json"];
+
+          // The logging flags of each case, and the format of the logs that they select.
+          const cases: ReadonlyArray<readonly [ReadonlyArray<string>, LogLines]> = [
+            [["--debug"], "logfmt"],
+            [["--debug=true"], "logfmt"],
+            [["--debug", "--log-format", "json"], "json"],
+            [["--debug=true", "--log-format=json"], "json"],
+          ];
+
+          for (const [flags, format] of cases) {
+            const result = yield* runCli(runtime, app, [...args, ...flags], sandbox.env);
+
+            // The logs leave stdout clean, so stdout decodes as the export.
+            expect(yield* decodeJson(ExportedVars, result.stdout)).toHaveProperty("API_TOKEN");
+            expect(yield* loggedSteps(result.stderr, format)).toEqual(
+              expect.arrayContaining(["startup", "command"]),
+            );
+            expect(result.stderr).not.toContain(secrets["token-development"]);
+          }
+        }),
+    );
+
+    it.effect("prints JSON on stdout for each spelling of --json, on success and on failure", () =>
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
 
-        const args = [
-          "export",
-          "--cache-dir",
-          sandbox.cacheDirectory,
-          "--debug",
-          "--format",
-          "json",
+        // The `--json` flag of each case, and whether it asks for JSON.
+        const cases: ReadonlyArray<readonly [string, boolean]> = [
+          ["--json", true],
+          ["--json=true", true],
+          ["--json=false", false],
         ];
 
-        const pretty = yield* runCli(runtime, app, args, sandbox.env);
+        for (const [flag, json] of cases) {
+          const passed = yield* runCli(runtime, app, ["check", "--no-cache", flag], sandbox.env);
+          const failed = yield* runCli(runtime, sandbox.directory, ["check", flag], sandbox.env);
 
-        const json = yield* runCli(
-          runtime,
-          app,
-          [...args, "--refresh", "--log-format", "json"],
-          sandbox.env,
-        );
+          expect([passed.exitCode, failed.exitCode]).toEqual([0, 1]);
 
-        const firstLog = json.stderr.split("\n").find((line) => line.trim() !== "");
-
-        // The logs leave stdout clean, so stdout decodes as the export.
-        expect(yield* decodeJson(ExportedVars, pretty.stdout)).toHaveProperty("API_TOKEN");
-        expect(pretty.stderr).toContain("level=DEBUG");
-        expect(JSON.parse(firstLog ?? "")).toMatchObject({ level: "DEBUG" });
-        expect(pretty.stderr + json.stderr).not.toContain("dev-token-value");
+          if (json) {
+            expect((yield* decodeJson(CheckReport, passed.stdout)).passed).toContain("API_TOKEN");
+            expect((yield* decodeJson(ErrorReport, failed.stdout)).error).toMatchObject({
+              error: "ConfigLoadError",
+              reason: ConfigLoadFailure.NoConfig,
+            });
+          } else {
+            expect(passed.stdout).toContain("API_TOKEN");
+            expect(failed.stdout).toBe("");
+            expect(failed.stderr).toContain(ConfigLoadFailure.NoConfig);
+          }
+        }
       }),
     );
 

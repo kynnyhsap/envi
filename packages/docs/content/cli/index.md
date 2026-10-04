@@ -41,5 +41,7 @@ and directory, or `sync` fails with a [`SettingsError`](../errors/settings.md) a
 | `--debug`                           | every command                                 | Shows debug logs, with the duration of each step.           |
 | `--log-format pretty\|json`         | every command                                 | Selects the format of the logs on stderr.                   |
 
-All logs go to stderr, so stdout stays clean for `export` and `--json`. A log never holds a secret
-value.
+A boolean flag also takes a value, such as `--json=true` or `--debug=false`.
+
+All logs go to stderr, so stdout stays clean for `export` and `--json`. `--json` changes only
+stdout, and `--log-format` alone selects the format of the logs. A log never holds a secret value.
