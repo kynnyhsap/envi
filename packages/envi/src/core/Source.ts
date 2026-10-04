@@ -48,12 +48,15 @@ export type Origin = Data.TaggedEnum<{
     readonly inputs: Readonly<Record<string, AnySource>>;
     readonly call: Call<DeriveError>;
   };
-  /** A value from user code. Envi caches it for the inputs that produced it. */
+  /** A value from user code. Envi caches it for the raw inputs that produced it. */
   Custom: {
     readonly id: string;
     /** Everything outside the inputs that selects the value, such as a host. */
     readonly scope: string;
-    /** The source text of `resolve`. An edit of the code invalidates the cache entry. */
+    /**
+     * The source text of `resolve`. An edit of this text invalidates the cache entry. An edit of
+     * the code that `resolve` calls, or of a value that it captures, does not.
+     */
     readonly code: string;
     readonly inputs: Readonly<Record<string, AnySource>>;
     readonly call: Call<CustomError>;
@@ -256,10 +259,11 @@ export interface CustomDefinition<From extends Readonly<Record<string, AnySource
 
 /**
  * A value from user code, such as a token exchange. `resolve` runs after the batch, never inside
- * `vars`. Envi caches the result for the stage, the scope, the code of `resolve`, and the values
- * of the inputs, so a rotated input computes a new value. A throw, a rejection, and a failed
- * `Effect` all become a `CustomError` that hides the message, unless the error is a
- * `CustomFailure`.
+ * `vars`. Envi caches the result for the stage, the scope, the source text of `resolve`, and the
+ * raw string of each input, so a rotated input computes a new value. The cache ignores the schema
+ * of an input, the code that `resolve` calls, and the values that it captures: after such an
+ * edit, refresh the cache or change the scope. A throw, a rejection, and a failed `Effect` all
+ * become a `CustomError` that hides the message, unless the error is a `CustomFailure`.
  */
 export const custom = <const From extends Readonly<Record<string, AnySource>> = {}>(
   definition: CustomDefinition<From>,

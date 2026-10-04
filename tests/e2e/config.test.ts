@@ -120,6 +120,46 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
       }),
     );
 
+    it.effect("searches down outside a repo once per folder, through symlink cycles", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const sandbox = yield* makeSandbox("none");
+        const project = path.join(sandbox.directory, "project");
+        const shared = path.join(sandbox.directory, "shared");
+        const entry = path.join(enviPackage, "dist/index.js");
+
+        const writeConfig = (folder: string, name: string) =>
+          Effect.andThen(
+            fs.makeDirectory(folder, { recursive: true }),
+            fs.writeFileString(
+              path.join(folder, "envi.config.ts"),
+              `import { defineConfig } from ${JSON.stringify(entry)};\n\nexport default defineConfig({ cache: false, vars: { ${name}: "1" } });\n`,
+            ),
+          );
+
+        yield* writeConfig(project, "APP");
+        yield* fs.makeDirectory(path.join(project, "apps/api"), { recursive: true });
+        yield* fs.symlink(project, path.join(project, "self"));
+        yield* fs.symlink(project, path.join(project, "apps/api/root"));
+
+        const env = { ...sandbox.env, ENVI_CONFIG_SEARCH: "down" };
+        const checked = yield* runCli(runtime, project, ["check", "--json"], env);
+
+        yield* writeConfig(shared, "SHARED");
+        yield* fs.symlink(shared, path.join(project, "shared"));
+
+        const synced = yield* runCli(runtime, project, ["sync", "--json"], env);
+
+        expect(checked.exitCode).toBe(0);
+        expect((yield* decodeJson(CheckReport, checked.stdout)).passed).toEqual(["APP"]);
+        expect(yield* decodeJson(SyncReport, synced.stdout)).toMatchObject({
+          configs: 2,
+          failures: [],
+        });
+      }),
+    );
+
     it.effect("takes several configs from --config and from ENVI_CONFIG", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;

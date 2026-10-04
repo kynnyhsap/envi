@@ -13,6 +13,7 @@ import {
   DecodeError,
   ExportError,
   hints,
+  ProviderFailure,
   ReferenceFailure,
   SecretReferenceError,
   SettingsError,
@@ -20,7 +21,7 @@ import {
   VarsError,
 } from "./Errors.ts";
 import { enviLayer, withEnv } from "./fixtures/Support.ts";
-import { mem, memoryProvider } from "./Memory.ts";
+import { mem, memoryProvider, memoryProviderId } from "./Memory.ts";
 import * as Provider from "./Provider.ts";
 import { ExportFormat, ValueOrigin } from "./Reports.ts";
 import * as Source from "./Source.ts";
@@ -362,6 +363,58 @@ describe("Envi", () => {
         { key: "MISSING", config: "/repo/tools/envi.config.ts", reason: "NotFound" },
       ]);
     }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("syncs a config only against its own providers, like check of that config", () =>
+    Effect.gen(function* () {
+      const envi = yield* Envi.Envi;
+      const provider = memoryProvider({ a: "1", b: "2" });
+      const web = defineConfig({ providers: [provider], vars: { A: mem("a") } });
+
+      const api = {
+        ...defineConfig({ vars: { PORT: "3000", B: mem("b") } }),
+        path: Option.some("/repo/api/envi.config.ts"),
+      };
+
+      const alone = yield* envi.check(api);
+      const report = yield* envi.sync([web, api]);
+
+      expect(alone.failures).toMatchObject([
+        { key: "B", error: "ProviderError", reason: ProviderFailure.UnknownProvider },
+      ]);
+      expect(report.failures).toEqual(alone.failures);
+      expect(provider.calls()).toEqual([["a"]]);
+
+      const fixed = yield* envi.sync([web, { ...api, providers: [provider] }]);
+
+      expect(fixed.failures).toEqual([]);
+      expect(provider.calls()).toEqual([["a"], ["b"]]);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect.each(["cached first", "uncached first"] as const)(
+    "syncs a config with cache: false next to a cached config, %s, and caches only the cached one",
+    (order) =>
+      Effect.gen(function* () {
+        const envi = yield* Envi.Envi;
+        const provider = memoryProvider({ a: "1", b: "2" });
+        const cached = defineConfig({ providers: [provider], vars: { A: mem("a") } });
+
+        const uncached = defineConfig({
+          providers: [provider],
+          cache: false,
+          vars: { B: mem("b") },
+        });
+
+        const report = yield* envi.sync(
+          order === "cached first" ? [cached, uncached] : [uncached, cached],
+        );
+
+        const list = yield* envi.cache.list;
+
+        expect(report.failures).toEqual([]);
+        expect(list.entries.map((entry) => entry.reference)).toEqual([`${memoryProviderId}://a`]);
+      }).pipe(Effect.provide(layer)),
   );
 
   it.effect("checks every var and lists the passed and the failed vars", () =>

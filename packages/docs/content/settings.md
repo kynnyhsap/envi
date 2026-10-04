@@ -14,6 +14,10 @@ environment variable that holds a value Envi cannot read, and Envi reports a
 `envi check --config-search up` ignores `ENVI_CONFIG_SEARCH`, and `strict: false` ignores
 `ENVI_STRICT`.
 
+Envi applies the order to each config. One `sync` of several configs fills one cache, so every
+config that uses the cache must end with the same cache encryption and directory. See
+[Cache](./cache.md).
+
 | Variable                                          | Setting                                                          |
 | ------------------------------------------------- | ---------------------------------------------------------------- |
 | `ENVI_STAGE`                                      | The stage.                                                       |

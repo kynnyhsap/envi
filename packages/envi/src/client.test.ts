@@ -231,6 +231,26 @@ describe("the cache settings of a client", () => {
     expect(await valid.load()).toEqual({ DATABASE_URL: "postgres://fake" });
     await valid.dispose();
   });
+
+  it("syncAll caches the clients that use the cache when the first client turns it off", async () => {
+    const directory = cacheDirectory();
+    // Two providers give two groups, so each config keeps its own policy.
+    const off = oneSecret(false);
+    const cached = oneSecret({ directory, encryption: "none" });
+    const clients = [createEnvi(off.oneConfig), createEnvi(cached.oneConfig)] as const;
+
+    await syncAll(clients);
+
+    const reader = createEnvi(cached.oneConfig);
+
+    expect(await reader.load()).toEqual({ DATABASE_URL: "postgres://fake" });
+    expect(cached.secrets.calls().length).toBe(1);
+    expect(readdirSync(directory).filter((name) => name.endsWith(".json")).length).toBe(1);
+
+    for (const client of [...clients, reader]) {
+      await client.dispose();
+    }
+  });
 });
 
 /** A provider that records `interactive` for each batch, and fails as a whole while `down`. */

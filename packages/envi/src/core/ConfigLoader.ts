@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Order from "effect/Order";
 import * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
 import * as ChildProcess from "effect/process/ChildProcess";
@@ -299,12 +300,28 @@ const gitFiles = (
     }),
   ).pipe(Effect.orElseSucceed(() => Option.none()));
 
-/** Every config file below a folder, without `node_modules` and dot folders. */
-const walk = (host: Host, directory: string): Effect.Effect<ReadonlyArray<string>> =>
+/**
+ * Every config file below a folder, without `node_modules` and dot folders. The walk follows a
+ * symlink to a folder, and it enters each real folder once, by the first path that reaches it.
+ * `visited` holds the real paths of the folders that the walk entered.
+ */
+const walkFrom = (
+  host: Host,
+  visited: Set<string>,
+  directory: string,
+): Effect.Effect<ReadonlyArray<string>> =>
   Effect.gen(function* () {
+    const real = yield* Effect.orElseSucceed(host.fs.realPath(directory), () => directory);
+
+    if (visited.has(real)) {
+      return [];
+    }
+
+    visited.add(real);
+
     const names = yield* Effect.orElseSucceed(host.fs.readDirectory(directory), () => []);
 
-    const nested = yield* Effect.forEach(names, (name) => {
+    const nested = yield* Effect.forEach(Arr.sort(names, Order.String), (name) => {
       const file = host.path.join(directory, name);
 
       if (configNames.has(name)) {
@@ -317,7 +334,7 @@ const walk = (host: Host, directory: string): Effect.Effect<ReadonlyArray<string
 
       return host.fs.stat(file).pipe(
         Effect.flatMap((info) =>
-          info.type === "Directory" ? walk(host, file) : Effect.succeed([]),
+          info.type === "Directory" ? walkFrom(host, visited, file) : Effect.succeed([]),
         ),
         Effect.orElseSucceed(() => []),
       );
@@ -325,6 +342,10 @@ const walk = (host: Host, directory: string): Effect.Effect<ReadonlyArray<string
 
     return nested.flat();
   });
+
+/** The walk runs in order, one folder at a time, so each run shares one record of the folders. */
+const walk = (host: Host, directory: string) =>
+  Effect.suspend(() => walkFrom(host, new Set(), directory));
 
 const down = Effect.fn("ConfigLoader.down")(function* (host: Host, start: string) {
   const listed = Option.isSome(yield* projectRoot(host, start))

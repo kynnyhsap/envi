@@ -1,6 +1,6 @@
 ---
 title: "SettingsError"
-description: "A setting holds a value that Envi cannot read."
+description: "A setting holds a value that Envi cannot read, or the configs of a sync disagree."
 ---
 
 # SettingsError
@@ -12,5 +12,11 @@ adds its name to the path, such as `vars.TOKEN.secret.cache.ttl`.
 
 Envi reports a variable only when it uses it. A flag or an option that overrides the variable,
 such as `--config-search` over `ENVI_CONFIG_SEARCH`, avoids the error.
+
+One `sync` of several configs fills one cache, so every config that uses the cache must select the
+same `cache.encryption` and `cache.directory`. When two configs differ, the error names the
+setting, both config files, and the value that each one selects, and `sync` writes nothing. Give
+the configs the same value, or select one directory for all with `--cache-dir` or
+`ENVI_CACHE_DIR`.
 
 Next action: Fix the value of the setting that the error names, or remove it.

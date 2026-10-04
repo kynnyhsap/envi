@@ -158,7 +158,12 @@ export interface Interface {
       options?: ResolveOptions,
     ): Effect.Effect<ResolvedRecord<R>, EnviError>;
   };
-  /** Fills the cache. A list of configs gives one call for each shared provider. */
+  /**
+   * Fills the cache. A list of configs gives one call for each shared provider. Each config
+   * resolves only against its own providers. Configs with different cache settings or `strict`
+   * resolve in separate batches. Every config that uses the cache must select the same encryption
+   * and directory, or the sync fails with a `SettingsError` before it resolves anything.
+   */
   readonly sync: (
     configs: Config.Config | ReadonlyArray<Config.Config>,
     options?: LoadOptions<string>,
@@ -255,6 +260,30 @@ const resolverOptions = Effect.fn("Envi.resolverOptions")(function* (
   } satisfies Resolver.Options;
 });
 
+/** The policy of one resolution of a config: the cache on or off, and the resolver settings. */
+const resolutionPolicyOf = Effect.fn("Envi.resolutionPolicyOf")(function* (
+  runtime: Runtime,
+  config: Config.Config,
+  stage: string,
+  options: ResolveOptions | undefined,
+) {
+  const policy = yield* policyOf(runtime, config);
+  const settings = yield* resolverOptions(runtime, policy, config, stage, options);
+
+  return { cache: policy.enabled, settings } satisfies Groups.Policy;
+});
+
+const resolveWithPolicy = (
+  runtime: Runtime,
+  policy: Groups.Policy,
+  providers: ReadonlyArray<Provider.Provider>,
+  sources: Readonly<Record<string, Source.AnySource>>,
+) =>
+  Resolver.resolve(sources, policy.settings).pipe(
+    Effect.provide(Provider.layer(providers)),
+    Effect.provideService(Cache.Cache, policy.cache ? runtime.cache : Cache.none),
+  );
+
 const resolveWith = Effect.fn("Envi.resolveWith")(function* (
   runtime: Runtime,
   config: Config.Config,
@@ -263,13 +292,9 @@ const resolveWith = Effect.fn("Envi.resolveWith")(function* (
   sources: Readonly<Record<string, Source.AnySource>>,
   options: ResolveOptions | undefined,
 ) {
-  const policy = yield* policyOf(runtime, config);
-  const settings = yield* resolverOptions(runtime, policy, config, stage, options);
+  const policy = yield* resolutionPolicyOf(runtime, config, stage, options);
 
-  return yield* Resolver.resolve(sources, settings).pipe(
-    Effect.provide(Provider.layer(providers)),
-    Effect.provideService(Cache.Cache, policy.enabled ? runtime.cache : Cache.none),
-  );
+  return yield* resolveWithPolicy(runtime, policy, providers, sources);
 });
 
 const resolveVars = Effect.fn("Envi.resolveVars")(function* (
@@ -417,15 +442,21 @@ const sync = Effect.fn("Envi.sync")(function* (
   const startedAt = yield* Clock.currentTimeMillis;
   const list = Config.isConfig(configs) ? [configs] : configs;
 
+  // One cache serves the whole sync, so it never stores a secret in the storage of another config.
+  yield* CacheSettings.requireOneStorage(runtime.cacheOverrides, list);
+
   const members = yield* Effect.forEach(list, (config) =>
     Effect.gen(function* () {
       const stage = yield* stageOf(config, options?.stage);
+      const providers = providersOf(runtime, config);
+      const own = yield* Groups.ownVars(providers, yield* Config.varsFor(config, stage));
 
       return {
         config,
         stage,
-        providers: providersOf(runtime, config),
-        vars: yield* Config.varsFor(config, stage),
+        policy: yield* resolutionPolicyOf(runtime, config, stage, options),
+        providers,
+        ...own,
       } satisfies Groups.Member;
     }),
   );
@@ -434,12 +465,10 @@ const sync = Effect.fn("Envi.sync")(function* (
 
   const resolved = yield* Effect.forEach(groups, (group) =>
     Effect.map(
-      resolveWith(runtime, group.config, group.stage, group.providers, group.sources, options),
+      resolveWithPolicy(runtime, group.policy, group.providers, group.sources),
       (resolution) => ({ group, resolution }),
     ),
   );
-
-  const policies = yield* Effect.forEach(groups, (group) => policyOf(runtime, group.config));
 
   const finishedAt = yield* Clock.currentTimeMillis;
 
@@ -457,10 +486,15 @@ const sync = Effect.fn("Envi.sync")(function* (
       cached: Arr.reduce(entries, 0, (sum, entry) => sum + entry.cached),
       resolved: Arr.reduce(entries, 0, (sum, entry) => sum + entry.resolved),
     })),
-    failures: resolved.flatMap(({ group, resolution }) =>
-      Outcomes.failuresOf(resolution.vars, (groupKey) => Groups.originOf(group, groupKey)),
-    ),
-    cache: (yield* runtime.status.active) && policies.every((policy) => policy.enabled),
+    failures: [
+      ...resolved.flatMap(({ group, resolution }) =>
+        Outcomes.failuresOf(resolution.vars, (groupKey) => Groups.originOf(group, groupKey)),
+      ),
+      ...members.flatMap((member) =>
+        Outcomes.failuresOf(member.rejected, (key) => ({ key, config: member.config.path })),
+      ),
+    ],
+    cache: (yield* runtime.status.active) && groups.every((group) => group.policy.cache),
     durationMillis: finishedAt - startedAt,
   } satisfies SyncReport;
 });
