@@ -134,6 +134,7 @@ export const createEnvi = <C extends Config.Config>(
 
 /**
  * Syncs the configs of several clients in one run, with one call for each shared provider.
+ * Configs with different cache settings or `strict` resolve in separate batches.
  * It uses the overrides of the first client. The first config that uses the cache selects the
  * cache, so a client with the cache off never turns it off for the others. Every config that uses
  * the cache must select the same encryption and directory under those overrides, or it rejects

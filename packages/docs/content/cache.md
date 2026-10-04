@@ -13,6 +13,8 @@ of the config selects another directory, in this order.
   because the provider is unavailable, Envi uses the expired value up to `maxStale`, 7 days by
   default, and logs a warning. `NotFound`, `AccessDenied`, and `Invalid` never allow the expired
   value. `--strict` and CI turn the fallback off.
+- `sync` applies the cache settings and `strict` of each config to the vars of that config.
+  Configs with different cache settings or `strict` resolve in separate batches.
 - Envi encrypts each entry with AES-256-GCM. The key comes from `ENVI_CACHE_KEY`, or from the
   keychain: the macOS Keychain, or the Secret Service on Linux through `secret-tool`, such as GNOME
   Keyring. Envi creates the key on the first use.
