@@ -26,6 +26,7 @@ import {
   providerCalls,
   providerInteractive,
   runCli,
+  runProcess,
   runtimes,
   type Sandbox,
   secrets,
@@ -276,24 +277,37 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
         }),
       );
 
-      it.effect("writes a private file with --output, also a file that git tracks", () =>
+      it.effect("makes a readable file that git tracks private with --output", () =>
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
           const sandbox = yield* makeSandbox("none");
           const project = path.join(sandbox.directory, "project");
+          const tracked = path.join(project, ".env.production");
+          const oldContent = "API_TOKEN=old-token\n";
 
           yield* fs.makeDirectory(project);
           yield* gitInit(project);
+          yield* fs.writeFileString(tracked, oldContent);
+          yield* fs.chmod(tracked, 0o644);
+          yield* runProcess("git", ["add", tracked], project);
 
-          const tracked = path.join(project, ".env.production");
+          const listed = yield* runProcess(
+            "git",
+            ["ls-files", "--error-unmatch", tracked],
+            project,
+          );
+
+          expect(listed.exitCode).toBe(0);
+          expect((yield* fs.stat(tracked)).mode & 0o777).toBe(0o644);
+
           const written = yield* cli(runtime, sandbox, ["export", "--output", tracked]);
+          const text = yield* fs.readFileString(tracked);
 
           expect(written.exitCode).toBe(0);
           expect(written.stdout).toBe("");
-          expect(yield* fs.readFileString(tracked)).toContain(
-            `API_TOKEN=${secrets["token-development"]}\n`,
-          );
+          expect(text).toContain(`API_TOKEN=${secrets["token-development"]}\n`);
+          expect(text).not.toContain(oldContent);
           expect((yield* fs.stat(tracked)).mode & 0o777).toBe(0o600);
         }),
       );
@@ -308,6 +322,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
 
           expect(result.exitCode).toBe(0);
           expect(yield* fs.readFileString(file)).toContain("PORT=3000\n");
+          expect((yield* fs.stat(file)).mode & 0o777).toBe(0o600);
         }),
       );
     });

@@ -8,6 +8,10 @@ description: "The one precedence order of every setting, and every environment v
 Every setting follows one order: a CLI flag or a call option, a client option, an environment
 variable, a config key, a default.
 
+Envi applies the order to each config. One `sync` of several configs fills one cache, so every
+config that uses the cache must end with the same cache encryption and directory. See
+[Cache](./cache.md).
+
 | Variable                                          | Setting                                                          |
 | ------------------------------------------------- | ---------------------------------------------------------------- |
 | `ENVI_STAGE`                                      | The stage.                                                       |

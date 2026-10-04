@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Option from "effect/Option";
 
 import { defineConfig } from "./Config.ts";
@@ -13,6 +14,17 @@ const member = (file: string, stage: string, provider = shared): Groups.Member =
     path: Option.some(file),
   },
   stage,
+  policy: {
+    cache: true,
+    settings: {
+      stage,
+      refresh: false,
+      strict: false,
+      interactive: true,
+      ttl: Duration.days(1),
+      maxStale: Duration.days(7),
+    },
+  },
   providers: [provider],
   vars: { A: mem("a") },
   rejected: {},

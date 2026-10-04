@@ -13,6 +13,8 @@ of the config selects another directory, in this order.
   because the provider is unavailable, Envi uses the expired value up to `maxStale`, 7 days by
   default, and logs a warning. `NotFound`, `AccessDenied`, and `Invalid` never allow the expired
   value. `--strict` and CI turn the fallback off.
+- `sync` applies the cache settings and `strict` of each config to the vars of that config.
+  Configs with different cache settings or `strict` resolve in separate batches.
 - Envi encrypts each entry with AES-256-GCM. The key comes from `ENVI_CACHE_KEY`, or from the
   keychain: the macOS Keychain, or the Secret Service on Linux through `secret-tool`, such as GNOME
   Keyring. Envi creates the key on the first use.
@@ -21,6 +23,11 @@ of the config selects another directory, in this order.
   [`KeyUnavailable`](errors/cache-key-unavailable.md).
 - Envi never falls back from encryption to plaintext. `encryption: "none"` writes plaintext files
   with the mode `0600`, as an explicit opt-in.
+- One `sync` of several configs fills one cache. Every config that uses the cache must select the
+  same encryption and the same directory after the precedence order, or `sync` fails with a
+  [`SettingsError`](errors/settings.md) before it resolves or writes anything. A config with the
+  cache off does not count, and it does not turn the cache off for the others. `--cache-dir`,
+  `ENVI_CACHE_DIR`, or the `cache` option of the client selects one directory for every config.
 - A lock serializes the resolution of several processes on an empty cache, so a provider gets one
   call. Envi recovers the lock of a crashed process.
 - The cache serves the trust level of a `.env` file. Any process of the OS user can use it, a coding

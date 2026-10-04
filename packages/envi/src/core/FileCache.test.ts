@@ -374,7 +374,7 @@ describe("FileCache", () => {
     }).pipe(Effect.provide(nodePlatform)),
   );
 
-  it.effect("renews its lock past the stale age, so no other process takes it", () =>
+  it.effect("renews the time of its lock while it holds the lock past the stale age", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const directory = yield* tempDirectory;
