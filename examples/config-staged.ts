@@ -37,7 +37,8 @@ export default defineConfig({
     }).redact(false),
     // A short-lived secret: its own TTL. `.cache(false)` resolves a value on every load.
     SESSION_SIGNING_KEY: op("app", "api", "session-key").cache({ ttl: "1 hour" }),
-    // A value from user code. Envi caches it for each stage, and for the code and the inputs.
+    // A value from user code. Envi caches it for each stage, the source text of `resolve`, and
+    // the raw inputs.
     BUILD_NUMBER: custom({ id: "build-number", resolve: fetchBuildNumber })
       .redact(false)
       .cache({ ttl: "10 minutes" }),
