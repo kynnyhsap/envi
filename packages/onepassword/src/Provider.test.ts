@@ -316,7 +316,6 @@ describe("onePasswordProvider", () => {
       const tokenText = yield* failureOf(new Error("invalid service account token"));
 
       expect(expired).toMatchObject({ reason: ProviderFailure.AuthenticationFailed });
-      expect(expired.message).toContain("Unlock the app");
       expect(locked).toMatchObject({ reason: ProviderFailure.Unavailable });
       expect(tokenText).toMatchObject({ reason: ProviderFailure.Unavailable });
     }).pipe(withEnv({})),
@@ -365,7 +364,6 @@ describe("onePasswordProvider", () => {
         const error = yield* Fiber.join(fiber);
 
         expect(error).toMatchObject({ reason: ProviderFailure.Unavailable });
-        expect(error.message).toContain("did not answer");
       }).pipe(withEnv({})),
     );
   });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { Source } from "@kynnyhsap/envi";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as SchemaIssue from "effect/SchemaIssue";
 
 import { describeReference, op, Reference } from "./Reference.ts";
 
@@ -14,14 +15,18 @@ const decode = (source: Source.AnySource) =>
     Literal: () => Effect.die("not a reference"),
   });
 
+/** The path of each issue of a failed decode, such as `["item"]`. */
+const failedPaths = (error: Schema.SchemaError) =>
+  SchemaIssue.makeFormatterStandardSchemaV1()(error.issue).issues.map((issue) => issue.path);
+
 describe("op", () => {
   it.effect("rejects a part with / or ?, which the reference syntax cannot escape", () =>
     Effect.gen(function* () {
       const slash = yield* Effect.flip(decode(op("app", "api/prod", "key")));
       const query = yield* Effect.flip(decode(op({ vault: "app", item: "otp?", field: "key" })));
 
-      expect(slash.message).toContain("item ID");
-      expect(query.message).toContain("item ID");
+      expect(failedPaths(slash)).toContainEqual(["item"]);
+      expect(failedPaths(query)).toContainEqual(["item"]);
     }),
   );
 

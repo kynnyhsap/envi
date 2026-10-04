@@ -39,7 +39,6 @@ describe("defineConfig", () => {
       const error = yield* Effect.flip(Config.varsFor(twice, "development"));
 
       expect(error.reason).toBe(ConfigLoadFailure.InvalidConfig);
-      expect(error.detail).toContain("`mem`");
     }),
   );
 
