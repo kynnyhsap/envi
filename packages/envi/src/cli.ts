@@ -226,15 +226,21 @@ const loadOneConfig = (flags: ResolveFlags) =>
     return yield* Effect.flatMap(ConfigLoader.ConfigLoader, (loader) => loader.load(file));
   });
 
-/** The `Envi` service of one run. The cache settings come from the first config. */
+/** The cache flags of a command. */
+const cacheOverridesOf = (flags: ResolveFlags): CacheSettings.Overrides => ({
+  ...CacheSettings.noOverrides,
+  enabled: flags.cache,
+  directory: flags.cacheDir,
+});
+
+/**
+ * The `Envi` service of one run. The cache directory and the encryption come from `configKey`: the
+ * `cache` key of the one config, or the key that `sync` selects for every config.
+ */
 const enviLayer = (flags: ResolveFlags, configKey: Config.Config["cache"]) =>
   Layer.unwrap(
     Effect.map(KeyStore, (store) => {
-      const cache: CacheSettings.Overrides = {
-        ...CacheSettings.noOverrides,
-        enabled: flags.cache,
-        directory: flags.cacheDir,
-      };
+      const cache = cacheOverridesOf(flags);
 
       return Envi.layer({
         strict: Option.getOrUndefined(flags.strict),
@@ -274,8 +280,12 @@ const sync = Command.make(CommandName.Sync, { ...resolveFlags, json: jsonFlag },
   Effect.gen(function* () {
     const configs = yield* loadConfigs(flags, ConfigLoader.ConfigSearch.Repo);
 
+    // The first config that uses the cache selects it, so a config with the cache off never turns
+    // it off for the others.
+    const configKey = yield* CacheSettings.requireOneStorage(cacheOverridesOf(flags), configs);
+
     const report = yield* Envi.Envi.use((envi) => envi.sync(configs, loadOptions(flags))).pipe(
-      Effect.provide(enviLayer(flags, configs[0]?.cache ?? Option.none())),
+      Effect.provide(enviLayer(flags, configKey)),
     );
 
     yield* print(flags.json, SyncReport, report, Render.sync);

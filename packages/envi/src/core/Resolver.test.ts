@@ -363,6 +363,7 @@ describe("Resolver", () => {
   it.effect("keeps one custom entry for each stage, and never for cache(false)", () =>
     Effect.gen(function* () {
       const runs = yield* Ref.make(0);
+      const listCache = Effect.flatMap(Cache.Cache, (cache) => cache.list());
 
       const counted = Source.custom({
         id: "build-number",
@@ -373,16 +374,34 @@ describe("Resolver", () => {
           ),
       });
 
+      const uncached = counted.cache(false);
+
+      yield* Resolver.resolve({ BUILD: uncached }, options);
+
+      const again = yield* Resolver.resolve({ BUILD: uncached }, options);
+
+      expect(succeeded(again, "BUILD").origin).toBe(ValueOrigin.Custom);
+      expect(yield* Ref.get(runs)).toBe(2);
+      expect(yield* listCache).toEqual([]);
+
       yield* Resolver.resolve({ BUILD: counted }, options);
+
+      const reused = yield* Resolver.resolve({ BUILD: counted }, options);
+
+      expect(succeeded(reused, "BUILD").origin).toBe(ValueOrigin.Cache);
+      expect(yield* Ref.get(runs)).toBe(3);
+
       yield* Resolver.resolve({ BUILD: counted }, { ...options, stage: "production" });
       yield* Resolver.resolve({ BUILD: counted }, options);
 
-      expect(yield* Ref.get(runs)).toBe(2);
-
-      yield* Resolver.resolve({ BUILD: counted.cache(false) }, options);
-      yield* Resolver.resolve({ BUILD: counted }, { ...options, refresh: true });
-
       expect(yield* Ref.get(runs)).toBe(4);
+
+      const entries = yield* listCache;
+
+      expect(entries.map((entry) => entry.reference)).toEqual([
+        "custom(build-number)",
+        "custom(build-number)",
+      ]);
     }).pipe(Effect.provide(layerWith())),
   );
 

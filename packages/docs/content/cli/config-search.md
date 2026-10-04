@@ -12,7 +12,8 @@ The project root is the nearest folder with `.git`.
   a repo, the search stops at the home folder. `run`, `check`, `inspect`, and `export` search `up`.
 - `down`: every config in the working directory and below it. In a repo, git decides which files
   count, so an ignored folder is left out. Outside a repo, Envi skips `node_modules` and dot
-  folders.
+  folders. It follows a symlink to a folder, but it visits each folder once, so a link back to
+  the project or to a parent finds no config twice.
 - `repo`: every config of the project, from the project root down. `sync` searches `repo`.
 
 A command that uses one config fails with [`ManyConfigs`](../errors/config-load-many-configs.md) when the

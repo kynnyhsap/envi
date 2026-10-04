@@ -396,7 +396,10 @@ export class ExportFileError extends ReasonError<ExportFileError>()(
   },
 ) {}
 
-/** A setting holds a value that Envi cannot read: an `ENVI_*` variable, a config key, or an option. */
+/**
+ * A setting holds a value that Envi cannot read: an `ENVI_*` variable, a config key, or an option.
+ * The configs of one sync select another cache encryption or directory.
+ */
 export class SettingsError extends EnviError<SettingsError>()(
   "SettingsError",
   { name: Schema.String, expected: Schema.String },

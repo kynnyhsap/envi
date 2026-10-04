@@ -323,26 +323,31 @@ describe("onePasswordProvider", () => {
   );
 
   describe("with a token that the SDK cannot use", () => {
+    const token = "ops_fake";
+
     const failureOf = (rejection: Error) =>
       Effect.gen(function* () {
         const sdk = fakeSdk(secrets, () => Promise.reject(rejection));
-        const provider = makeProvider({ serviceAccountToken: "ops_fake" }, Effect.succeed(sdk));
+        const provider = makeProvider({ serviceAccountToken: token }, Effect.succeed(sdk));
 
         return yield* Effect.flip(provider.resolveMany(requests, { interactive: false }));
       }).pipe(withEnv({}));
 
+    // Each SDK message holds the token, so a failure that copies the message leaks it.
     it.effect("classifies the SDK errors, so an outage allows an expired cache entry", () =>
       Effect.gen(function* () {
-        const limited = yield* failureOf(new FakeRateLimitExceededError("slow down"));
-        const expired = yield* failureOf(new FakeAuthExpiredError("expired"));
-        const rejected = yield* failureOf(new Error("invalid service account token"));
-        const offline = yield* failureOf(new Error("error sending request"));
+        const limited = yield* failureOf(new FakeRateLimitExceededError(`slow down: ${token}`));
+        const expired = yield* failureOf(new FakeAuthExpiredError(`expired: ${token}`));
+        const rejected = yield* failureOf(new Error(`invalid service account token ${token}`));
+        const offline = yield* failureOf(new Error(`error sending request with ${token}`));
+        const errors = [limited, expired, rejected, offline];
 
         expect(limited).toMatchObject({ reason: ProviderFailure.Unavailable });
         expect(expired).toMatchObject({ reason: ProviderFailure.AuthenticationFailed });
         expect(rejected).toMatchObject({ reason: ProviderFailure.AuthenticationFailed });
         expect(offline).toMatchObject({ reason: ProviderFailure.Unavailable });
-        expect(JSON.stringify([limited, expired, rejected, offline])).not.toContain("ops_fake");
+        expect(JSON.stringify(errors)).not.toContain(token);
+        expect(errors.map((error) => error.message).join("\n")).not.toContain(token);
       }),
     );
 
