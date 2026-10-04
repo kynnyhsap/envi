@@ -28,8 +28,9 @@ of the config selects another directory, in this order.
   [`SettingsError`](errors/settings.md) before it resolves or writes anything. A config with the
   cache off does not count, and it does not turn the cache off for the others. `--cache-dir`,
   `ENVI_CACHE_DIR`, or the `cache` option of the client selects one directory for every config.
-- A lock serializes the resolution of several processes on an empty cache, so a provider gets one
-  call. Envi recovers the lock of a crashed process.
+- A lock serializes the resolution of several processes on an empty cache, so a provider usually
+  gets one call. Envi recovers the lock of a crashed process. The lock is best effort. See
+  [Known limits](known-limits.md).
 - The cache serves the trust level of a `.env` file. Any process of the OS user can use it, a coding
   agent too. The encryption protects the files against file reads, searches, and backups.
 - The cache is off in CI by default. `cache path`, `cache list`, and `cache clear` always use the

@@ -75,6 +75,7 @@ A variable wins over a setting. An empty variable counts as absent.
 - A rate limit, a network failure, and a timeout give `Unavailable`, so an expired cache entry can
   serve the run. An expired session and a rejected token give `AuthenticationFailed`.
 - The 1Password app rejects parallel desktop connections from several processes. The resolve lock
-  of the Envi cache serializes them. A service account token has no such limit.
+  of the Envi cache serializes them in most cases. See [Known limits](../known-limits.md). A
+  service account token has no such limit.
 
 [Errors](../errors/index.md) explains each error and its next action.
