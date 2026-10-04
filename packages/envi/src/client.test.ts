@@ -231,6 +231,26 @@ describe("the cache settings of a client", () => {
     expect(await valid.load()).toEqual({ DATABASE_URL: "postgres://fake" });
     await valid.dispose();
   });
+
+  it("syncAll caches the clients that use the cache when the first client turns it off", async () => {
+    const directory = cacheDirectory();
+    // Two providers give two groups, so each config keeps its own policy.
+    const off = oneSecret(false);
+    const cached = oneSecret({ directory, encryption: "none" });
+    const clients = [createEnvi(off.oneConfig), createEnvi(cached.oneConfig)] as const;
+
+    await syncAll(clients);
+
+    const reader = createEnvi(cached.oneConfig);
+
+    expect(await reader.load()).toEqual({ DATABASE_URL: "postgres://fake" });
+    expect(cached.secrets.calls().length).toBe(1);
+    expect(readdirSync(directory).filter((name) => name.endsWith(".json")).length).toBe(1);
+
+    for (const client of [...clients, reader]) {
+      await client.dispose();
+    }
+  });
 });
 
 /** A provider that records `interactive` for each batch, and fails as a whole while `down`. */
@@ -291,6 +311,28 @@ describe("the overrides of a client", () => {
     await expect(strict.load()).rejects.toBeInstanceOf(VarsError);
     await lenient.dispose();
     await strict.dispose();
+  });
+});
+
+describe("the options of a layer", () => {
+  it.each<{ readonly variable: string; readonly options: EnviOptions }>([
+    { variable: "ENVI_STRICT", options: { strict: false } },
+    { variable: "ENVI_INTERACTIVE", options: { interactive: false } },
+    { variable: "ENVI_CACHE_ENABLED", options: { cache: false } },
+  ])("win over a $variable value that is not valid", async ({ variable, options }) => {
+    const { oneConfig } = oneSecret();
+
+    const loadWith = (layerOptions: EnviOptions) =>
+      Envi.Envi.use((envi) => envi.load(oneConfig)).pipe(
+        Effect.provide(layer(layerOptions)),
+        withEnv({ [variable]: "maybe" }),
+      );
+
+    const error = await Effect.runPromise(Effect.flip(loadWith({})));
+
+    expect(await Effect.runPromise(loadWith(options))).toEqual({ DATABASE_URL: "postgres://fake" });
+    expect(error).toBeInstanceOf(SettingsError);
+    expect(error).toMatchObject({ name: variable });
   });
 });
 

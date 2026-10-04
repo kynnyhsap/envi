@@ -64,7 +64,7 @@ The SDK fails with the same tagged errors. Each error has the getters `summary`,
 | [CacheError LockTimeout](./cache-lock-timeout.md)                          | Envi waited too long for the lock of the cache directory.                             |
 | [ExportError](./export.md)                                                 | A value holds characters that the dotenv format cannot quote safely.                  |
 | [ExportFileError WriteFailed](./export-file-write-failed.md)               | Envi cannot write the output file of `envi export --output`.                          |
-| [SettingsError](./settings.md)                                             | A setting holds a value that Envi cannot read.                                        |
+| [SettingsError](./settings.md)                                             | A setting holds a value that Envi cannot read, or the configs of a sync disagree.     |
 | [RunError CommandNotFound](./run-command-not-found.md)                     | The command of `envi run` does not exist on `PATH`.                                   |
 | [RunError CommandNotExecutable](./run-command-not-executable.md)           | The command of `envi run` exists, but the OS does not allow Envi to run it.           |
 | [RunError SpawnFailed](./run-spawn-failed.md)                              | The OS failed to start the command of `envi run`.                                     |

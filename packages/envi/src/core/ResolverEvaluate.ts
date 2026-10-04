@@ -337,6 +337,9 @@ const fromCustom = (
 
   return Effect.gen(function* () {
     const inputs = yield* evaluateInputs(step, origin.inputs, description);
+    // The digest holds the source text of `resolve` and the raw input strings, not the schemas
+    // or the decoded values: no serialization of a schema or a decoded value is reliable. The
+    // cache key holds the stage and the scope.
     const digest = yield* Digest.sha256Hex(JSON.stringify([origin.code, inputs.raws]));
     const record = customRecord(Option.fromUndefinedOr(step.fetched.records[key]), digest);
     const fresh = Option.filter(record, (found) => step.freshness.isFresh(source, found));

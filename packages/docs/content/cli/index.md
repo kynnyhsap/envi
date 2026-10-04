@@ -19,6 +19,11 @@ description: "Every command and flag of the envi CLI, and where the logs go."
 
 A flag follows its command: `envi check --stage production`.
 
+`envi sync` fills one cache for every config that it finds. A config with `cache: false` does not
+turn the cache off for the others. Each config that uses the cache must select the same encryption
+and directory, or `sync` fails with a [`SettingsError`](../errors/settings.md) and writes nothing.
+`--cache-dir` selects one directory for every config. See [Cache](../cache.md).
+
 | Flag                                | Commands                                      | Does                                                        |
 | ----------------------------------- | --------------------------------------------- | ----------------------------------------------------------- |
 | `--config <file>`                   | run, sync, check, inspect, export             | Selects a config file. Repeat it for several files.         |
