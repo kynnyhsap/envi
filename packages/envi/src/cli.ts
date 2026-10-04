@@ -194,12 +194,14 @@ const configFiles = Effect.fn("cli.configFiles")(function* (
     return fromVariable.value.split(",").map((file) => file.trim());
   }
 
-  const fromSearchVariable = yield* readConfigSearch;
-
-  const search = flags.configSearch.pipe(
-    Option.orElse(() => fromSearchVariable),
-    Option.getOrElse(() => fallback),
-  );
+  const search = yield* Option.match(flags.configSearch, {
+    onSome: Effect.succeed,
+    onNone: () =>
+      Effect.map(
+        readConfigSearch,
+        Option.getOrElse(() => fallback),
+      ),
+  });
 
   return yield* loader.find(path.resolve("."), search);
 });

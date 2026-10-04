@@ -8,6 +8,12 @@ description: "The one precedence order of every setting, and every environment v
 Every setting follows one order: a CLI flag or a call option, a client option, an environment
 variable, a config key, a default.
 
+Envi reads a setting only when no setting above it decides. A flag or an option overrides an
+environment variable that holds a value Envi cannot read, and Envi reports a
+[`SettingsError`](errors/settings.md) for a variable only when it uses the variable. For example,
+`envi check --config-search up` ignores `ENVI_CONFIG_SEARCH`, and `strict: false` ignores
+`ENVI_STRICT`.
+
 Envi applies the order to each config. One `sync` of several configs fills one cache, so every
 config that uses the cache must end with the same cache encryption and directory. See
 [Cache](./cache.md).

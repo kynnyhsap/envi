@@ -99,6 +99,27 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi config and flags"
       }),
     );
 
+    it.effect("lets --config-search override an ENVI_CONFIG_SEARCH that is not valid", () =>
+      Effect.gen(function* () {
+        const sandbox = yield* makeSandbox("none");
+        const variable = "ENVI_CONFIG_SEARCH";
+        const env = { ...sandbox.env, [variable]: "sideways" };
+        const args = ["check", "--no-cache", "--json"];
+
+        const byFlag = yield* runCli(runtime, app, [...args, "--config-search", "up"], env);
+        const byVariable = yield* runCli(runtime, app, args, env);
+
+        expect(byFlag.exitCode).toBe(0);
+        expect((yield* decodeJson(CheckReport, byFlag.stdout)).passed).toContain("API_TOKEN");
+        expect(byVariable.exitCode).toBe(1);
+
+        const { error } = yield* decodeJson(ErrorReport, byVariable.stdout);
+
+        expect(error.error).toBe("SettingsError");
+        expect(error.summary).toContain(variable);
+      }),
+    );
+
     it.effect("searches down outside a repo once per folder, through symlink cycles", () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;

@@ -205,11 +205,12 @@ export class Envi extends Context.Service<Envi, Interface>()("envi/Envi") {}
 
 /** The stage of a config: the option, then `ENVI_STAGE`, then the default stage of the config. */
 const stageOf = (config: Config.Config, requested: string | undefined) =>
-  Effect.flatMap(Settings.stage, (fromEnvironment) =>
-    Config.selectStage(
-      config,
-      Option.orElse(Option.fromUndefinedOr(requested), () => fromEnvironment),
-    ),
+  Effect.flatMap(
+    Option.match(Option.fromUndefinedOr(requested), {
+      onSome: Effect.succeedSome,
+      onNone: () => Settings.stage,
+    }),
+    (stage) => Config.selectStage(config, stage),
   );
 
 /** The status of a cache layer that reports none: a cache without files that stores values. */

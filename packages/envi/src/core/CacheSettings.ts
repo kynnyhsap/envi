@@ -158,7 +158,8 @@ const durationAt = (
 /**
  * Applies the order of every setting: a flag, the `cache` option, a variable, the `cache` key of
  * the config, a default. The option replaces the whole config key. `decided` is the first setting
- * that turns the cache on or off.
+ * that turns the cache on or off. Envi reads `ENVI_CACHE_ENABLED` only when no setting above it
+ * decides.
  */
 const decide = Effect.fn("CacheSettings.decide")(function* (
   overrides: Overrides,
@@ -167,14 +168,14 @@ const decide = Effect.fn("CacheSettings.decide")(function* (
   const option = yield* decodeKey("option cache", overrides.option);
   const config = Option.isSome(option) ? Option.none() : yield* decodeKey("cache", configKey);
 
-  const enabledFromVariable = yield* Settings.readBoolean(enabledVariable);
+  const decidedAbove = Option.orElse(overrides.enabled, () => offAt(option));
 
-  const decided = Option.firstSomeOf([
-    overrides.enabled,
-    offAt(option),
-    enabledFromVariable,
-    offAt(config),
-  ]);
+  const enabledFromVariable = yield* Option.match(decidedAbove, {
+    onSome: () => Effect.succeedNone,
+    onNone: () => Settings.readBoolean(enabledVariable),
+  });
+
+  const decided = Option.firstSomeOf([decidedAbove, enabledFromVariable, offAt(config)]);
 
   const policy: Policy = {
     enabled: Option.getOrElse(decided, () => true),
@@ -211,14 +212,18 @@ const decideStorage = Effect.fn("CacheSettings.decideStorage")(function* (
   const { option, config, decided, policy } = yield* decide(overrides, configKey);
   const isCi = yield* Settings.isCi;
 
-  const directoryFromVariable = yield* Settings.readString(directoryVariable, expected.directory);
+  const directoryAbove = Option.orElse(overrides.directory, () => fieldAt(option, "directory"));
+
+  const directoryFromVariable = yield* Option.match(directoryAbove, {
+    onSome: () => Effect.succeedNone,
+    onNone: () => Settings.readString(directoryVariable, expected.directory),
+  });
 
   const selection: Selection = {
     ...policy,
     enabled: Option.getOrElse(decided, () => !isCi),
     directory: Option.firstSomeOf([
-      overrides.directory,
-      fieldAt(option, "directory"),
+      directoryAbove,
       directoryFromVariable,
       fieldAt(config, "directory"),
     ]),
