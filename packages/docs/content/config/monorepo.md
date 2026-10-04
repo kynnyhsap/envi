@@ -14,5 +14,10 @@ batch when they have the same stage, the same provider instances, the same cache
 same `strict`. Configs with different cache settings or `strict` resolve in separate batches, so
 each config gets the cache and the stale fallback of a run of that config alone.
 
+`envi sync` fills one cache for every config. Each config that uses the cache must select the same
+`cache.encryption` and `cache.directory`, so a shared module is a good home for the `cache` key.
+Otherwise `sync` fails with a [`SettingsError`](../errors/settings.md) and writes nothing. See
+[Cache](../cache.md).
+
 A config file on Node has the limits of type stripping: no enums, no namespaces, no parameter
 properties, explicit `.ts` extensions in relative imports, no tsconfig `paths`, and ESM only.

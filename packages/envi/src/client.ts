@@ -1,4 +1,4 @@
-import type * as Effect from "effect/Effect";
+import * as Effect from "effect/Effect";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
 
@@ -15,12 +15,14 @@ import type {
   SyncReport,
 } from "./core/Reports.ts";
 import * as Source from "./core/Source.ts";
-import { type EnviOptions, layerOf, type Services } from "./layer.ts";
+import { type EnviOptions, layerOf, type Services, syncLayerOf } from "./layer.ts";
 import type * as Platform from "./platform.ts";
 
 const configOf: unique symbol = Symbol.for("envi/client/config");
 
 const runtimeOf: unique symbol = Symbol.for("envi/client/runtime");
+
+const optionsOf: unique symbol = Symbol.for("envi/client/options");
 
 type ClientRuntime = ManagedRuntime.ManagedRuntime<Services, SettingsError>;
 
@@ -28,6 +30,7 @@ type ClientRuntime = ManagedRuntime.ManagedRuntime<Services, SettingsError>;
 export interface AnyEnvi {
   readonly [configOf]: Config.Config;
   readonly [runtimeOf]: ClientRuntime;
+  readonly [optionsOf]: EnviOptions;
   /** Releases the resources of the client. A short script does not need it. */
   readonly dispose: () => Promise<void>;
 }
@@ -110,6 +113,7 @@ export const createEnvi = <C extends Config.Config>(
   return {
     [configOf]: config,
     [runtimeOf]: runtime,
+    [optionsOf]: overrides,
     dispose: () => runtime.dispose(),
     load: (options) => run((envi) => envi.load(config, options)),
     loadRaw: (options) => run((envi) => envi.loadRaw(config, options)),
@@ -131,17 +135,20 @@ export const createEnvi = <C extends Config.Config>(
 /**
  * Syncs the configs of several clients in one run, with one call for each shared provider.
  * Configs with different cache settings or `strict` resolve in separate batches.
- * It uses the cache and the overrides of the first client.
+ * It uses the overrides of the first client. The first config that uses the cache selects the
+ * cache, so a client with the cache off never turns it off for the others. Every config that uses
+ * the cache must select the same encryption and directory under those overrides, or it rejects
+ * with a `SettingsError` before it resolves anything.
  */
 export const syncAll = (
   clients: readonly [AnyEnvi, ...ReadonlyArray<AnyEnvi>],
   options?: Envi.LoadOptions<string>,
-): Promise<SyncReport> =>
-  clients[0][runtimeOf].runPromise(
-    Envi.Envi.use((envi) =>
-      envi.sync(
-        clients.map((client) => client[configOf]),
-        options,
-      ),
+): Promise<SyncReport> => {
+  const configs = clients.map((client) => client[configOf]);
+
+  return clients[0][runtimeOf].runPromise(
+    Envi.Envi.use((envi) => envi.sync(configs, options)).pipe(
+      Effect.provide(syncLayerOf(clients[0][optionsOf], configs)),
     ),
   );
+};

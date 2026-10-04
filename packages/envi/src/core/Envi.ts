@@ -160,7 +160,9 @@ export interface Interface {
   };
   /**
    * Fills the cache. A list of configs gives one call for each shared provider. Configs with
-   * different cache settings or `strict` resolve in separate batches.
+   * different cache settings or `strict` resolve in separate batches. Every config that uses the
+   * cache must select the same encryption and directory, or the sync fails with a `SettingsError`
+   * before it resolves anything.
    */
   readonly sync: (
     configs: Config.Config | ReadonlyArray<Config.Config>,
@@ -438,6 +440,9 @@ const sync = Effect.fn("Envi.sync")(function* (
 ) {
   const startedAt = yield* Clock.currentTimeMillis;
   const list = Config.isConfig(configs) ? [configs] : configs;
+
+  // One cache serves the whole sync, so it never stores a secret in the storage of another config.
+  yield* CacheSettings.requireOneStorage(runtime.cacheOverrides, list);
 
   const members = yield* Effect.forEach(list, (config) =>
     Effect.gen(function* () {

@@ -23,6 +23,11 @@ of the config selects another directory, in this order.
   [`KeyUnavailable`](errors/cache-key-unavailable.md).
 - Envi never falls back from encryption to plaintext. `encryption: "none"` writes plaintext files
   with the mode `0600`, as an explicit opt-in.
+- One `sync` of several configs fills one cache. Every config that uses the cache must select the
+  same encryption and the same directory after the precedence order, or `sync` fails with a
+  [`SettingsError`](errors/settings.md) before it resolves or writes anything. A config with the
+  cache off does not count, and it does not turn the cache off for the others. `--cache-dir`,
+  `ENVI_CACHE_DIR`, or the `cache` option of the client selects one directory for every config.
 - A lock serializes the resolution of several processes on an empty cache, so a provider gets one
   call. Envi recovers the lock of a crashed process.
 - The cache serves the trust level of a `.env` file. Any process of the OS user can use it, a coding
