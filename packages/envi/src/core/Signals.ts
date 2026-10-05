@@ -5,8 +5,10 @@ import type { PlatformError } from "effect/PlatformError";
 import * as Predicate from "effect/Predicate";
 import type * as ChildProcess from "effect/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner";
+import * as Queue from "effect/Queue";
 import * as Record from "effect/Record";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 /** The signals that `run` handles, with their numbers. */
@@ -33,12 +35,14 @@ export interface Received {
 }
 
 /**
- * The signals of the Envi process. `run` subscribes while its child runs. The default never
- * emits. The entry point of a runtime provides the real stream.
+ * Subscribes to the signals of the Envi process for the scope. The subscription listens at once,
+ * and its queue holds each signal until `run` takes it. `run` subscribes before it starts its
+ * child, so a signal during the start still reaches the child. The default never receives. The
+ * entry point of a runtime provides the real subscription.
  */
-export const Signals = Context.Reference<Stream.Stream<Received>>("envi/Signals", {
-  defaultValue: () => Stream.never,
-});
+export const Signals = Context.Reference<
+  Effect.Effect<Queue.Dequeue<Received>, never, Scope.Scope>
+>("envi/Signals", { defaultValue: () => Queue.unbounded<Received>() });
 
 /**
  * The signal that ended a child. The spawner reports it only in the message of the cause of the
@@ -66,16 +70,17 @@ const endingSignal = (error: PlatformError): Option.Option<SignalName> => {
  */
 export const supervise = Effect.fn("Signals.supervise")(function* (command: ChildProcess.Command) {
   const spawner = yield* ChildProcessSpawner;
-  const signals = yield* Signals;
+  const subscribe = yield* Signals;
 
   return yield* Effect.scoped(
     Effect.gen(function* () {
+      const signals = yield* subscribe;
       const handle = yield* spawner.spawn(command);
 
       // `kill` waits for the child to exit. Each forward runs in its own fiber, so the next signal
       // reaches the child while it still runs.
       yield* Effect.forkScoped(
-        Stream.runForEach(signals, (signal) =>
+        Stream.runForEach(Stream.fromQueue(signals), (signal) =>
           signal.forward
             ? Effect.forkScoped(Effect.ignore(handle.kill({ killSignal: signal.name })))
             : Effect.void,

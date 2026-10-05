@@ -4,6 +4,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import { ChildProcess } from "effect/process";
+import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 
@@ -22,8 +23,14 @@ const node = (script: string) =>
 const endsItselfWith = (name: string) =>
   `process.kill(process.pid, '${name}'); setInterval(() => {}, 1000);`;
 
+/** A subscription that receives the signals of the stream. */
 const withSignals = (signals: Stream.Stream<Signals.Received>) =>
-  Effect.provideService(Signals.Signals, signals);
+  Effect.provideService(
+    Signals.Signals,
+    Effect.tap(Queue.unbounded<Signals.Received>(), (queue) =>
+      Effect.forkScoped(Stream.runForEach(signals, (signal) => Queue.offer(queue, signal))),
+    ),
+  );
 
 const forwarded = (name: Signals.SignalName): Signals.Received => ({ name, forward: true });
 

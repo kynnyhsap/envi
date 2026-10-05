@@ -494,7 +494,7 @@ const sync = Effect.fn("Envi.sync")(function* (
         Outcomes.failuresOf(member.rejected, (key) => ({ key, config: member.config.path })),
       ),
     ],
-    cache: (yield* runtime.status.active) && groups.every((group) => group.policy.cache),
+    cache: (yield* runtime.status.active) && groups.some((group) => group.policy.cache),
     durationMillis: finishedAt - startedAt,
   } satisfies SyncReport;
 });

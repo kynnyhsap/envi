@@ -23,10 +23,13 @@ The client also has `run`, `sync`, `check`, `inspect`, `export`, and `cache.path
 and `cache.clear`. Each returns the report that `--json` prints. `syncAll(clients)` syncs several
 clients with one call for each shared provider. A var that names a provider outside its own config
 fails with `UnknownProvider`, as in `check`. Configs with different cache settings or `strict`
-resolve in separate batches. It uses the overrides of the first client, and the cache of the first
+resolve in separate batches. Every client must have the same overrides: the same provider
+instances, an equal `cache`, and the same `strict` and `interactive`. Otherwise `syncAll` rejects
+with a [`SettingsError`](../errors/settings.md) and resolves nothing. It uses the cache of the first
 config that uses the cache, so a client with `cache: false` never turns the cache off for the
-others. Every config that uses the cache must select the same encryption and directory under those
-overrides, or it rejects with a [`SettingsError`](../errors/settings.md).
+others. Every config that uses the cache must select the same encryption and directory under the
+overrides, or it rejects with a `SettingsError` too. Its report says that the cache is on when at
+least one config uses the cache.
 `createEnvi(config, overrides)` takes `providers`, `cache`, `strict`, and `interactive`, which win
 over the config. The `cache` override replaces the whole `cache` key of the config: `false` turns
 the cache off, and an object turns a `cache: false` of the config into a cache with these

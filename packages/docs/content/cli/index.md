@@ -22,7 +22,9 @@ A flag follows its command: `envi check --stage production`.
 `envi sync` fills one cache for every config that it finds. A config with `cache: false` does not
 turn the cache off for the others. Each config that uses the cache must select the same encryption
 and directory, or `sync` fails with a [`SettingsError`](../errors/settings.md) and writes nothing.
-`--cache-dir` selects one directory for every config. See [Cache](../cache.md).
+`--cache-dir` selects one directory for every config. `envi sync` says that the cache is off, and
+the `cache` field of its `--json` report is `false`, only when no config uses the cache. See
+[Cache](../cache.md).
 
 | Flag                                | Commands                                      | Does                                                        |
 | ----------------------------------- | --------------------------------------------- | ----------------------------------------------------------- |

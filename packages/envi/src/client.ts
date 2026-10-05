@@ -15,7 +15,7 @@ import type {
   SyncReport,
 } from "./core/Reports.ts";
 import * as Source from "./core/Source.ts";
-import { type EnviOptions, layerOf, type Services, syncLayerOf } from "./layer.ts";
+import { type EnviOptions, layerOf, type Services, syncAllLayerOf } from "./layer.ts";
 import type * as Platform from "./platform.ts";
 
 const configOf: unique symbol = Symbol.for("envi/client/config");
@@ -135,20 +135,23 @@ export const createEnvi = <C extends Config.Config>(
 /**
  * Syncs the configs of several clients in one run, with one call for each shared provider.
  * Configs with different cache settings or `strict` resolve in separate batches.
- * It uses the overrides of the first client. The first config that uses the cache selects the
- * cache, so a client with the cache off never turns it off for the others. Every config that uses
- * the cache must select the same encryption and directory under those overrides, or it rejects
- * with a `SettingsError` before it resolves anything.
+ * Every client must have the same overrides, or it rejects with a `SettingsError` before it
+ * resolves anything. The first config that uses the cache selects the cache, so a client with the
+ * cache off never turns it off for the others. Every config that uses the cache must select the
+ * same encryption and directory, or it rejects with a `SettingsError` too.
  */
 export const syncAll = (
   clients: readonly [AnyEnvi, ...ReadonlyArray<AnyEnvi>],
   options?: Envi.LoadOptions<string>,
 ): Promise<SyncReport> => {
+  const [first, ...rest] = clients;
   const configs = clients.map((client) => client[configOf]);
 
-  return clients[0][runtimeOf].runPromise(
+  return first[runtimeOf].runPromise(
     Envi.Envi.use((envi) => envi.sync(configs, options)).pipe(
-      Effect.provide(syncLayerOf(clients[0][optionsOf], configs)),
+      Effect.provide(
+        syncAllLayerOf([first[optionsOf], ...rest.map((client) => client[optionsOf])], configs),
+      ),
     ),
   );
 };
