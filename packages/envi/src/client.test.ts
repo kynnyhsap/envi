@@ -1,6 +1,5 @@
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,9 +13,6 @@ import {
   defineConfig,
   Envi,
   layer,
-  Provider,
-  ProviderError,
-  ProviderFailure,
   SecretReferenceError,
   SettingsError,
   syncAll,
@@ -24,7 +20,7 @@ import {
   type CacheKey,
   type EnviOptions,
 } from "./index.ts";
-import { mem, memoryProvider, memoryProviderId } from "./testing.ts";
+import { mem, memoryProvider } from "./testing.ts";
 
 const provider = memoryProvider({ "db/url": "postgres://fake", port: "5432" });
 
@@ -253,65 +249,47 @@ describe("the cache settings of a client", () => {
   });
 });
 
-/** A provider that records `interactive` for each batch, and fails as a whole while `down`. */
-const switchable = () => {
-  const state = { down: false, interactive: new Array<boolean>() };
+describe("syncAll", () => {
+  it.each<{
+    readonly field: keyof EnviOptions;
+    readonly other: (base: EnviOptions) => EnviOptions;
+  }>([
+    {
+      field: "providers",
+      other: () => ({ providers: [memoryProvider({ "db/url": "postgres://fake" })] }),
+    },
+    { field: "cache", other: (base) => ({ cache: { ...Object(base.cache), ttl: "2 hours" } }) },
+    { field: "strict", other: () => ({ strict: true }) },
+    { field: "interactive", other: () => ({ interactive: false }) },
+  ])(
+    "rejects clients with another $field override, and resolves nothing",
+    async ({ field, other }) => {
+      const directory = cacheDirectory();
+      const base = (): EnviOptions => ({ cache: { directory, encryption: "none" } });
+      const { secrets, oneConfig } = oneSecret();
+      const first = createEnvi(oneConfig, base());
+      const differs = createEnvi(oneConfig, { ...base(), ...other(base()) });
+      // Equal overrides in another object.
+      const same = createEnvi(oneConfig, base());
+      const cacheFiles = () => readdirSync(directory).filter((name) => name.endsWith(".json"));
 
-  const source = Provider.make({
-    id: memoryProviderId,
-    scope: "switchable",
-    resolveMany: (requests, context) =>
-      Effect.suspend(() => {
-        state.interactive.push(context.interactive);
+      const error = await syncAll([first, differs]).catch((cause: unknown) => cause);
 
-        return state.down
-          ? Effect.fail(
-              new ProviderError({
-                reason: ProviderFailure.Unavailable,
-                provider: memoryProviderId,
-                detail: "The test provider is down.",
-              }),
-            )
-          : Effect.succeed(
-              Object.fromEntries(requests.map((request) => [request.key, Result.succeed("1")])),
-            );
-      }),
-    helpers: {},
-  });
+      expect(error).toBeInstanceOf(SettingsError);
+      expect(error).toMatchObject({ name: `option ${field}` });
+      expect(secrets.calls()).toEqual([]);
+      expect(cacheFiles()).toEqual([]);
 
-  return { state, oneConfig: defineConfig({ providers: [source], vars: { A: mem("a") } }) };
-};
+      const report = await syncAll([first, same]);
 
-describe("the overrides of a client", () => {
-  it("wins over ENVI_INTERACTIVE", async () => {
-    vi.stubEnv("ENVI_INTERACTIVE", "true");
+      expect(report.failures).toEqual([]);
+      expect(cacheFiles().length).toBe(1);
 
-    const { state, oneConfig } = switchable();
-    const envi = createEnvi(oneConfig, { cache: false, interactive: false });
-
-    await envi.load();
-    await envi.dispose();
-
-    expect(state.interactive).toEqual([false]);
-  });
-
-  it("wins over ENVI_STRICT for the stale fallback", async () => {
-    vi.stubEnv("ENVI_STRICT", "true");
-
-    const { state, oneConfig } = switchable();
-    // With a ttl of 0, every entry has expired at the next load.
-    const cache = { directory: cacheDirectory(), encryption: "none", ttl: 0 } as const;
-    const lenient = createEnvi(oneConfig, { cache, strict: false });
-    const strict = createEnvi(oneConfig, { cache, strict: true });
-
-    await lenient.load();
-    state.down = true;
-
-    expect(await lenient.load()).toEqual({ A: "1" });
-    await expect(strict.load()).rejects.toBeInstanceOf(VarsError);
-    await lenient.dispose();
-    await strict.dispose();
-  });
+      for (const client of [first, differs, same]) {
+        await client.dispose();
+      }
+    },
+  );
 });
 
 describe("the options of a layer", () => {

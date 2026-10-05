@@ -397,7 +397,7 @@ describe("Envi", () => {
   );
 
   it.effect.each(["cached first", "uncached first"] as const)(
-    "syncs a config with cache: false next to a cached config, %s, and caches only the cached one",
+    "syncs a config with cache: false next to a cached config, %s, caches only the cached one, and reports the cache",
     (order) =>
       Effect.gen(function* () {
         const envi = yield* Envi.Envi;
@@ -417,6 +417,7 @@ describe("Envi", () => {
         const list = yield* envi.cache.list;
 
         expect(report.failures).toEqual([]);
+        expect(report.cache).toBe(true);
         expect(list.entries.map((entry) => entry.reference)).toEqual([`${memoryProviderId}://a`]);
       }).pipe(Effect.provide(layer)),
   );

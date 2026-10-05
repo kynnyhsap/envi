@@ -1,12 +1,16 @@
+import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
+import * as Equal from "effect/Equal";
+import * as Equivalence from "effect/Equivalence";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Record from "effect/Record";
 
 import * as CacheSettings from "./core/CacheSettings.ts";
 import type * as Config from "./core/Config.ts";
 import * as DefaultCache from "./core/DefaultCache.ts";
 import * as Envi from "./core/Envi.ts";
-import type { SettingsError } from "./core/Errors.ts";
+import { SettingsError } from "./core/Errors.ts";
 import * as Keychain from "./core/Keychain.ts";
 import type { Provider } from "./core/Provider.ts";
 import * as Platform from "./platform.ts";
@@ -77,6 +81,48 @@ export const syncLayerOf = (
     Effect.map(CacheSettings.requireOneStorage(overridesOf(options), configs), (configKey) =>
       layerOf(options, configKey),
     ),
+  );
+
+/** The same provider instances in the same order. Another instance of a provider differs. */
+const sameProviders = Equivalence.make<ReadonlyArray<Provider> | undefined>((self, that) =>
+  self === undefined || that === undefined
+    ? self === that
+    : Arr.makeEquivalence(Equivalence.strictEqual<Provider>())(self, that),
+);
+
+/** The comparison of each override of a client. */
+const sameOverride: Readonly<Record<keyof EnviOptions, Equivalence.Equivalence<EnviOptions>>> = {
+  providers: (self, that) => sameProviders(self.providers, that.providers),
+  cache: (self, that) => Equal.equals(self.cache, that.cache),
+  strict: (self, that) => self.strict === that.strict,
+  interactive: (self, that) => self.interactive === that.interactive,
+};
+
+/**
+ * The `Envi` service of a sync of the configs of several clients. One sync has one set of
+ * overrides, so it fails when a client has other overrides than the first client.
+ */
+export const syncAllLayerOf = (
+  options: readonly [EnviOptions, ...ReadonlyArray<EnviOptions>],
+  configs: ReadonlyArray<Config.Config>,
+): Layer.Layer<Services, SettingsError> =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const [first] = options;
+
+      for (const [index, other] of options.entries()) {
+        const field = Record.keys(sameOverride).find((key) => !sameOverride[key](first, other));
+
+        if (field !== undefined) {
+          return yield* new SettingsError({
+            name: `option ${field}`,
+            expected: `one value for every client of syncAll, but client ${index + 1} has another value than client 1`,
+          });
+        }
+      }
+
+      return syncLayerOf(first, configs);
+    }),
   );
 
 /**

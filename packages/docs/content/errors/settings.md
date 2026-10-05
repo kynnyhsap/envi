@@ -1,6 +1,6 @@
 ---
 title: "SettingsError"
-description: "A setting holds a value that Envi cannot read, or the configs of a sync disagree."
+description: "A setting holds a value that Envi cannot read, or the configs or clients of a sync disagree."
 ---
 
 # SettingsError
@@ -18,5 +18,10 @@ same `cache.encryption` and `cache.directory`. When two configs differ, the erro
 setting, both config files, and the value that each one selects, and `sync` writes nothing. Give
 the configs the same value, or select one directory for all with `--cache-dir` or
 `ENVI_CACHE_DIR`.
+
+`syncAll(clients)` runs one sync with one set of overrides, so every client must have the same
+overrides of `createEnvi`. When a client differs from the first client, the error names the
+option, such as `option strict`, and `syncAll` resolves nothing. Give the clients the same
+overrides, or sync them apart.
 
 Next action: Fix the value of the setting that the error names, or remove it.

@@ -2,44 +2,42 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Runtime from "effect/Runtime";
-import * as Stream from "effect/Stream";
 
 // The signals of the running process. This module is the only place that calls `process.on`.
 import * as Signals from "./core/Signals.ts";
 
 /**
- * The signals of the process. The handlers exist only while a subscriber runs, so an import of
- * Envi installs no handler.
+ * Subscribes to the signals of the process. The handlers exist only for the scope of the
+ * subscription, so an import of Envi installs no handler.
  */
-const processSignals: Stream.Stream<Signals.Received> = Stream.callback((queue) =>
-  Effect.acquireRelease(
-    Effect.sync(() =>
-      Signals.signalNames.map((name) => {
-        const handler = () => {
-          // A terminal sends SIGINT to the whole foreground process group, the child included.
-          // A pipe on stdin, such as `cmd | envi run -- srv`, still leaves the terminal on stdout.
-          const hasTerminal = process.stdin.isTTY || process.stdout.isTTY || process.stderr.isTTY;
-          const forward = name !== "SIGINT" || !hasTerminal;
+const subscribe = Effect.acquireRelease(
+  Effect.map(Queue.unbounded<Signals.Received>(), (queue) => ({
+    queue,
+    handlers: Signals.signalNames.map((name) => {
+      const handler = () => {
+        // A terminal sends SIGINT to the whole foreground process group, the child included.
+        // A pipe on stdin, such as `cmd | envi run -- srv`, still leaves the terminal on stdout.
+        const hasTerminal = process.stdin.isTTY || process.stdout.isTTY || process.stderr.isTTY;
+        const forward = name !== "SIGINT" || !hasTerminal;
 
-          Queue.offerUnsafe(queue, { name, forward });
-        };
+        Queue.offerUnsafe(queue, { name, forward });
+      };
 
-        process.on(name, handler);
+      process.on(name, handler);
 
-        return [name, handler] as const;
-      }),
-    ),
-    (handlers) =>
-      Effect.sync(() => {
-        for (const [name, handler] of handlers) {
-          process.removeListener(name, handler);
-        }
-      }),
-  ),
-);
+      return [name, handler] as const;
+    }),
+  })),
+  ({ handlers }) =>
+    Effect.sync(() => {
+      for (const [name, handler] of handlers) {
+        process.removeListener(name, handler);
+      }
+    }),
+).pipe(Effect.map(({ queue }): Queue.Dequeue<Signals.Received> => queue));
 
 /** Provides the signals of the process to `run`. */
-export const layer = Layer.succeed(Signals.Signals, processSignals);
+export const layer = Layer.succeed(Signals.Signals, subscribe);
 
 /**
  * Runs the main Effect of the CLI. A signal interrupts the Effect, except while `run` handles

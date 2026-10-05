@@ -76,7 +76,10 @@ export const SyncReport = Schema.Struct({
     }),
   ),
   failures: Schema.Array(VarFailure),
-  /** `false` when the cache is off, as in CI. The next run then resolves every secret again. */
+  /**
+   * `true` when at least one config of the sync uses the cache. `false` when the cache is off for
+   * every config, as in CI. The next run then resolves every secret again.
+   */
   cache: Schema.Boolean,
   durationMillis: Schema.Number,
 });
