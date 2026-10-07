@@ -29,7 +29,8 @@ with a [`SettingsError`](../errors/settings.md) and resolves nothing. It uses th
 config that uses the cache, so a client with `cache: false` never turns the cache off for the
 others. Every config that uses the cache must select the same encryption and directory under the
 overrides, or it rejects with a `SettingsError` too. Its report says that the cache is on when at
-least one config uses the cache.
+least one config uses the cache. Its `stages` lists each stage of the sync once, in the order of
+the configs.
 `createEnvi(config, overrides)` takes `providers`, `cache`, `strict`, and `interactive`, which win
 over the config. The `cache` override replaces the whole `cache` key of the config: `false` turns
 the cache off, and an object turns a `cache: false` of the config into a cache with these

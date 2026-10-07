@@ -123,6 +123,32 @@ describe("createEnvi", () => {
     await web.dispose();
     await api.dispose();
   });
+
+  it("reports every stage when the clients have different default stages", async () => {
+    const shared = memoryProvider({ "db/url": "postgres://fake", port: "5432" });
+
+    const web = createEnvi(
+      defineConfig({ providers: [shared], cache: false, vars: { DATABASE_URL: mem("db/url") } }),
+    );
+
+    const api = createEnvi(
+      defineConfig({
+        stages: ["development", "production"],
+        defaultStage: "production",
+        providers: [shared],
+        cache: false,
+        vars: { PORT: mem("port") },
+      }),
+    );
+
+    const report = await syncAll([web, api]);
+    const one = await syncAll([web, api], { stage: "development" });
+
+    expect(report.stages).toEqual(["development", "production"]);
+    expect(one.stages).toEqual(["development"]);
+    await web.dispose();
+    await api.dispose();
+  });
 });
 
 describe("layer", () => {
