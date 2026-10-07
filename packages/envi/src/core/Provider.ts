@@ -69,7 +69,7 @@ export interface Definition<Ref, Helpers extends object> {
   ) => Effect.Effect<BatchResults, ProviderError>;
   /**
    * Lists the references whose names match each query, best match first. `envi find` uses it. It
-   * reads no value, and it gets every query in one call. Optional: `find` skips a provider
+   * returns no value and logs no value, and it gets every query in one call. Optional: `find` skips a provider
    * without it.
    */
   readonly discover?: (

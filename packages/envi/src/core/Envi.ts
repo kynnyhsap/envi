@@ -195,7 +195,7 @@ export interface Interface {
   ) => Effect.Effect<RunReport, EnviError | RunError, ChildProcessSpawner | ParentEnvironment>;
   /**
    * Lists the references whose names match each query, from every provider of the config that can
-   * search. It reads no value, and it makes one call for each provider.
+   * search. It returns no value, and it makes one call for each provider.
    */
   readonly find: (
     config: Config.Config,

@@ -67,8 +67,8 @@ This repository is public. These rules have no exception.
   and the policy: the cache settings, `strict`, and `interactive`. A batch never applies the
   policy of one config to the vars of another. `find` is the one exception: it makes one search
   call per provider, but the 1Password SDK has no search, so its provider lists the vaults, the
-  items of each vault, and the fields of the matches, one SDK call each. `find` reads no value,
-  and `load`, `run`, and `sync` never search.
+  items of each vault, and the fields of the matches, one SDK call each, and 50 items at most a
+  call. `find` returns no value and logs no value, and `load`, `run`, and `sync` never search.
 - **One client, one config.** Every SDK operation comes from `createEnvi(config, overrides?)`. No
   top-level `load` and no default instance exist. The client mirrors the CLI.
 - **Envi never changes `process.env`.** Do not add a helper that only saves the user one line.

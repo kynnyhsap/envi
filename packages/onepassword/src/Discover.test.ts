@@ -81,6 +81,9 @@ const vaults: ReadonlyArray<FakeVault> = [
   },
 ];
 
+/** The most items of one `items.getAll` call of the 1Password SDK. */
+const sdkItemLimit = 50;
+
 const allValues = vaults.flatMap((vault) =>
   vault.items.flatMap((item) => item.fields.map((entry) => entry.value)),
 );
@@ -115,6 +118,10 @@ const fakeSdk = (data: ReadonlyArray<FakeVault>, answer?: (vaultId: string) => S
           },
           getAll: (vaultId, itemIds) => {
             calls.push(`items.getAll ${vaultId} ${itemIds.join(",")}`);
+
+            if (itemIds.length > sdkItemLimit) {
+              return Promise.reject(new Error("too many items"));
+            }
 
             return Promise.resolve(
               answer?.(vaultId) ?? {
@@ -254,6 +261,79 @@ describe("the search of the 1Password provider", () => {
           redis: ["op://app/redis/url"],
         });
       }).pipe(Effect.provide(serviceAccount)),
+  );
+
+  it.effect("reads the fields of more matches than one SDK call takes", () =>
+    Effect.gen(function* () {
+      const groups = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"];
+      const perGroup = 10;
+
+      const { sdk } = fakeSdk([
+        {
+          id: "many-id",
+          title: "many",
+          items: groups.flatMap((group) =>
+            Array.from({ length: perGroup }, (_, index) => ({
+              id: `${group}-${index}-id`,
+              title: `${group}-${index}`,
+              sections: [],
+              fields: [field("token")],
+            })),
+          ),
+        },
+      ]);
+
+      const results = yield* search(sdk, groups);
+
+      for (const group of groups) {
+        expect(results[group]).toHaveLength(perGroup);
+      }
+    }).pipe(Effect.provide(serviceAccount)),
+  );
+
+  it.effect("fails when 1Password cannot read a matched item, or leaves out an answer", () =>
+    Effect.gen(function* () {
+      const sentinel = "fake-internal-sentinel";
+
+      const internal = yield* Effect.flip(
+        search(
+          fakeSdk(vaults, () => ({
+            individualResponses: [{ error: { type: "internal", message: sentinel } }],
+          })).sdk,
+          ["redis"],
+        ),
+      );
+
+      const missing = yield* Effect.flip(
+        search(fakeSdk(vaults, () => ({ individualResponses: [] })).sdk, ["redis"]),
+      );
+
+      expect(internal).toMatchObject({ reason: ProviderFailure.Unavailable });
+      expect(JSON.stringify(internal) + String(internal)).not.toContain(sentinel);
+      expect(missing).toMatchObject({ reason: ProviderFailure.InvalidResponse });
+      expect(yield* search(fakeSdk(vaults).sdk, ["redis"])).toEqual({
+        redis: ["op://app/redis/url"],
+      });
+    }).pipe(Effect.provide(serviceAccount)),
+  );
+
+  it.effect("leaves out an item that 1Password deleted after the listing", () =>
+    Effect.gen(function* () {
+      const { sdk } = fakeSdk(vaults, () => ({
+        individualResponses: [{ error: { type: "itemNotFound" } }],
+      }));
+
+      expect(yield* search(sdk, ["redis"])).toEqual({ redis: [] });
+    }).pipe(Effect.provide(serviceAccount)),
+  );
+
+  it.effect("matches no title with a query of other characters, such as an emoji", () =>
+    Effect.gen(function* () {
+      const { sdk } = fakeSdk(vaults);
+      const query = "\u{1F984}";
+
+      expect(yield* search(sdk, [query])).toEqual({ [query]: [] });
+    }).pipe(Effect.provide(serviceAccount)),
   );
 
   it.effect("needs an account and a prompt for the desktop app", () =>

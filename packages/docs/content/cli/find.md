@@ -5,8 +5,8 @@ description: "Find the reference of a secret by the name of its item, without a 
 
 # envi find
 
-`envi find` lists the references whose names match each query. It reads no value, so it is safe
-for a coding agent that writes a config. Paste a reference into `op()`.
+`envi find` lists the references whose names match each query. It returns no value and logs no
+value, so it is safe for a coding agent that writes a config. Paste a reference into `op()`.
 
 ```sh
 envi find stripe postgres

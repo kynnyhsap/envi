@@ -2,6 +2,7 @@
 // each vault, and the fields of each item that matches, and it compares the titles in memory. It
 // decodes each answer with a schema without a value, so no value leaves the answer of the SDK.
 import { type Provider, type ProviderError, ProviderFailure, Timing } from "@kynnyhsap/envi";
+import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -33,15 +34,25 @@ const Item = Schema.Struct({
 
 type Item = typeof Item.Type;
 
-const GetAllResponse = Schema.Struct({
-  individualResponses: Schema.Array(
-    Schema.Struct({ content: Schema.optional(Schema.NullOr(Item)) }),
-  ),
+/** The answer for one item: the item, or an error. Only the type of an error, never its message. */
+const ItemAnswer = Schema.Struct({
+  content: Schema.optional(Schema.NullOr(Item)),
+  error: Schema.optional(Schema.NullOr(Schema.Struct({ type: Schema.String }))),
 });
+
+type ItemAnswer = typeof ItemAnswer.Type;
+
+const GetAllResponse = Schema.Struct({ individualResponses: Schema.Array(ItemAnswer) });
 
 const decodeNamed = Schema.decodeUnknownEffect(Schema.Array(Named));
 
 const decodeItems = Schema.decodeUnknownEffect(GetAllResponse);
+
+/** The most items of one `items.getAll` call. The SDK rejects a larger call. */
+const maxItemsPerCall = 50;
+
+/** The SDK error type of an item that 1Password deleted after the listing. */
+const itemNotFoundType = "itemNotFound";
 
 /** The most items that one query lists. */
 const maxMatches = 10;
@@ -71,6 +82,9 @@ const invalid = () =>
 
 const unavailable = "The listing of the 1Password vaults failed.";
 
+const unreadable = () =>
+  failure(ProviderFailure.Unavailable, "1Password could not read an item that matches.");
+
 /** A reference query names its vault, its item, and its field. Any other query names an item. */
 const targetOf = (query: string): Target =>
   Option.match(Schema.decodeUnknownOption(Reference)({ uri: query }), {
@@ -84,12 +98,14 @@ const targetOf = (query: string): Target =>
 
 /** The Levenshtein distance: the fewest edits of one character that turn `left` into `right`. */
 const distance = (left: string, right: string): number => {
-  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  // Characters, not UTF-16 units, so an emoji counts as one character.
+  const columns = Array.from(right);
+  let previous = Array.from({ length: columns.length + 1 }, (_, index) => index);
 
   for (const [row, char] of Array.from(left).entries()) {
     const current = [row + 1];
 
-    for (const [column, other] of Array.from(right).entries()) {
+    for (const [column, other] of columns.entries()) {
       const replace = (previous[column] ?? 0) + (char === other ? 0 : 1);
 
       current.push(Math.min((previous[column + 1] ?? 0) + 1, (current[column] ?? 0) + 1, replace));
@@ -98,7 +114,7 @@ const distance = (left: string, right: string): number => {
     previous = current;
   }
 
-  return previous[right.length] ?? 0;
+  return previous[columns.length] ?? 0;
 };
 
 /** The distance of a name from a wanted name. An equal ID scores 0. */
@@ -119,7 +135,7 @@ const scoreOf = (item: Named, wanted: string): Option.Option<number> => {
   }
 
   const edits = distance(title, query);
-  const allowed = Math.max(1, Math.floor(query.length / charactersPerEdit));
+  const allowed = Math.max(1, Math.floor(Array.from(query).length / charactersPerEdit));
 
   return edits <= allowed ? Option.some(containsScore + edits) : Option.none();
 };
@@ -226,7 +242,38 @@ const listAll = <DesktopAuth>(
     return { vaults, listed: listed.flat() };
   });
 
-/** Reads the fields of the matched items: one call for each vault that holds a match. */
+/** The item of one answer. A deleted item gives none. Another error, or no item, fails. */
+const itemOf = (answer: ItemAnswer): Effect.Effect<Option.Option<Item>, ProviderError> => {
+  if (answer.content) {
+    return Effect.succeed(Option.some(answer.content));
+  }
+
+  if (answer.error?.type === itemNotFoundType) {
+    return Effect.succeed(Option.none());
+  }
+
+  return Effect.fail(answer.error ? unreadable() : invalid());
+};
+
+/** Reads the fields of some items of one vault in one call. Each item needs its own answer. */
+const readSome = <DesktopAuth>(
+  sdk: Sdk.Sdk<DesktopAuth>,
+  kind: CredentialKind,
+  client: Sdk.SdkClient,
+  vault: Named,
+  ids: ReadonlyArray<string>,
+) =>
+  Sdk.call(sdk, kind, unavailable, () => client.items.getAll(vault.id, [...ids])).pipe(
+    Effect.flatMap((answer) => Effect.mapError(decodeItems(answer), invalid)),
+    Effect.flatMap((decoded) =>
+      decoded.individualResponses.length === ids.length
+        ? Effect.forEach(decoded.individualResponses, itemOf)
+        : Effect.fail(invalid()),
+    ),
+    Effect.map(Arr.getSomes),
+  );
+
+/** Reads the fields of the matched items: one call for each vault, and 50 items at most a call. */
 const readItems = <DesktopAuth>(
   sdk: Sdk.Sdk<DesktopAuth>,
   kind: CredentialKind,
@@ -236,27 +283,17 @@ const readItems = <DesktopAuth>(
 ) =>
   Effect.map(
     Effect.forEach(
-      context.vaults.flatMap((vault) => {
-        const ids = context.listed
-          .filter((entry) => entry.vault.id === vault.id && matched.has(entry.item.id))
-          .map((entry) => entry.item.id);
-
-        return ids.length === 0 ? [] : [{ vault, ids }];
-      }),
-      ({ vault, ids }) =>
-        Effect.flatMap(
-          Sdk.call(sdk, kind, unavailable, () => client.items.getAll(vault.id, ids)),
-          (answer) => Effect.mapError(decodeItems(answer), invalid),
-        ),
-    ),
-    (answers) =>
-      new Map(
-        answers
-          .flatMap((answer) => answer.individualResponses)
-          .flatMap((response) =>
-            response.content ? [[response.content.id, response.content]] : [],
-          ),
+      context.vaults.flatMap((vault) =>
+        Arr.chunksOf(
+          context.listed
+            .filter((entry) => entry.vault.id === vault.id && matched.has(entry.item.id))
+            .map((entry) => entry.item.id),
+          maxItemsPerCall,
+        ).map((ids) => ({ vault, ids })),
       ),
+      ({ vault, ids }) => readSome(sdk, kind, client, vault, ids),
+    ),
+    (items) => new Map(items.flat().map((item) => [item.id, item])),
   );
 
 /** Lists the references whose item titles match each query, best match first. */
