@@ -19,12 +19,12 @@ export interface Received {
 const Address = Schema.Struct({ port: Schema.Number });
 
 /**
- * An OTLP collector on a free port. It records each request, and it answers each request after
- * `delay` with an empty success. Without a delay, it never answers, as a collector that hangs.
- * `answered` holds the path of each request that got its answer before the CLI closed the
+ * An OTLP collector on a free port. It records each request, and it answers a request after the
+ * delay of its index with an empty success. Without a delay, it never answers, as a collector that
+ * hangs. `answered` holds the path of each request that got its answer before the CLI closed the
  * connection.
  */
-const collectorWith = (delay: Duration.Duration | undefined) =>
+const collectorWith = (delayOf: (index: number) => Duration.Duration | undefined) =>
   Effect.acquireRelease(
     Effect.callback<
       {
@@ -43,6 +43,8 @@ const collectorWith = (delay: Duration.Duration | undefined) =>
 
         request.on("data", (chunk: Buffer) => chunks.push(chunk));
         request.on("end", () => {
+          const delay = delayOf(received.length);
+
           received.push({
             path: request.url ?? "",
             contentType: request.headers["content-type"] ?? "",
@@ -80,13 +82,17 @@ const collectorWith = (delay: Duration.Duration | undefined) =>
   );
 
 /** A collector that answers every request with an empty success. */
-export const collector = collectorWith(Duration.zero);
+export const collector = collectorWith(() => Duration.zero);
 
 /** A collector that accepts every request and never answers. */
-export const silentCollector = collectorWith(undefined);
+export const silentCollector = collectorWith(() => undefined);
 
 /** A healthy collector that answers each request after `delay`. */
-export const slowCollector = (delay: Duration.Duration) => collectorWith(delay);
+export const slowCollector = (delay: Duration.Duration) => collectorWith(() => delay);
+
+/** A healthy collector that answers its first request after `delay`, and the others at once. */
+export const slowFirstCollector = (delay: Duration.Duration) =>
+  collectorWith((index) => (index === 0 ? delay : Duration.zero));
 
 const AnyValue = Schema.Struct({
   stringValue: Schema.optional(Schema.String),

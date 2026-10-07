@@ -41,17 +41,17 @@ variables. Without an endpoint, the CLI sends nothing.
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 envi sync
 ```
 
-| Variable                             | Does                                                                  |
-| ------------------------------------ | --------------------------------------------------------------------- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`        | The base URL. Envi adds `/v1/traces` and `/v1/logs` to its path.      |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | The full URL of the spans. It wins over the base URL.                 |
-| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`   | The full URL of the logs. It wins over the base URL.                  |
-| `OTEL_EXPORTER_OTLP_PROTOCOL`        | `http/protobuf` or `http/json`. Default: `http/protobuf`.             |
-| `OTEL_EXPORTER_OTLP_HEADERS`         | Headers of each request, such as `authorization=Bearer%20<token>`.    |
-| `OTEL_TRACES_EXPORTER`               | `none` sends no spans. Default: `otlp`.                               |
-| `OTEL_LOGS_EXPORTER`                 | `none` sends no logs. Default: `otlp`.                                |
-| `OTEL_SDK_DISABLED`                  | `true`, in any case, sends nothing. Any other value changes nothing.  |
-| `OTEL_RESOURCE_ATTRIBUTES`           | More attributes of the resource, such as `deployment.environment=ci`. |
+| Variable                             | Does                                                                   |
+| ------------------------------------ | ---------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`        | The base URL. Envi adds `/v1/traces` and `/v1/logs` to its path.       |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | The full URL of the spans. It wins over the base URL.                  |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`   | The full URL of the logs. It wins over the base URL.                   |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`        | `http/protobuf` or `http/json`, in any case. Default: `http/protobuf`. |
+| `OTEL_EXPORTER_OTLP_HEADERS`         | Headers of each request, such as `authorization=Bearer%20<token>`.     |
+| `OTEL_TRACES_EXPORTER`               | `none` sends no spans. Default: `otlp`.                                |
+| `OTEL_LOGS_EXPORTER`                 | `none` sends no logs. Default: `otlp`.                                 |
+| `OTEL_SDK_DISABLED`                  | `true`, in any case, sends nothing. Any other value changes nothing.   |
+| `OTEL_RESOURCE_ATTRIBUTES`           | More attributes of the resource, such as `deployment.environment=ci`.  |
 
 `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL`, `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL`,
 `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, and `OTEL_EXPORTER_OTLP_LOGS_HEADERS` set one signal. A
@@ -64,10 +64,13 @@ variable of one signal wins over the variable of every signal.
   `custom()`, joins the trace.
 - A failed span holds the error of the step. An Envi error shows its tag and its summary. Any other
   error shows only its name, such as `Error`, because its text can hold a secret or an argument of
-  a command. A log with a cause follows the same rule on stderr, in the log file, and in OTLP.
-- Envi turns off the spans of HTTP requests, because the URL of a request can hold a secret.
-- Envi sends the last batch before it exits. A collector that does not answer delays the exit by 2
-  seconds at most.
+  a command. A log with an error in its cause or in its message follows the same rule on stderr,
+  in the log file, and in OTLP.
+- A span of an HTTP request in user code holds the method, the host, the scheme, and the status.
+  It never holds the path, the query, or the headers, because they can hold a secret. The request
+  still sends `traceparent`, so the server joins the trace.
+- Envi waits for each batch in flight and sends the last batch before it exits. A collector that
+  does not answer delays the exit by 2 seconds at most.
 - The CLI supports only OTLP over HTTP. Another protocol, such as `grpc`, is a value that Envi
   cannot use.
 - A variable that Envi cannot use turns off its signal, and only its signal. A warning on stderr

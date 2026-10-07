@@ -27,23 +27,22 @@ export default defineConfig({
       resolve: ({ password }) =>
         Effect.fail(new Error(`cannot connect with ${password}`)).pipe(Effect.withSpan("exchange")),
     }),
-    // Nothing listens on port 1, so the request fails at once.
+    // A test sets the server. Without it, nothing listens on port 1, so the request fails at once.
     REQUEST: custom({
       id: "request",
       from: { password: file("db-password") },
       resolve: ({ password }) =>
-        HttpClient.get(`http://127.0.0.1:1/?key=${password}`).pipe(
-          Effect.provide(FetchHttpClient.layer),
-          Effect.as("unused"),
-        ),
+        HttpClient.get(
+          `${process.env["ENVI_E2E_HTTP_URL"] ?? "http://127.0.0.1:1"}/?key=${password}`,
+        ).pipe(Effect.provide(FetchHttpClient.layer), Effect.as("unused")),
     }),
     LOGGED: custom({
       id: "logged",
       from: { password: file("db-password") },
       resolve: ({ password }) =>
-        Effect.as(
-          Effect.logError("The exchange failed.", Cause.fail(new Error(`bad key ${password}`))),
-          "logged",
+        Effect.logError("The exchange failed.", Cause.fail(new Error(`bad key ${password}`))).pipe(
+          Effect.andThen(Effect.logError("The retry failed.", new Error(`bad key ${password}`))),
+          Effect.as("logged"),
         ),
     }),
   }),

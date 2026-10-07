@@ -4,11 +4,10 @@
 // command: a part that fails to start turns off with a warning.
 import * as Cause from "effect/Cause";
 import * as EffectConfig from "effect/Config";
-import * as Context from "effect/Context";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
-import * as HttpClient from "effect/http/HttpClient";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as LogLevel from "effect/LogLevel";
@@ -18,6 +17,7 @@ import * as OtlpSerialization from "effect/observability/OtlpSerialization";
 import * as OtlpTracer from "effect/observability/OtlpTracer";
 import * as Option from "effect/Option";
 import * as References from "effect/References";
+import * as Scope from "effect/Scope";
 import * as Tracer from "effect/Tracer";
 
 import * as Package from "./core/Package.ts";
@@ -47,16 +47,11 @@ const serializations = {
 } satisfies Record<Otlp.Protocol, Layer.Layer<OtlpSerialization.OtlpSerialization>>;
 
 /**
- * The longest wait for the last export when Envi exits. One flush sends the last batch of both
- * signals at once, so a collector that does not answer delays the exit by this time at most.
+ * The longest wait of each exporter for its exports when Envi exits: the exports in flight and the
+ * last batch. The exporters close at the same time, so a collector that does not answer delays the
+ * exit by this time at most.
  */
-const flushTimeout: Duration.Input = "2 seconds";
-
-/**
- * The wait of each exporter when its scope closes. The flush has already sent its last batch, so
- * the exporter does not wait again.
- */
-const shutdownTimeout: Duration.Input = "0 millis";
+const shutdownTimeout: Duration.Input = "2 seconds";
 
 /** The lowest level of a log on stderr without `--debug`. */
 const consoleLevel: LogLevel.LogLevel = "Info";
@@ -112,22 +107,28 @@ interface ExporterOptions {
   readonly shutdownTimeout: Duration.Input;
 }
 
-/** The services that both exporters share. One flusher sends the last batch of both at once. */
-type ExporterServices = Context.Context<HttpClient.HttpClient | OtlpExporter.Flusher>;
-
-/** Starts the exporter of one signal, when the settings of the signal name a collector. */
+/**
+ * Starts the exporter of one signal in its own scope, when the settings of the signal name a
+ * collector. The scope closes at exit, so the exporter sends its last batch.
+ */
 const exporterOf = <A, R>(
-  services: ExporterServices,
+  scope: Scope.Scope,
   signal: Otlp.Signal,
-  make: (options: ExporterOptions) => Effect.Effect<A, never, R>,
+  make: (options: ExporterOptions) => Effect.Effect<A, never, R | Scope.Scope>,
 ) =>
   guard(
     Effect.flatMap(Otlp.targetOf(signal), (target) =>
       Effect.transposeOption(
         Option.map(target, (value) =>
           make({ url: value.url, headers: value.headers, resource, shutdownTimeout }).pipe(
-            Effect.provide(serializations[value.protocol]),
-            Effect.provide(services),
+            Effect.provide(
+              Layer.mergeAll(
+                serializations[value.protocol],
+                FetchHttpClient.layer,
+                OtlpExporter.layerFlusher,
+              ),
+            ),
+            Scope.provide(scope),
           ),
         ),
       ),
@@ -136,12 +137,16 @@ const exporterOf = <A, R>(
     signalWarning(signal),
   );
 
-/** Sends the last batch of both signals when the layer closes, within one deadline. */
-const flushOnClose = (services: ExporterServices) =>
+/**
+ * Closes the scopes of the exporters at the same time when the layer closes. Each exporter waits
+ * for its exports up to `shutdownTimeout`, so the exit waits once and not once for each signal.
+ */
+const closeTogether = (scopes: ReadonlyArray<Scope.Closeable>) =>
   Effect.addFinalizer(() =>
-    Effect.asVoid(
-      Effect.timeoutOption(Context.get(services, OtlpExporter.Flusher).flush, flushTimeout),
-    ),
+    Effect.forEach(scopes, (scope) => Scope.close(scope, Exit.void), {
+      concurrency: "unbounded",
+      discard: true,
+    }),
   );
 
 const noFileLogger: Part<Option.Option<Logger.Logger<unknown, void>>> = {
@@ -200,15 +205,12 @@ export const layer = (flags: Flags) =>
       const debug = yield* debugOf(flags);
       const fileLogger = yield* fileLoggerOf;
 
-      const services = yield* Layer.build(
-        Layer.mergeAll(FetchHttpClient.layer, OtlpExporter.layerFlusher),
-      );
+      const scopes = [yield* Scope.make(), yield* Scope.make()] as const;
 
-      const otlpLogger = yield* exporterOf(services, Otlp.Signal.Logs, OtlpLogger.make);
-      const tracer = yield* exporterOf(services, Otlp.Signal.Traces, OtlpTracer.make);
+      yield* closeTogether(scopes);
 
-      // Added after the exporters, so it runs before their own finalizers.
-      yield* flushOnClose(services);
+      const otlpLogger = yield* exporterOf(scopes[0], Otlp.Signal.Logs, OtlpLogger.make);
+      const tracer = yield* exporterOf(scopes[1], Otlp.Signal.Traces, OtlpTracer.make);
 
       // Every logger gets a safe cause, so a log never shows the text of an unknown error.
       const loggers = [
@@ -235,8 +237,6 @@ export const layer = (flags: Flags) =>
         Logger.layer(loggers),
         Layer.succeed(References.MinimumLogLevel, minimum),
         Layer.succeed(TraceContext.Propagate, Option.isSome(tracer.value)),
-        // The span of an HTTP request holds its URL, and a URL can hold a secret.
-        Layer.succeed(HttpClient.TracerDisabledWhen, () => true),
         Option.match(tracer.value, {
           onNone: () => Layer.empty,
           onSome: (value) => Layer.succeed(Tracer.Tracer, safeTracer(value)),

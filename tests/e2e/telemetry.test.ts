@@ -147,7 +147,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi telemetry", (it) 
       }),
     );
 
-    it.effect("keeps the URL of an HTTP request in user code out of the spans", () =>
+    it.effect("keeps the URL of an HTTP request in user code out of the spans, and traces it", () =>
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
         const { url, received } = yield* collector;
@@ -155,19 +155,36 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi telemetry", (it) 
         const result = yield* runCli(runtime, leaky, ["check"], {
           ...sandbox.env,
           ...exportTo(url),
+          ENVI_E2E_HTTP_URL: url,
         });
 
         const spans = yield* spansOf(received);
+        const root = spans.find((span) => span.name === "envi check");
+
+        const http = spans.find(
+          (span) => valueOf(span.attributes, "http.request.method") === "GET",
+        );
+
+        const request = received.find((sent) => sent.path.startsWith("/?key="));
+        const [, traceId] = request?.headers["traceparent"]?.[0]?.split("-") ?? [];
 
         expect(result.exitCode).toBe(1);
-        expect(spans.some((span) => span.name === "custom.resolve")).toBe(true);
-        expect(received.every((request) => !request.body.includes(secrets["db-password"]))).toBe(
-          true,
-        );
+        const keys = http?.attributes.map((attribute) => attribute.key) ?? [];
+
+        expect(keys).toContain("http.request.method");
+        expect(keys).not.toContain("url.full");
+        expect(keys).not.toContain("url.query");
+        // The server of the request continues the trace of the command.
+        expect(traceId).toBe(root?.traceId);
+        expect(
+          received
+            .filter((sent) => sent !== request)
+            .every((sent) => !sent.body.includes(secrets["db-password"])),
+        ).toBe(true);
       }),
     );
 
-    it.effect("keeps the cause of a log in user code off stderr and out of the logs", () =>
+    it.effect("keeps an error of a log in user code off stderr and out of the logs", () =>
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
         const { url, received } = yield* collector;
@@ -180,6 +197,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi telemetry", (it) 
         const logs = yield* logsOf(received);
 
         expect(result.stderr).toContain("The exchange failed.");
+        expect(result.stderr).toContain("The retry failed.");
         expect(result.stderr).not.toContain(secrets["db-password"]);
         expect(logs.some((log) => log.body.stringValue === "The exchange failed.")).toBe(true);
         expect(received.every((request) => !request.body.includes(secrets["db-password"]))).toBe(

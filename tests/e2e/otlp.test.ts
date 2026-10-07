@@ -6,6 +6,10 @@ import { describe, expect, layer } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import * as Schedule from "effect/Schedule";
 
 import {
   collector,
@@ -13,9 +17,10 @@ import {
   type Received,
   silentCollector,
   slowCollector,
+  slowFirstCollector,
   spansOf,
 } from "./collector.ts";
-import { exportJson, fixture, makeSandbox, runtimes } from "./helpers.ts";
+import { exportJson, fixture, makeSandbox, runCli, runtimes } from "./helpers.ts";
 
 const app = fixture("cached");
 
@@ -36,46 +41,58 @@ const shutdownLimit = Duration.seconds(2);
 /** An answer of a healthy collector that comes before the shutdown limit. */
 const slowAnswer = Duration.millis(1500);
 
+/** A child that runs until the file of its first argument exists. */
+const waitForFile =
+  "const fs = require('node:fs'); const timer = setInterval(() => { if (fs.existsSync(process.argv[1])) clearInterval(timer); }, 20);";
+
+/** How often the test looks for the first batch of the CLI. */
+const pollInterval = Duration.millis(20);
+
+/** The longest wait for the first batch of the CLI while its child runs. */
+const inFlightDeadline = Duration.seconds(10);
+
 /** The slack for the start of the runtime and the load of the machine. */
 const slack = Duration.seconds(1);
 
 layer(NodeServices.layer, { excludeTestServices: true })("envi OTLP settings", (it) => {
   describe.each(runtimes)("on %s", (runtime) => {
-    it.effect("sends each signal with the protocol and the headers of the signal", () =>
-      Effect.gen(function* () {
-        const sandbox = yield* makeSandbox("none");
-        const { url, received } = yield* collector;
-        const token = "Bearer token==";
-        const team = "my-team";
+    it.effect(
+      "sends each signal with the protocol and the headers of the signal, in any case",
+      () =>
+        Effect.gen(function* () {
+          const sandbox = yield* makeSandbox("none");
+          const { url, received } = yield* collector;
+          const token = "Bearer token==";
+          const team = "my-team";
 
-        const result = yield* exportJson(runtime, app, sandbox, {
-          OTEL_EXPORTER_OTLP_ENDPOINT: url,
-          OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
-          OTEL_EXPORTER_OTLP_HEADERS: `x-team=${team}`,
-          OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf",
-          OTEL_EXPORTER_OTLP_TRACES_HEADERS: `authorization=${encodeURIComponent(token)}`,
-        });
+          const result = yield* exportJson(runtime, app, sandbox, {
+            OTEL_EXPORTER_OTLP_ENDPOINT: url,
+            OTEL_EXPORTER_OTLP_PROTOCOL: "HTTP/JSON",
+            OTEL_EXPORTER_OTLP_HEADERS: `x-team=${team}`,
+            OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf",
+            OTEL_EXPORTER_OTLP_TRACES_HEADERS: `authorization=${encodeURIComponent(token)}`,
+          });
 
-        const traces = requestsOn(received, "/v1/traces");
-        const logs = requestsOn(received, "/v1/logs");
+          const traces = requestsOn(received, "/v1/traces");
+          const logs = requestsOn(received, "/v1/logs");
 
-        expect(result.exitCode).toBe(0);
-        expect(traces.length).toBeGreaterThan(0);
-        expect(logs.length).toBeGreaterThan(0);
-        expect(traces.map((request) => request.contentType)).toEqual(
-          traces.map(() => "application/x-protobuf"),
-        );
-        expect(traces.map((request) => request.headers["authorization"])).toEqual(
-          traces.map(() => [token]),
-        );
-        expect(traces.map((request) => request.headers["x-team"])).toEqual(
-          traces.map(() => undefined),
-        );
-        expect(logs.map((request) => request.contentType)).toEqual(
-          logs.map(() => "application/json"),
-        );
-        expect(logs.map((request) => request.headers["x-team"])).toEqual(logs.map(() => [team]));
-      }),
+          expect(result.exitCode).toBe(0);
+          expect(traces.length).toBeGreaterThan(0);
+          expect(logs.length).toBeGreaterThan(0);
+          expect(traces.map((request) => request.contentType)).toEqual(
+            traces.map(() => "application/x-protobuf"),
+          );
+          expect(traces.map((request) => request.headers["authorization"])).toEqual(
+            traces.map(() => [token]),
+          );
+          expect(traces.map((request) => request.headers["x-team"])).toEqual(
+            traces.map(() => undefined),
+          );
+          expect(logs.map((request) => request.contentType)).toEqual(
+            logs.map(() => "application/json"),
+          );
+          expect(logs.map((request) => request.headers["x-team"])).toEqual(logs.map(() => [team]));
+        }),
     );
 
     it.effect("adds the path of each signal to a base URL with a path and a query", () =>
@@ -232,6 +249,42 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi OTLP settings", (
         expect(traced.stderr).toBe(plain.stderr);
         expect(received.length).toBeGreaterThan(0);
         expect(delay).toBeLessThan(Duration.toMillis(Duration.sum(shutdownLimit, slack)));
+      }),
+    );
+
+    it.effect("waits for an export in flight when the command ends", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const sandbox = yield* makeSandbox("none");
+        const { url, received, answered } = yield* slowFirstCollector(slowAnswer);
+        const done = path.join(sandbox.directory, "done");
+
+        // The child runs until the test creates `done`, so the CLI sends a batch while it runs. The
+        // collector answers that batch late, and the last batches at once.
+        const run = yield* Effect.forkChild(
+          runCli(
+            runtime,
+            app,
+            ["run", "--cache-dir", sandbox.cacheDirectory, "--", "node", "-e", waitForFile, done],
+            { ...sandbox.env, ...exportTo(url) },
+          ),
+        );
+
+        yield* Effect.repeat(
+          Effect.sync(() => received.length > 0),
+          { until: (sent) => sent, schedule: Schedule.spaced(pollInterval) },
+        ).pipe(Effect.timeout(inFlightDeadline));
+
+        const inFlight = received.map((request) => request.path);
+
+        yield* fs.writeFileString(done, "");
+
+        const result = yield* Fiber.join(run);
+
+        expect(result.exitCode).toBe(0);
+        expect(inFlight).not.toEqual([]);
+        expect(answered.toSorted()).toEqual(received.map((request) => request.path).toSorted());
       }),
     );
 

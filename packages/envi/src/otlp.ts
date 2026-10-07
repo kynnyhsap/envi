@@ -116,8 +116,10 @@ const protocolOf = (signal: Signal) =>
     Option.match({
       onNone: () => Effect.succeed(Protocol.Protobuf),
       onSome: ({ variable, value }) =>
-        Effect.mapError(Schema.decodeUnknownEffect(ProtocolSchema)(value.trim()), () =>
-          unusable(variable),
+        // The spec reads an enum value in any case.
+        Effect.mapError(
+          Schema.decodeUnknownEffect(ProtocolSchema)(value.trim().toLowerCase()),
+          () => unusable(variable),
         ),
     }),
   );
