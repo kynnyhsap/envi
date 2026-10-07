@@ -96,6 +96,24 @@ export const CheckReport = Schema.Struct({
 
 export type CheckReport = typeof CheckReport.Type;
 
+/** One reference that `find` lists. */
+export const FoundReference = Schema.Struct({
+  provider: Schema.String,
+  /** The `describe()` text of the reference. It never holds a secret. */
+  reference: Schema.String,
+});
+
+/** The references of each query, in the order of the queries, and the providers without search. */
+export const FindReport = Schema.Struct({
+  queries: Schema.Array(
+    Schema.Struct({ query: Schema.String, references: Schema.Array(FoundReference) }),
+  ),
+  /** The providers of the config that cannot search. */
+  skipped: Schema.Array(Schema.String),
+});
+
+export type FindReport = typeof FindReport.Type;
+
 export const RunReport = Schema.Struct({
   exitCode: Schema.Number,
 });

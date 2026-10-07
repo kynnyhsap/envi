@@ -20,7 +20,7 @@ import * as Schema from "effect/Schema";
 import { type OnePasswordSettings, onePasswordProvider, op } from "../src/index.ts";
 import { testCredentials } from "./credentials.ts";
 import { expected } from "./expected.ts";
-import { primaryVault, secondaryVault } from "./fixture.ts";
+import { fixtureVaults, primaryVault, secondaryVault } from "./fixture.ts";
 
 const configOf = (settings: OnePasswordSettings) =>
   defineConfig({
@@ -88,6 +88,34 @@ describe.skipIf(testCredentials.length === 0)("1Password provider against a real
             expect(list.entries.map((entry) => entry.reference)).toContain(
               `op://${secondaryVault}/payments/STRIPE_KEY`,
             );
+          }),
+      );
+
+      it.effect(
+        "finds the references of an item and of a reference with a typo, without a value",
+        () =>
+          Effect.gen(function* () {
+            const envi = yield* Envi.Envi;
+            const typo = `op://${primaryVault}/app/SENTRY_DS`;
+
+            const report = yield* envi
+              .find(config, ["multiline", typo])
+              .pipe(Effect.provide(Layer.provide(Envi.layer(), Cache.layerNone)));
+
+            const [multiline, sentry] = report.queries.map((entry) =>
+              entry.references.map((found) => found.reference),
+            );
+
+            expect(multiline).toContain(`op://${primaryVault}/multiline/PRIVATE_KEY`);
+            expect(sentry?.[0]).toBe(`op://${primaryVault}/app/web/SENTRY_DSN`);
+
+            for (const vault of fixtureVaults) {
+              for (const item of vault.items) {
+                for (const field of item.fields) {
+                  expect(JSON.stringify(report)).not.toContain(field.value);
+                }
+              }
+            }
           }),
       );
 

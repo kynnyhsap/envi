@@ -20,6 +20,9 @@ const Part = Schema.NonEmptyString.check(
   }),
 );
 
+/** Tells whether a reference can name a vault, an item, a section, or a field by this title. */
+export const isPart = Schema.is(Part);
+
 /** The normalized reference. All three forms of `op()` decode to it. */
 export const OpReference = Schema.Struct({
   /** The account of this one reference. It wins over the account of the provider. */

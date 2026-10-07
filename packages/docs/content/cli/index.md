@@ -12,6 +12,7 @@ description: "Every command and flag of the envi CLI, and where the logs go."
 | `envi check`        | Resolves and validates every var. Shows no value.                   |
 | `envi inspect`      | Shows where each var comes from. Hides secrets by default.          |
 | `envi export`       | Prints the vars as dotenv or JSON, or writes them to a file.        |
+| `envi find <query>` | Lists the references whose names match. See [envi find](./find.md). |
 | `envi cache path`   | Prints the cache directory.                                         |
 | `envi cache list`   | Lists the cache entries. Shows no value.                            |
 | `envi cache clear`  | Removes every cache entry.                                          |
@@ -29,12 +30,12 @@ the `cache` field of its `--json` report is `false`, only when no config uses th
 
 | Flag                                | Commands                                      | Does                                                                                    |
 | ----------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `--config <file>`                   | run, sync, check, inspect, export             | Selects a config file. Repeat it for several files.                                     |
-| `--config-search <direction>`       | run, sync, check, inspect, export             | `up`, `down`, or `repo`. See below.                                                     |
+| `--config <file>`                   | run, sync, check, inspect, export, find       | Selects a config file. Repeat it for several files.                                     |
+| `--config-search <direction>`       | run, sync, check, inspect, export, find       | `up`, `down`, or `repo`. See below.                                                     |
 | `--stage <name>`                    | run, sync, check, inspect, export             | Selects the stage.                                                                      |
 | `--refresh`                         | run, sync, check, inspect, export             | Ignores fresh cache entries.                                                            |
 | `--strict`                          | run, sync, check, inspect, export             | Never uses an expired cache entry.                                                      |
-| `--interactive`, `--no-interactive` | run, sync, check, inspect, export             | Allows or forbids a prompt, such as a desktop app approval.                             |
+| `--interactive`, `--no-interactive` | run, sync, check, inspect, export, find       | Allows or forbids a prompt, such as a desktop app approval.                             |
 | `--cache`, `--no-cache`             | run, sync, check, inspect, export             | Turns the cache on or off.                                                              |
 | `--cache-dir <dir>`                 | run, sync, check, inspect, export, cache      | Selects the cache directory.                                                            |
 | `--json`                            | every command except run and bare `envi docs` | Prints the report, or the error, as JSON on stdout.                                     |

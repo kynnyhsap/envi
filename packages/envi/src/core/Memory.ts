@@ -11,7 +11,10 @@ export const memoryProviderId = "memory";
 /** A descriptor for the in-memory provider. */
 export const mem = (key: string): Source.Source => Source.reference(memoryProviderId, key);
 
-/** The in-memory provider. It records each batch, so a test can assert the batch rule. */
+/**
+ * The in-memory provider. It records each batch, so a test can assert the batch rule. Its search
+ * lists the keys that contain the query.
+ */
 export interface MemoryProvider extends Provider.Provider<{ readonly mem: typeof mem }> {
   /** One entry for each `resolveMany` call. Each entry holds the secret keys of that batch. */
   readonly calls: () => ReadonlyArray<ReadonlyArray<string>>;
@@ -46,6 +49,16 @@ export const memoryProvider = (secrets: Readonly<Record<string, string>>): Memor
           }),
         );
       }),
+    // A key matches a query that it contains. The search reads no value.
+    discover: (queries) =>
+      Effect.succeed(
+        Object.fromEntries(
+          queries.map((query) => [
+            query,
+            Object.keys(secrets).filter((key) => key.includes(query)),
+          ]),
+        ),
+      ),
     helpers: { mem },
   });
 

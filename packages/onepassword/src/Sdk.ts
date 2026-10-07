@@ -32,6 +32,17 @@ export interface SdkClient {
     // oxlint-disable-next-line anti-slop/no-unknown-returns
     readonly resolveAll: (references: Array<string>) => Promise<unknown>;
   };
+  // The SDK is the boundary: `Discover` decodes each answer with a schema without a value.
+  readonly vaults: {
+    // oxlint-disable-next-line anti-slop/no-unknown-returns
+    readonly list: () => Promise<unknown>;
+  };
+  readonly items: {
+    // oxlint-disable-next-line anti-slop/no-unknown-returns
+    readonly list: (vaultId: string) => Promise<unknown>;
+    // oxlint-disable-next-line anti-slop/no-unknown-returns
+    readonly getAll: (vaultId: string, itemIds: Array<string>) => Promise<unknown>;
+  };
 }
 
 /** The part of `@1password/sdk` that Envi uses. Tests pass an in-memory implementation. */
@@ -52,6 +63,7 @@ export const Step = {
   SdkImport: "onepassword.sdk.import",
   Client: "onepassword.client",
   ResolveAll: "onepassword.resolveAll",
+  Discover: "onepassword.discover",
 } as const;
 
 /** The name and the version that the 1Password app shows for Envi. */

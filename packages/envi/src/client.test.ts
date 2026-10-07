@@ -71,7 +71,7 @@ describe("createEnvi", () => {
     await envi.dispose();
   });
 
-  it("mirrors the commands: resolve, check, inspect, export, and cache", async () => {
+  it("mirrors the commands: resolve, check, inspect, export, find, and cache", async () => {
     const envi = createEnvi(config);
 
     expect(await envi.resolve(mem("port").schema(Schema.FiniteFromString))).toBe(5432);
@@ -82,6 +82,11 @@ describe("createEnvi", () => {
       "SENTRY_DSN",
     ]);
     expect(await envi.export("dotenv", { redact: true })).toContain("PORT=3000");
+
+    expect((await envi.find(["db"])).queries).toEqual([
+      { query: "db", references: [{ provider: provider.id, reference: "memory://db/url" }] },
+    ]);
+
     expect(await envi.cache.path()).toBeUndefined();
     expect(await envi.cache.clear()).toEqual({ removed: 0 });
     await envi.dispose();

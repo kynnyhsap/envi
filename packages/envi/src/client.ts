@@ -10,6 +10,7 @@ import type {
   CacheListReport,
   CheckReport,
   ExportFormat,
+  FindReport,
   InspectReport,
   RunReport,
   SyncReport,
@@ -68,6 +69,7 @@ export interface EnviClient<C extends Config.Config> extends AnyEnvi {
     format: ExportFormat,
     options?: Envi.ExportOptions<Config.StageOf<C>>,
   ) => Promise<string>;
+  readonly find: (queries: ReadonlyArray<string>) => Promise<FindReport>;
   readonly cache: {
     /** The directory of the file cache. `undefined` without a file cache. */
     readonly path: () => Promise<string | undefined>;
@@ -124,6 +126,7 @@ export const createEnvi = <C extends Config.Config>(
     check: (options) => run((envi) => envi.check(config, options)),
     inspect: (options) => run((envi) => envi.inspect(config, options)),
     export: (format, options) => run((envi) => envi.export(config, format, options)),
+    find: (queries) => run((envi) => envi.find(config, queries)),
     cache: {
       path: () => run((envi) => envi.cache.path).then(Option.getOrUndefined),
       list: () => run((envi) => envi.cache.list),

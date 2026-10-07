@@ -1,6 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import type * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
@@ -29,6 +30,9 @@ export interface ResolveContext {
 
 /** The results of one batch, keyed by request key. A failure holds only its reason code. */
 export type BatchResults = Readonly<Record<string, Result.Result<string, ReferenceFailure>>>;
+
+/** The references of each query of a search, best match first, keyed by the query. */
+export type DiscoverResults<Ref> = Readonly<Record<string, ReadonlyArray<Ref>>>;
 
 /**
  * What a provider author writes. Unstable until a second real provider proves it.
@@ -63,6 +67,15 @@ export interface Definition<Ref, Helpers extends object> {
     requests: ReadonlyArray<ProviderRequest<Ref>>,
     context: ResolveContext,
   ) => Effect.Effect<BatchResults, ProviderError>;
+  /**
+   * Lists the references whose names match each query, best match first. `envi find` uses it. It
+   * returns no value and logs no value, and it gets every query in one call. Optional: `find` skips a provider
+   * without it.
+   */
+  readonly discover?: (
+    queries: ReadonlyArray<string>,
+    context: ResolveContext,
+  ) => Effect.Effect<DiscoverResults<Ref>, ProviderError>;
   readonly helpers: Helpers;
 }
 
@@ -105,6 +118,13 @@ export interface Provider<out Helpers extends object = object> {
     requests: ReadonlyArray<ProviderRequest<Schema.Json>>,
     context: ResolveContext,
   ) => Effect.Effect<BatchResults, ProviderError | SecretReferenceError>;
+  /** The search of `Definition`. Each reference is its `describe()` text. */
+  readonly discover: Option.Option<
+    (
+      queries: ReadonlyArray<string>,
+      context: ResolveContext,
+    ) => Effect.Effect<DiscoverResults<string>, ProviderError>
+  >;
 }
 
 const invalidReference = (provider: string): SecretReferenceError =>
@@ -140,6 +160,18 @@ const fromDefinition = <Ref, Helpers extends object>(
           reference: decoded,
         })),
       ).pipe(Effect.flatMap((decoded) => definition.resolveMany(decoded, context))),
+    discover: Option.map(
+      Option.fromUndefinedOr(definition.discover),
+      (discover) => (queries, context) =>
+        Effect.map(discover(queries, context), (results) =>
+          Object.fromEntries(
+            Object.entries(results).map(([query, references]) => [
+              query,
+              references.map(definition.describe),
+            ]),
+          ),
+        ),
+    ),
   };
 };
 
