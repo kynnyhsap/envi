@@ -18,6 +18,7 @@ import type * as Config from "./core/Config.ts";
 import * as ConfigLoader from "./core/ConfigLoader.ts";
 import * as DefaultCache from "./core/DefaultCache.ts";
 import * as Docs from "./core/Docs.ts";
+import * as Doctor from "./core/Doctor.ts";
 import * as Envi from "./core/Envi.ts";
 import {
   type AnyEnviError,
@@ -38,6 +39,7 @@ import {
   DocsPageReport,
   DocsPathReport,
   DocsSearchReport,
+  DoctorReport,
   ErrorReport,
   ExportFormat,
   InspectReport,
@@ -73,6 +75,7 @@ const CommandName = {
   DocsShow: "show",
   DocsSearch: "search",
   DocsPath: "path",
+  Doctor: "doctor",
 } as const;
 
 /** The variable that holds a comma-separated list of config files. */
@@ -573,9 +576,21 @@ const docs = Command.make(CommandName.Docs, {}, () =>
   Command.provide(docsLayer),
 );
 
+const doctor = Command.make(CommandName.Doctor, { json: jsonFlag }, (flags) =>
+  Effect.gen(function* () {
+    const report = yield* Doctor.report();
+
+    yield* print(flags.json, DoctorReport, report, Render.doctor);
+  }).pipe(handle(flags.json, CommandName.Doctor)),
+).pipe(
+  Command.withDescription(
+    "Show the setup for a bug report. Import no config, read no secret, and show no path.",
+  ),
+);
+
 /** The `envi` command with all subcommands. */
 const command = root.pipe(
-  Command.withSubcommands([run, sync, inspect, check, exportCommand, cache, docs]),
+  Command.withSubcommands([run, sync, inspect, check, exportCommand, cache, docs, doctor]),
 );
 
 /**

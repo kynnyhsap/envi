@@ -16,6 +16,7 @@ description: "Every command and flag of the envi CLI, and where the logs go."
 | `envi cache list`   | Lists the cache entries. Shows no value.                            |
 | `envi cache clear`  | Removes every cache entry.                                          |
 | `envi docs`         | Reads the docs of this Envi offline. See [envi docs](./docs.md).    |
+| `envi doctor`       | Shows the setup for a bug report. See [envi doctor](./doctor.md).   |
 
 A flag follows its command: `envi check --stage production`.
 
