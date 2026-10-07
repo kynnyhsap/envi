@@ -364,25 +364,61 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           }),
       );
 
-      it.effect.each(["relative", "absolute"])(
-        "keeps a dangling %s symlink and creates the file that it points to",
-        (kind) =>
+      it.effect.each([
+        { name: "a relative path", pointer: "target.env", absolute: false, target: "target.env" },
+        { name: "an absolute path", pointer: "target.env", absolute: true, target: "target.env" },
+        {
+          name: "../ after a linked folder",
+          pointer: "alias/../target.env",
+          absolute: false,
+          target: "real/target.env",
+        },
+      ])("keeps a dangling link to $name and creates the file that it points to", (link) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const sandbox = yield* makeSandbox("none");
+          const real = path.join(sandbox.directory, "real");
+          const file = path.join(sandbox.directory, "link.env");
+          const target = path.join(sandbox.directory, link.target);
+          const pointer = link.absolute ? path.join(sandbox.directory, link.pointer) : link.pointer;
+
+          // The OS follows `alias` before `..`, so `alias/../target.env` is in `real`.
+          yield* fs.makeDirectory(path.join(real, "sub"), { recursive: true });
+          yield* fs.symlink(path.join(real, "sub"), path.join(sandbox.directory, "alias"));
+          yield* fs.symlink(pointer, file);
+
+          const result = yield* cli(runtime, sandbox, ["export", "--output", file]);
+
+          expect(result.exitCode).toBe(0);
+          expect(yield* fs.readLink(file)).toBe(pointer);
+          expect(yield* fs.readFileString(target)).toContain("PORT=3000\n");
+          expect((yield* fs.stat(target)).mode & 0o777).toBe(0o600);
+          expect(yield* fs.readDirectory(real)).toEqual(
+            link.target.startsWith("real/") ? ["sub", "target.env"] : ["sub"],
+          );
+        }),
+      );
+
+      it.effect(
+        "writes an output path with ../ after a linked folder where the OS resolves it",
+        () =>
           Effect.gen(function* () {
             const fs = yield* FileSystem.FileSystem;
             const path = yield* Path.Path;
             const sandbox = yield* makeSandbox("none");
-            const target = path.join(sandbox.directory, "target.env");
-            const link = path.join(sandbox.directory, "link.env");
-            const pointer = kind === "relative" ? "target.env" : target;
+            const real = path.join(sandbox.directory, "real");
 
-            yield* fs.symlink(pointer, link);
+            yield* fs.makeDirectory(path.join(real, "sub"), { recursive: true });
+            yield* fs.symlink(path.join(real, "sub"), path.join(sandbox.directory, "alias"));
 
-            const result = yield* cli(runtime, sandbox, ["export", "--output", link]);
+            // A plain string, because `path.join` would remove `alias/..`.
+            const output = `${sandbox.directory}/alias/../out.env`;
+            const result = yield* cli(runtime, sandbox, ["export", "--output", output]);
 
             expect(result.exitCode).toBe(0);
-            expect(yield* fs.readLink(link)).toBe(pointer);
-            expect(yield* fs.readFileString(target)).toContain("PORT=3000\n");
-            expect((yield* fs.stat(target)).mode & 0o777).toBe(0o600);
+            expect(yield* fs.readFileString(path.join(real, "out.env"))).toContain("PORT=3000\n");
+            expect(yield* fs.exists(path.join(sandbox.directory, "out.env"))).toBe(false);
           }),
       );
 

@@ -14,6 +14,13 @@ const tempNameBytes = 6;
 const maxLinks = 40;
 
 /**
+ * A path that the OS resolves part by part. `path.resolve` removes `alias/..` before the OS
+ * follows the link `alias`, so it can name another file.
+ */
+const joinRaw = (path: Path.Path, folder: string, file: string): string =>
+  path.isAbsolute(file) ? file : `${folder}${path.sep}${file}`;
+
+/**
  * The file that a write to `file` changes. `realPath` resolves an existing file. A dangling link
  * fails `realPath`, so Envi follows its chain with `readLink` to the missing file. A path that is
  * no link names itself. A loop of links fails.
@@ -31,7 +38,7 @@ const targetOf = (
           onFailure: () => Effect.succeed(file),
           onSuccess: (pointer) =>
             links < maxLinks
-              ? targetOf(fs, path, path.resolve(path.dirname(file), pointer), links + 1)
+              ? targetOf(fs, path, joinRaw(path, path.dirname(file), pointer), links + 1)
               : Effect.fail(file),
         }),
       ),
@@ -54,7 +61,11 @@ export const write = Effect.fn("ExportFile.write")(function* (file: string, text
   const failed = () =>
     new ExportFileError({ reason: ExportFileFailure.WriteFailed, path: absolute });
 
-  const target = yield* Effect.mapError(targetOf(fs, path, absolute), failed);
+  const target = yield* Effect.mapError(
+    targetOf(fs, path, joinRaw(path, path.resolve("."), file)),
+    failed,
+  );
+
   const suffix = Hex.encode(crypto.getRandomValues(new Uint8Array(tempNameBytes)));
   const temp = `${target}.${suffix}.tmp`;
 
