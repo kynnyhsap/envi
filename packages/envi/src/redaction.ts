@@ -12,6 +12,7 @@ import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
 import * as Record from "effect/Record";
+import * as Redacted from "effect/Redacted";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import * as Tracer from "effect/Tracer";
@@ -92,19 +93,43 @@ const isPlainData = (value: Value): value is Array<Value> | Readonly<Record<stri
 };
 
 /**
- * A value with the safe text of each error in it, at any depth of its arrays and plain records. An
- * `Error` and a plain record with a `_tag`, such as the value of `Effect.fail`, count as errors.
+ * The safe form of an object that is not plain data. Envi keeps only the objects that it knows: an
+ * error shows its safe text, a cause its safe form, and Envi walks the value of an `Option`. A
+ * `Redacted` and a `Date` stay. Any other object shows only its type, such as `[object Map]`,
+ * because it can hold an error that Envi cannot reach.
+ */
+const safeInstance = (value: Value, walk: Walk): Value => {
+  if (isErrorInstance(value)) {
+    return safeText(Cause.makeFailReason(value));
+  }
+
+  if (Cause.isCause(value)) {
+    return safeCause(value);
+  }
+
+  if (Option.isOption(value)) {
+    return Option.map(value, walk);
+  }
+
+  return Redacted.isRedacted(value) || Predicate.isDate(value)
+    ? value
+    : Object.prototype.toString.call(value);
+};
+
+/**
+ * A value with the safe text of each error in it, at any depth. Envi walks arrays and plain
+ * records, and a plain record with a `_tag`, such as the value of `Effect.fail`, counts as an error.
  */
 const safeValue: Walk = (input) => {
   const ancestors = new WeakSet<object>();
 
   const walk: Walk = (value) => {
-    if (isErrorInstance(value)) {
-      return safeText(Cause.makeFailReason(value));
+    if (!Predicate.isObjectOrArray(value)) {
+      return value;
     }
 
     if (!isPlainData(value)) {
-      return value;
+      return safeInstance(value, walk);
     }
 
     if (!Array.isArray(value) && isTagged(value)) {
@@ -185,7 +210,9 @@ export const safeTracer = (tracer: Tracer.Tracer): Tracer.Tracer => {
 const safeFiber = (fiber: Fiber.Fiber<unknown, unknown>): Fiber.Fiber<unknown, unknown> =>
   Object.assign(Object.create(fiber), {
     getRef: (ref: Context.Reference<Value>) =>
-      ref === References.CurrentLogAnnotations ? safeValue(fiber.getRef(ref)) : fiber.getRef(ref),
+      ref === References.CurrentLogAnnotations
+        ? Record.map(fiber.getRef(References.CurrentLogAnnotations), safeValue)
+        : fiber.getRef(ref),
   });
 
 /** A logger that receives each log with a safe cause, a safe message, and safe annotations. */

@@ -71,7 +71,10 @@ while an endpoint of the signal is set.
   error shows only its name, such as `Error`, because its text can hold a secret or an argument of
   a command. The same rule covers an error in a log: in its cause, in its message, or in its
   annotations, on stderr, in the log file, and in OTLP. It also covers an error in an attribute of
-  a span, an event, or a link. Envi finds an error at any depth of an array or a plain object.
+  a span, an event, or a link. Envi finds an error at any depth of an array, a plain object, an
+  `Option`, or a `Cause`. A plain object with a `_tag` counts as an error. A `Redacted` and a `Date`
+  stay. Any other object in a log or an attribute shows only its type, such as `[object Map]`,
+  because it can hold an error that Envi cannot reach.
 - Envi drops the attributes `url.full`, `url.path`, `url.query`, and the HTTP headers from each
   span, event, and link, because they can hold a secret. So a span of an HTTP request in user code
   holds the method, the host, the scheme, and the status. The request still sends `traceparent`,

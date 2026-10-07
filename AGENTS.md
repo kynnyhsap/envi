@@ -77,7 +77,8 @@ This repository is public. These rules have no exception.
   the standard `OTEL_*` variables name a collector. `src/otlp.ts` reads them, and
   `src/telemetry.ts` builds the layer. A span ends before Envi maps an error to its safe form, so
   `src/redaction.ts` replaces each error of a span or of a log with its name, or with the tag and
-  the summary of an Envi error, at any depth of a log or an attribute. It also drops the URL and the
+  the summary of an Envi error, at any depth of a log or an attribute. It shows any object that it
+  cannot walk only by its type. It also drops the URL and the
   headers from the attributes of each span, event, and link. The core only
   creates spans and logs, and the SDK leaves the tracer and the logger to the program. Telemetry
   never fails a command and never changes its output. `envi run` replaces `TRACEPARENT` of the

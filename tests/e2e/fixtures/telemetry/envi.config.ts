@@ -4,6 +4,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as HttpClient from "effect/http/HttpClient";
+import * as Option from "effect/Option";
 import * as Tracer from "effect/Tracer";
 
 // The telemetry tests. Each `custom()` puts a secret where telemetry could pick it up: a throw, an
@@ -64,6 +65,15 @@ export default defineConfig({
           Effect.andThen(Effect.logError("The retry failed.", new Error(`bad key ${password}`))),
           Effect.andThen(Effect.logError({ error: new Error(`bad key ${password}`) })),
           Effect.andThen(Effect.logError([new Error(`bad key ${password}`)])),
+          Effect.andThen(Effect.logError(Option.some(new Error(`bad key ${password}`)))),
+          Effect.andThen(Effect.logError({ cause: Cause.fail(new Error(`bad key ${password}`)) })),
+          Effect.andThen(Effect.logError(new Map([["error", new Error(`bad key ${password}`)]]))),
+          Effect.andThen(
+            Effect.logError("The count is ready.").pipe(
+              Effect.annotateLogs("_tag", "Ready"),
+              Effect.annotateLogs("count", 3),
+            ),
+          ),
           Effect.andThen(
             Effect.logError("The call failed.").pipe(
               Effect.annotateLogs("error", new Error(`bad key ${password}`)),

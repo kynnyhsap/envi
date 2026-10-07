@@ -204,9 +204,17 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi telemetry", (it) 
 
         const logs = yield* logsOf(received);
 
+        // An annotation named `_tag` is plain data, and the other annotations stay.
+        const ready = result.stderr
+          .split("\n")
+          .find((line) => line.includes("The count is ready."));
+
         expect(result.stderr).toContain("The exchange failed.");
         expect(result.stderr).toContain("The retry failed.");
         expect(result.stderr).toContain("The call failed.");
+
+        expect(ready).toContain("_tag=Ready");
+        expect(ready).toContain("count=3");
         expect(result.stderr).not.toContain(secrets["db-password"]);
         expect(yield* fs.readFileString(logFile)).not.toContain(secrets["db-password"]);
         expect(logs.some((log) => log.body.stringValue === "The exchange failed.")).toBe(true);
