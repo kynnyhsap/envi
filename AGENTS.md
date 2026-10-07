@@ -272,6 +272,9 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   and with Bun, and runs the command, the SDK, and `tsc` there. It needs the npm registry.
 - `tests/linux/` holds two Docker images: `linux-secret-service` with GNOME Keyring, and
   `linux-bare` without a keychain. Each runs the unit tests and the end-to-end tests.
+- An end-to-end test takes the cache key from `ENVI_CACHE_KEY`, so a local run never reads the
+  keychain of the developer. The tests of the real keychain run only with `ENVI_E2E_KEYCHAIN`.
+  CI sets it in the `verify` job on macOS and in the image `linux-secret-service`.
 - `packages/onepassword/e2e/` holds the tests against real 1Password, with fake public vaults.
   The files run one after another, because the 1Password app rejects parallel connections. Each
   suite runs once for each credential that is set: the service account of

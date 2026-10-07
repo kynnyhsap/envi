@@ -34,7 +34,11 @@ jobs:
         with:
           node-version-file: package.json
       - run: bun install --frozen-lockfile
+      # The macOS runner has a keychain, so the encryption tests also run on it there. The
+      # Secret Service runs in the image `linux-secret-service`.
       - run: bun run verify
+        env:
+          ENVI_E2E_KEYCHAIN: ${{ matrix.os == 'macos-latest' && '1' || '' }}
 
   # The unit and end-to-end tests on the lowest supported Node and Bun, the `engines` of the root
   # manifest. The Bun of `packageManager` installs, builds, and packs, because an older Bun cannot
