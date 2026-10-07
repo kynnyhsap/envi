@@ -35,6 +35,7 @@ folder, and `envi docs` reads them offline. Read the smallest page that answers 
 | Write a provider or a cache                               | [Custom providers and caches](./sdk/custom-providers.md) |
 | Check a known limit                                       | [Known limits](./known-limits.md)                        |
 | Fix an error                                              | [Errors](./errors/index.md), then the page of the error  |
+| Report a bug or a vulnerability                           | [Report a problem](./reporting.md)                       |
 
 ## Errors
 

@@ -73,6 +73,7 @@ its `docs` folder, so they always match the installed version. `envi docs` reads
 - [Coding agents](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/agents.md): the agent skills, installed with `npx skills add kynnyhsap/envi`
 - [Known limits](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/known-limits.md)
 - [Errors](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/errors/index.md): one page for each error
+- [Report a problem](https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/reporting.md) in a public issue, or a vulnerability in private: [SECURITY.md](https://github.com/kynnyhsap/envi/blob/main/SECURITY.md)
 
 ## License
 
