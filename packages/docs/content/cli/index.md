@@ -45,5 +45,10 @@ the `cache` field of its `--json` report is `false`, only when no config uses th
 
 A boolean flag also takes a value, such as `--json=true` or `--debug=false`.
 
+`envi export --output <file>` writes a new file with the mode `0600` next to the target, and then
+renames it over the target. The values never sit in a file with a wider mode, and a failed write
+keeps the old file. The folder of the file must be writable. For a symlink, Envi replaces the file
+that the link points to, and keeps the link.
+
 All logs go to stderr, so stdout stays clean for `export` and `--json`. `--json` changes only
 stdout, and `--log-format` alone selects the format of the logs. A log never holds a secret value.
