@@ -36,5 +36,5 @@ of the config selects another directory, in this order.
 - The cache serves the trust level of a `.env` file. Any process of the OS user can use it, a coding
   agent too. The encryption protects the files against file reads, searches, and backups.
 - The cache is off in CI by default. `--cache`, `ENVI_CACHE_ENABLED=true`, or a `cache` object
-  option of a client or a layer turns it on. `cache path`, `cache list`, and `cache clear` always use the
-  cache directory, also in CI.
+  option of a client or a layer turns it on. `cache path`, `cache list`, and `cache clear` always
+  use the cache directory, also in CI.
