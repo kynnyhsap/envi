@@ -9,6 +9,13 @@ import * as Path from "effect/Path";
 
 import { decodeJson, enviVersion, gitInit, runCli, runProcess, runtimes } from "./helpers.ts";
 
+/** Each `ENVI_*` variable of the test process, removed, so a report names only those of a test. */
+const withoutInherited = Object.fromEntries(
+  Object.keys(process.env)
+    .filter((name) => name.startsWith("ENVI_"))
+    .map((name) => [name, undefined]),
+);
+
 /** The keychain command of each platform. */
 const commands = new Map([
   ["darwin", "security"],
@@ -72,6 +79,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi doctor", (it) => 
           const project = yield* makeProject();
 
           const env = {
+            ...withoutInherited,
             CI: "true",
             ENVI_CONFIG_SEARCH: undefined,
             ENVI_CACHE_DIR: project.root,
@@ -148,6 +156,7 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi doctor", (it) => 
         const empty = yield* fs.makeTempDirectoryScoped({ prefix: "envi-doctor-" });
 
         const result = yield* runCli(runtime, empty, ["doctor", "--json"], {
+          ...withoutInherited,
           HOME: undefined,
           ENVI_CONFIG_SEARCH: undefined,
         });
