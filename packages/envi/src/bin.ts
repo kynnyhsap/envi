@@ -6,7 +6,9 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 
 import { ExitCode, KeyStore, main } from "./cli.ts";
+import * as Doctor from "./core/Doctor.ts";
 import * as Envi from "./core/Envi.ts";
+import { RuntimeName } from "./core/Reports.ts";
 import { delegatedVariable, findLocalBin, runLocal } from "./delegate.ts";
 import { keyStoreOf } from "./layer.ts";
 import * as Platform from "./platform.ts";
@@ -17,11 +19,22 @@ import * as Signals from "./signals.ts";
 // project must find its own local installation.
 const { [delegatedVariable]: _delegated, ...parentEnvironment } = process.env;
 
+const keyStore = keyStoreOf(process.platform);
+
+const bunVersion = process.versions["bun"];
+
 const MainLayer = Layer.mergeAll(
   Platform.layer,
   Signals.layer,
   Layer.succeed(Envi.ParentEnvironment, parentEnvironment),
-  Layer.succeed(KeyStore, keyStoreOf(process.platform)),
+  Layer.succeed(KeyStore, keyStore),
+  Layer.succeed(Doctor.System, {
+    runtime: bunVersion === undefined ? RuntimeName.Node : RuntimeName.Bun,
+    runtimeVersion: bunVersion ?? process.versions.node,
+    platform: process.platform,
+    arch: process.arch,
+    keychain: keyStore,
+  }),
 );
 
 // The arguments after the runtime and the script.

@@ -2,6 +2,8 @@
 // `--json` prints the encoded report. This file holds real schemas, because every type comes from one.
 import * as Schema from "effect/Schema";
 
+import { StoreSchema } from "./Keychain.ts";
+
 /** The indent of every JSON document that Envi prints: a report, an error, and an export. */
 export const jsonIndent = 2;
 
@@ -194,6 +196,42 @@ export const DocsPathReport = Schema.Struct({
 });
 
 export type DocsPathReport = typeof DocsPathReport.Type;
+
+/** The runtimes of Envi. */
+export const RuntimeName = {
+  Node: "node",
+  Bun: "bun",
+} as const;
+
+export const RuntimeNameSchema = Schema.Enum(RuntimeName);
+
+export type RuntimeName = typeof RuntimeNameSchema.Type;
+
+/**
+ * The facts of a setup that a public issue can hold. `envi doctor` imports no config and reads
+ * no secret, so it holds no path, no reference, and no value of a variable.
+ */
+export const DoctorReport = Schema.Struct({
+  version: Schema.String,
+  runtime: Schema.Struct({ name: RuntimeNameSchema, version: Schema.String }),
+  platform: Schema.String,
+  arch: Schema.String,
+  /** `CI` is set. The default cache is off in CI, and a prompt is forbidden. */
+  ci: Schema.Boolean,
+  /** The config files of a search up from here and of the whole repo. Envi does not import them. */
+  configs: Schema.Struct({ up: Schema.Number, repo: Schema.Number }),
+  /** A cache directory is selected without a config: `ENVI_CACHE_DIR`, or the default in `HOME`. */
+  cacheDirectory: Schema.Boolean,
+  /**
+   * The keychain of the platform, and whether its command is on `PATH`. `command` is `null` when
+   * the platform has no keychain. Envi does not read the keychain, so it never shows a prompt.
+   */
+  keychain: Schema.Struct({ store: StoreSchema, command: Schema.NullOr(Schema.Boolean) }),
+  /** The names of the `ENVI_*` variables that are set, sorted. A value can be private. */
+  variables: Schema.Array(Schema.String),
+});
+
+export type DoctorReport = typeof DoctorReport.Type;
 
 /** The formats of `export`. */
 export const ExportFormat = {

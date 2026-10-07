@@ -36,6 +36,7 @@ folder, and `envi docs` reads them offline. Read the smallest page that answers 
 | Check a known limit                                       | [Known limits](./known-limits.md)                        |
 | Fix an error                                              | [Errors](./errors/index.md), then the page of the error  |
 | Report a bug or a vulnerability                           | [Report a problem](./reporting.md)                       |
+| Show the setup for a bug report                           | [envi doctor](./cli/doctor.md)                           |
 
 ## Errors
 

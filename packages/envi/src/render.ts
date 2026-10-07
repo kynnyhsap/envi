@@ -6,6 +6,7 @@ import {
   type DocsListReport,
   type DocsPage,
   type DocsSearchReport,
+  type DoctorReport,
   type InspectReport,
   type SyncReport,
   redactedText,
@@ -113,3 +114,26 @@ export const docsSearch = (report: DocsSearchReport): string =>
   report.pages.length === 0
     ? lines([`No page holds every word of "${report.query}". Run \`envi docs list\`.`])
     : lines(docsPages(report.pages));
+
+/** `yes` or `no`. */
+const yesNo = (value: boolean): string => (value ? "yes" : "no");
+
+/** The text of `envi doctor`. */
+export const doctor = (report: DoctorReport): string =>
+  lines(
+    table([
+      ["Envi", report.version],
+      ["Runtime", `${report.runtime.name} ${report.runtime.version}`],
+      ["Platform", `${report.platform} ${report.arch}`],
+      ["CI", yesNo(report.ci)],
+      ["Configs", `${report.configs.up} up from here, ${report.configs.repo} in the repo`],
+      ["Cache directory", yesNo(report.cacheDirectory)],
+      [
+        "Keychain",
+        report.keychain.command === null
+          ? report.keychain.store
+          : `${report.keychain.store}, command on PATH: ${yesNo(report.keychain.command)}`,
+      ],
+      ["Variables", report.variables.length === 0 ? absent : report.variables.join(", ")],
+    ]),
+  );

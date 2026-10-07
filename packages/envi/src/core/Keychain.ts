@@ -35,7 +35,7 @@ export const Store = {
 } as const;
 
 /** The schema of `Store`. */
-const StoreSchema = Schema.Enum(Store);
+export const StoreSchema = Schema.Enum(Store);
 
 export type Store = typeof StoreSchema.Type;
 
@@ -85,6 +85,10 @@ const backends: Readonly<Record<Exclude<Store, typeof Store.None>, Backend>> = {
     }),
   },
 };
+
+/** The command of a keychain. None for a platform without a keychain. */
+export const commandOf = (store: Store): Option.Option<string> =>
+  store === Store.None ? Option.none() : Option.some(backends[store].command);
 
 const unavailable = (detail: string): CacheError =>
   new CacheError({ reason: CacheFailure.KeyUnavailable, detail });

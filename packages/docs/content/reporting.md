@@ -23,8 +23,8 @@ An issue is public. It can never hold a secret value, and it must not hold a pri
    gh issue list --repo kynnyhsap/envi --state all --search "<words>"
    ```
 
-2. Collect the facts: the output of `envi --version`, the OS, the runtime and its version, the
-   command, what you expected, and what happened. For an error, add its tag, its reason, and its
+2. Collect the facts: the output of [`envi doctor`](./cli/doctor.md), the command, what you
+   expected, and what happened. For an error, add its tag, its reason, and its
    `docs` link.
 3. Remove each value, and replace each private name with a placeholder before you post. The
    errors and the `--debug` logs show no value of a redacted var, but they show references and
