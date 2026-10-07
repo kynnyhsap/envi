@@ -32,6 +32,7 @@ describe("DefaultCache", () => {
       overrides: CacheSettings.Overrides,
       configKey: Option.Option<CacheSettings.CacheKey>,
       directory: string,
+      environment: Readonly<Record<string, string>> = {},
     ) =>
       Effect.gen(function* () {
         const warnings: Array<string> = [];
@@ -51,7 +52,7 @@ describe("DefaultCache", () => {
           return yield* cache.getMany(["a"]);
         }).pipe(
           Effect.provide(DefaultCache.layer(overrides, configKey)),
-          withEnv({ HOME: directory }),
+          withEnv({ HOME: directory, ...environment }),
           Effect.provide(Logger.layer([logger])),
         );
 
@@ -90,6 +91,35 @@ describe("DefaultCache", () => {
 
         expect(error).toMatchObject({ reason: CacheFailure.KeyUnavailable });
       }).pipe(Effect.provide(noKey)),
+    );
+
+    it.effect(
+      "warns once and runs without a cache when a cache option decides over ENVI_CACHE_ENABLED",
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const directory = yield* fs.makeTempDirectoryScoped({ prefix: "envi-default-cache-" });
+          const asked = { ENVI_CACHE_ENABLED: "true" };
+          const option = { ...CacheSettings.noOverrides, option: Option.some({ directory }) };
+
+          const { found, warnings } = yield* roundTrip(option, Option.none(), directory, asked);
+          const files = yield* fs.readDirectory(directory);
+
+          const withFlag = yield* Effect.flip(
+            roundTrip({ ...option, enabled: Option.some(true) }, Option.none(), directory),
+          );
+
+          const withVariable = yield* Effect.flip(
+            roundTrip(CacheSettings.noOverrides, Option.none(), directory, asked),
+          );
+
+          expect(found).toEqual({});
+          expect(warnings.length).toBe(1);
+          expect(warnings[0]).toContain(hints.CacheError.KeyUnavailable);
+          expect(files).toEqual([]);
+          expect(withFlag).toMatchObject({ reason: CacheFailure.KeyUnavailable });
+          expect(withVariable).toMatchObject({ reason: CacheFailure.KeyUnavailable });
+        }).pipe(Effect.provide(noKey)),
     );
 
     it.effect("uses the plaintext cache after the opt-in, which needs no key", () =>

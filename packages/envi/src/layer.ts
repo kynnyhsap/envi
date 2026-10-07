@@ -20,7 +20,11 @@ import * as Signals from "./signals.ts";
 export interface EnviOptions {
   /** Replaces the providers of the config. Tests pass an in-memory provider here. */
   readonly providers?: ReadonlyArray<Provider>;
-  /** `false` turns the cache off. An object replaces the `cache` key of the config. */
+  /**
+   * Replaces the `cache` key of the config. `false` turns the cache off. An object turns it on
+   * with these settings, over `ENVI_CACHE_ENABLED` and the default of CI. Without a key, Envi
+   * then warns once and runs without a cache.
+   */
   readonly cache?: CacheSettings.CacheKey;
   readonly strict?: boolean;
   /** Allows a prompt, such as a desktop app approval. Default: `ENVI_INTERACTIVE`, then not CI. */

@@ -73,7 +73,10 @@ export interface Overrides {
   readonly enabled: Option.Option<boolean>;
   /** `--cache-dir`. */
   readonly directory: Option.Option<string>;
-  /** The `cache` option of a client or a layer. It replaces the `cache` key of the config. */
+  /**
+   * The `cache` option of a client or a layer. It replaces the `cache` key of the config, and it
+   * turns the cache on or off over `ENVI_CACHE_ENABLED` and the default of CI.
+   */
   readonly option: Option.Option<CacheKey>;
 }
 
@@ -168,7 +171,10 @@ const decide = Effect.fn("CacheSettings.decide")(function* (
   const option = yield* decodeKey("option cache", overrides.option);
   const config = Option.isSome(option) ? Option.none() : yield* decodeKey("cache", configKey);
 
-  const decidedAbove = Option.orElse(overrides.enabled, () => offAt(option));
+  // The option decides like a flag: `false` turns the cache off, and an object turns it on.
+  const decidedAbove = Option.orElse(overrides.enabled, () =>
+    Option.map(option, (key) => key !== false),
+  );
 
   const enabledFromVariable = yield* Option.match(decidedAbove, {
     onSome: () => Effect.succeedNone,

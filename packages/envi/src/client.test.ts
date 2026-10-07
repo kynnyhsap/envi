@@ -176,6 +176,10 @@ const cacheDirectory = (): string => {
   return directory;
 };
 
+/** The cache entries of a folder. */
+const cacheEntries = (directory: string) =>
+  readdirSync(directory).filter((name) => name.endsWith(".json"));
+
 // The cache is off in CI by default. These tests set the cache themselves.
 beforeEach(() => {
   vi.stubEnv("CI", "false");
@@ -326,10 +330,14 @@ describe("syncAll", () => {
 });
 
 describe("the options of a layer", () => {
-  it.each<{ readonly variable: string; readonly options: EnviOptions }>([
-    { variable: "ENVI_STRICT", options: { strict: false } },
-    { variable: "ENVI_INTERACTIVE", options: { interactive: false } },
-    { variable: "ENVI_CACHE_ENABLED", options: { cache: false } },
+  it.each<{ readonly variable: string; readonly options: () => EnviOptions }>([
+    { variable: "ENVI_STRICT", options: () => ({ strict: false }) },
+    { variable: "ENVI_INTERACTIVE", options: () => ({ interactive: false }) },
+    { variable: "ENVI_CACHE_ENABLED", options: () => ({ cache: false }) },
+    {
+      variable: "ENVI_CACHE_ENABLED",
+      options: () => ({ cache: { directory: cacheDirectory(), encryption: "none" } }),
+    },
   ])("win over a $variable value that is not valid", async ({ variable, options }) => {
     const { oneConfig } = oneSecret();
 
@@ -341,10 +349,54 @@ describe("the options of a layer", () => {
 
     const error = await Effect.runPromise(Effect.flip(loadWith({})));
 
-    expect(await Effect.runPromise(loadWith(options))).toEqual({ DATABASE_URL: "postgres://fake" });
+    expect(await Effect.runPromise(loadWith(options()))).toEqual({
+      DATABASE_URL: "postgres://fake",
+    });
     expect(error).toBeInstanceOf(SettingsError);
     expect(error).toMatchObject({ name: variable });
   });
+});
+
+describe("the cache option of a layer", () => {
+  type Environment = Readonly<Record<string, string>>;
+
+  /** Loads the config `loads` times through one layer, and returns the provider calls. */
+  const callsWith = async (
+    inConfig: CacheKey | undefined,
+    options: EnviOptions,
+    environment: Environment,
+  ) => {
+    const { secrets, oneConfig } = oneSecret(inConfig);
+
+    const loadTwice = Envi.Envi.use((envi) =>
+      Effect.repeat(envi.load(oneConfig), { times: loads - 1 }),
+    ).pipe(Effect.provide(layer(options)), withEnv({ HOME: cacheDirectory(), ...environment }));
+
+    await Effect.runPromise(loadTwice);
+
+    return secrets.calls().length;
+  };
+
+  it.each<{ readonly setting: string; readonly environment: Environment }>([
+    { setting: "ENVI_CACHE_ENABLED=false", environment: { ENVI_CACHE_ENABLED: "false" } },
+    { setting: "the default of CI", environment: { CI: "true" } },
+  ])(
+    "turns the cache on over $setting, which turns off the cache key of the config",
+    async ({ environment }) => {
+      const fromOption = cacheDirectory();
+      const fromConfig = cacheDirectory();
+      const option = { cache: { directory: fromOption, encryption: "none" } } as const;
+
+      expect(await callsWith(undefined, option, environment)).toBe(1);
+      expect(cacheEntries(fromOption).length).toBe(1);
+
+      expect(await callsWith({ directory: fromConfig, encryption: "none" }, {}, environment)).toBe(
+        loads,
+      );
+
+      expect(cacheEntries(fromConfig)).toEqual([]);
+    },
+  );
 });
 
 describe("the cache of a sync report", () => {

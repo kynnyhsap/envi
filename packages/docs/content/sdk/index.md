@@ -32,9 +32,11 @@ overrides, or it rejects with a `SettingsError` too. Its report says that the ca
 least one config uses the cache. Its `stages` lists each stage of the sync once, in the order of
 the configs.
 `createEnvi(config, overrides)` takes `providers`, `cache`, `strict`, and `interactive`, which win
-over the config. The `cache` override replaces the whole `cache` key of the config: `false` turns
-the cache off, and an object turns a `cache: false` of the config into a cache with these
-settings.
+over the config. The `cache` override replaces the whole `cache` key of the config. `false` turns
+the cache off. An object turns the cache on with these settings, over a `cache: false` of the
+config, `ENVI_CACHE_ENABLED=false`, and the default of CI. Envi then does not read
+`ENVI_CACHE_ENABLED`, so a missing key logs a warning and Envi runs without a cache. See
+[Cache](../cache.md).
 
 - Envi never changes `process.env`. The caller assigns the result of `loadRaw`.
 - `Env<typeof config>`, `RawEnv<typeof config>`, and `StageOf<typeof config>` are the types of a
