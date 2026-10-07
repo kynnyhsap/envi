@@ -20,7 +20,8 @@ of the config selects another directory, in this order.
   Keyring. Envi creates the key on the first use.
 - Without a key, Envi logs one warning and runs without a cache. With `--cache` or
   `ENVI_CACHE_ENABLED=true`, a missing key fails with
-  [`KeyUnavailable`](errors/cache-key-unavailable.md).
+  [`KeyUnavailable`](errors/cache-key-unavailable.md). A `cache` object option of a client turns
+  the cache on, but a missing key only logs the warning.
 - Envi never falls back from encryption to plaintext. `encryption: "none"` writes plaintext files
   with the mode `0600`, as an explicit opt-in.
 - One `sync` of several configs fills one cache. Every config that uses the cache must select the
@@ -33,5 +34,6 @@ of the config selects another directory, in this order.
   [Known limits](known-limits.md).
 - The cache serves the trust level of a `.env` file. Any process of the OS user can use it, a coding
   agent too. The encryption protects the files against file reads, searches, and backups.
-- The cache is off in CI by default. `cache path`, `cache list`, and `cache clear` always use the
+- The cache is off in CI by default. `--cache`, `ENVI_CACHE_ENABLED=true`, or a `cache` object
+  option of a client turns it on. `cache path`, `cache list`, and `cache clear` always use the
   cache directory, also in CI.
