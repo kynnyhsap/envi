@@ -15,6 +15,7 @@ import {
   holdsNoSecret,
   logsOf,
   spansOf,
+  unavailableCollector,
   valueOf,
 } from "./collector.ts";
 import {
@@ -309,38 +310,43 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi telemetry", (it) 
     );
 
     it.effect(
-      "runs the command when the collector does not answer, and logs each failed request to the log file",
+      "runs the command when the collector is down, and logs each failed request to the log file",
       () =>
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
-          const sandbox = yield* makeSandbox("none");
-          const logFile = path.join(sandbox.directory, "envi.log");
           // A port that nothing listens on: the collector closes before the run.
           const closed = yield* Effect.scoped(Effect.map(collector, (server) => server.url));
-
-          const traced = yield* exportJson(runtime, app, sandbox, {
-            ...exportTo(closed),
-            ENVI_LOG_FILE: logFile,
-          });
-
+          const rejecting = yield* unavailableCollector;
           const plain = yield* exportJson(runtime, app, yield* makeSandbox("none"));
 
-          const lines = yield* Effect.forEach(
-            (yield* fs.readFileString(logFile)).split("\n").filter((line) => line !== ""),
-            (line) => Schema.decodeEffect(Schema.fromJsonString(LogLine))(line),
-          );
+          yield* Effect.forEach([closed, rejecting.url], (url) =>
+            Effect.gen(function* () {
+              const sandbox = yield* makeSandbox("none");
+              const logFile = path.join(sandbox.directory, "envi.log");
 
-          const failed = new Set(
-            lines.flatMap((line) =>
-              line.annotations["failure"] === undefined ? [] : [line.annotations["signal"]],
-            ),
-          );
+              const traced = yield* exportJson(runtime, app, sandbox, {
+                ...exportTo(url),
+                ENVI_LOG_FILE: logFile,
+              });
 
-          expect(traced.exitCode).toBe(0);
-          expect(traced.stdout).toBe(plain.stdout);
-          expect(traced.stderr).toBe(plain.stderr);
-          expect(failed).toEqual(new Set(["logs", "traces"]));
+              const lines = yield* Effect.forEach(
+                (yield* fs.readFileString(logFile)).split("\n").filter((line) => line !== ""),
+                (line) => Schema.decodeEffect(Schema.fromJsonString(LogLine))(line),
+              );
+
+              const failed = new Set(
+                lines.flatMap((line) =>
+                  line.annotations["failure"] === undefined ? [] : [line.annotations["signal"]],
+                ),
+              );
+
+              expect(traced.exitCode).toBe(0);
+              expect(traced.stdout).toBe(plain.stdout);
+              expect(traced.stderr).toBe(plain.stderr);
+              expect(failed).toEqual(new Set(["logs", "traces"]));
+            }),
+          );
         }),
     );
 

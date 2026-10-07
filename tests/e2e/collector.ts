@@ -18,13 +18,18 @@ export interface Received {
 /** The address of a server that listens on a TCP port. */
 const Address = Schema.Struct({ port: Schema.Number });
 
+/** The status of a success, and of a collector that is down for a while. */
+const ok = 200;
+
+const unavailable = 503;
+
 /**
  * An OTLP collector on a free port. It records each request, and it answers a request after the
- * delay of its index with an empty success. Without a delay, it never answers, as a collector that
- * hangs. `answered` holds the path of each request that got its answer before the CLI closed the
- * connection.
+ * delay of its index with `status` and an empty body. Without a delay, it never answers, as a
+ * collector that hangs. `answered` holds the path of each request that got its answer before the
+ * CLI closed the connection.
  */
-const collectorWith = (delayOf: (index: number) => Duration.Duration | undefined) =>
+const collectorWith = (delayOf: (index: number) => Duration.Duration | undefined, status = ok) =>
   Effect.acquireRelease(
     Effect.callback<
       {
@@ -56,7 +61,7 @@ const collectorWith = (delayOf: (index: number) => Duration.Duration | undefined
             setTimeout(() => {
               if (!request.socket.destroyed) {
                 answered.push(request.url ?? "");
-                response.writeHead(200, { "content-type": "application/json" });
+                response.writeHead(status, { "content-type": "application/json" });
                 response.end("{}");
               }
             }, Duration.toMillis(delay));
@@ -83,6 +88,9 @@ const collectorWith = (delayOf: (index: number) => Duration.Duration | undefined
 
 /** A collector that answers every request with an empty success. */
 export const collector = collectorWith(() => Duration.zero);
+
+/** A collector that answers every request with `503 Service Unavailable`. */
+export const unavailableCollector = collectorWith(() => Duration.zero, unavailable);
 
 /** A collector that accepts every request and never answers. */
 export const silentCollector = collectorWith(() => undefined);

@@ -110,7 +110,8 @@ interface ExporterOptions {
 
 /**
  * The HTTP client of the exporter of one signal. It logs each failed request at the debug level
- * with the kind of the failure, such as `TransportError`, and never with its text. So `--debug` and
+ * with the kind of the failure, such as `TransportError` or `StatusCodeError`, and never with its
+ * text. So `--debug` and
  * the log file show why a collector receives nothing, such as a port or a header that `fetch` of
  * the runtime refuses.
  */
@@ -118,7 +119,8 @@ const clientOf = (signal: Otlp.Signal) =>
   Layer.effect(
     HttpClient.HttpClient,
     Effect.map(HttpClient.HttpClient, (client) =>
-      HttpClient.tapError(client, (error) =>
+      // A status other than 2xx is a failure here too, so a collector that is down shows each try.
+      HttpClient.tapError(HttpClient.filterStatusOk(client), (error) =>
         Effect.logDebug(`Envi cannot send the ${signal}.`).pipe(
           Effect.annotateLogs({ signal, failure: error.reason._tag }),
         ),
