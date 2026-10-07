@@ -44,7 +44,7 @@ The `--json` report has `queries`, with the `query` and its `references`, each w
 
 The 1Password SDK has no search. The provider lists the vaults, the items of each vault, and the
 fields of each item that matches. It makes one call for the vaults, one call for each vault, and
-one call for each vault that holds a match. It decodes each answer without its values.
+one call for each vault that holds a match, with 50 items at most a call. It decodes each answer without its values.
 
 - A query matches an item whose title holds the query, or a title that differs by a few letters.
   Case does not matter. A query lists at most 10 items, the closest first.

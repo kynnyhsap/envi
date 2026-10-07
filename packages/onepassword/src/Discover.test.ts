@@ -291,7 +291,7 @@ describe("the search of the 1Password provider", () => {
     }).pipe(Effect.provide(serviceAccount)),
   );
 
-  it.effect("fails when 1Password cannot read a matched item, or leaves out an answer", () =>
+  it.effect("fails when 1Password cannot read a matched item, or answers for another item", () =>
     Effect.gen(function* () {
       const sentinel = "fake-internal-sentinel";
 
@@ -308,9 +308,19 @@ describe("the search of the 1Password provider", () => {
         search(fakeSdk(vaults, () => ({ individualResponses: [] })).sdk, ["redis"]),
       );
 
+      const other = yield* Effect.flip(
+        search(
+          fakeSdk(vaults, () => ({
+            individualResponses: [{ content: { id: "postgres-id", sections: [], fields: [] } }],
+          })).sdk,
+          ["redis"],
+        ),
+      );
+
       expect(internal).toMatchObject({ reason: ProviderFailure.Unavailable });
       expect(JSON.stringify(internal) + String(internal)).not.toContain(sentinel);
       expect(missing).toMatchObject({ reason: ProviderFailure.InvalidResponse });
+      expect(other).toMatchObject({ reason: ProviderFailure.InvalidResponse });
       expect(yield* search(fakeSdk(vaults).sdk, ["redis"])).toEqual({
         redis: ["op://app/redis/url"],
       });

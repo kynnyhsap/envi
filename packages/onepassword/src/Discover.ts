@@ -255,6 +255,11 @@ const itemOf = (answer: ItemAnswer): Effect.Effect<Option.Option<Item>, Provider
   return Effect.fail(answer.error ? unreadable() : invalid());
 };
 
+/** `true` when each item is a different one of the requested items. */
+const answersEach = (items: ReadonlyArray<Item>, ids: ReadonlyArray<string>) =>
+  items.every((item) => ids.includes(item.id)) &&
+  new Set(items.map((item) => item.id)).size === items.length;
+
 /** Reads the fields of some items of one vault in one call. Each item needs its own answer. */
 const readSome = <DesktopAuth>(
   sdk: Sdk.Sdk<DesktopAuth>,
@@ -271,6 +276,7 @@ const readSome = <DesktopAuth>(
         : Effect.fail(invalid()),
     ),
     Effect.map(Arr.getSomes),
+    Effect.filterOrFail((items) => answersEach(items, ids), invalid),
   );
 
 /** Reads the fields of the matched items: one call for each vault, and 50 items at most a call. */
