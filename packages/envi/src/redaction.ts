@@ -192,11 +192,17 @@ const safeValue: Walk = (input) => {
 /** The attributes that can hold a secret: the URL of a request, its parts, and the headers. */
 const unsafeAttribute = /^(?:url\.(?:full|path|query)|http\.(?:request|response)\.header\.)/u;
 
-/** The attributes without the ones that can hold a secret, and with the safe text of each error. */
-const safeAttributes = (attributes: Readonly<Record<string, unknown>>) =>
-  Record.map(
-    Record.filter(attributes, (_, key) => !unsafeAttribute.test(key)),
-    safeValue,
+/**
+ * The attributes without the ones that can hold a secret, and with the safe form of each value.
+ * Envi reads each value through its descriptor, so no getter runs.
+ */
+const safeAttributes = (attributes: Readonly<Record<string, Value>>) =>
+  Object.fromEntries(
+    Object.entries(Object.getOwnPropertyDescriptors(attributes)).flatMap(([key, descriptor]) =>
+      descriptor.enumerable === true && !unsafeAttribute.test(key)
+        ? [[key, propertyOf(descriptor, safeValue)]]
+        : [],
+    ),
   );
 
 const safeLinks = (links: ReadonlyArray<Tracer.SpanLink>) =>

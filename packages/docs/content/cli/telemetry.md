@@ -56,7 +56,9 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 envi sync
 `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL`, `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL`,
 `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, and `OTEL_EXPORTER_OTLP_LOGS_HEADERS` set one signal. A
 variable of one signal wins over the variable of every signal. A header name or value that HTTP
-does not allow, such as a name with a space, is a value that Envi cannot use.
+does not allow, such as a name with a space, is a value that Envi cannot use. So is an endpoint
+with a user or a password, such as `http://app:secret@localhost:4318`. Put the credentials in a
+header instead.
 
 `OTEL_TRACES_EXPORTER` and `OTEL_LOGS_EXPORTER` hold a list, such as `otlp,console`. Envi sends the
 signal when the list holds `otlp`, and Envi uses no other exporter. A list of only `none` sends
@@ -76,8 +78,8 @@ while an endpoint of the signal is set.
   `Option`, or a `Cause`. A plain object with a `_tag` counts as an error. A `Redacted` and a `Date`
   stay. Any other object or function in a log or an attribute shows only its type, such as
   `[object Map]`, because it can hold an error that Envi cannot reach. Envi copies only the data
-  properties of a plain object, so a hook such as `toJSON` never runs, and a getter shows as
-  `[Getter]`.
+  properties of a plain object or of the attributes, so a hook such as `toJSON` never runs, and a
+  getter shows as `[Getter]`.
 - Envi drops the attributes `url.full`, `url.path`, `url.query`, and the HTTP headers from each
   span, event, and link, because they can hold a secret. So a span of an HTTP request in user code
   holds the method, the host, the scheme, and the status. The request still sends `traceparent`,

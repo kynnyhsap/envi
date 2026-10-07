@@ -68,7 +68,8 @@ export default defineConfig({
           Effect.andThen(Effect.logError(Option.some(new Error(`bad key ${password}`)))),
           Effect.andThen(Effect.logError({ cause: Cause.fail(new Error(`bad key ${password}`)) })),
           Effect.andThen(Effect.logError(new Map([["error", new Error(`bad key ${password}`)]]))),
-          // A hook of a serializer returns the error, and a getter throws. The logs after them still run.
+          // A hook of a serializer returns the error, and a getter of a log or an event throws. The logs
+          // after them still run.
           Effect.andThen(
             Effect.logError({
               toJSON: () => [new Error(`bad key ${password}`)],
@@ -81,6 +82,19 @@ export default defineConfig({
                 throw new Error(`bad key ${password}`);
               },
             }),
+          ),
+          Effect.andThen(
+            Effect.flatMap(
+              Effect.all([Effect.currentSpan, Clock.currentTimeNanos]),
+              ([span, now]) =>
+                Effect.sync(() => {
+                  span.event("status", now, {
+                    get status(): number {
+                      throw new Error(`bad key ${password}`);
+                    },
+                  });
+                }),
+            ),
           ),
           Effect.andThen(
             Effect.logError("The count is ready.").pipe(

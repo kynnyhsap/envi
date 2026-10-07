@@ -80,7 +80,10 @@ const signalOrCommon = (signal: Signal, setting: string) => {
 
 const parseUrl = (variable: string, value: string) =>
   Schema.decodeUnknownEffect(Schema.URLFromString)(value.trim()).pipe(
-    Effect.filterOrFail((url) => urlSchemes.has(url.protocol)),
+    // `fetch` of Node rejects a URL with a user or a password. A header carries the credentials.
+    Effect.filterOrFail(
+      (url) => urlSchemes.has(url.protocol) && url.username === "" && url.password === "",
+    ),
     Effect.mapError(() => unusable(variable)),
   );
 

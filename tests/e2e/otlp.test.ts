@@ -111,25 +111,39 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi OTLP settings", (
       }),
     );
 
-    it.effect("turns off a signal whose endpoint is not a URL, and names the variable", () =>
-      Effect.gen(function* () {
-        const { url, received } = yield* collector;
-        const variable = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT";
-        const value = "not-a-collector-url";
+    it.effect(
+      "turns off a signal whose endpoint is not a URL or holds a password, and names the variable",
+      () =>
+        Effect.gen(function* () {
+          const variable = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT";
+          const password = "example-password";
+          const plain = yield* exportJson(runtime, app, yield* makeSandbox("none"));
 
-        const result = yield* exportJson(runtime, app, yield* makeSandbox("none"), {
-          OTEL_EXPORTER_OTLP_ENDPOINT: url,
-          [variable]: value,
-        });
+          // `fetch` of Node rejects a URL with a user and a password, so Envi rejects it first.
+          const cases: ReadonlyArray<(url: string) => string> = [
+            () => "not-a-collector-url",
+            (url: string) => url.replace("://", `://app:${password}@`),
+          ];
 
-        const plain = yield* exportJson(runtime, app, yield* makeSandbox("none"));
+          yield* Effect.forEach(cases, (endpointOf) =>
+            Effect.gen(function* () {
+              const { url, received } = yield* collector;
+              const value = endpointOf(url);
 
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toBe(plain.stdout);
-        expect(pathsOf(received)).toEqual(["/v1/logs"]);
-        expect(result.stderr).toContain(variable);
-        expect(result.stderr).not.toContain(value);
-      }),
+              const result = yield* exportJson(runtime, app, yield* makeSandbox("none"), {
+                OTEL_EXPORTER_OTLP_ENDPOINT: url,
+                [variable]: value,
+              });
+
+              expect(result.exitCode).toBe(0);
+              expect(result.stdout).toBe(plain.stdout);
+              expect(pathsOf(received)).toEqual(["/v1/logs"]);
+              expect(result.stderr).toContain(variable);
+              expect(result.stderr).not.toContain(value);
+              expect(result.stderr).not.toContain(password);
+            }),
+          );
+        }),
     );
 
     it.effect("turns off a signal whose header is not an HTTP header, and names the variable", () =>
