@@ -97,7 +97,12 @@ export const attach = Effect.fn("Candidates.attach")(function* <A>(
       Option.match(missingOf(outcome), {
         onNone: () => outcome,
         onSome: (error) => {
-          const candidates = (results.get(error.provider)?.[error.reference] ?? [])
+          const found = results.get(error.provider) ?? noResults();
+
+          // Only an own key, so a reference such as `toString` never reads `Object.prototype`.
+          const candidates = (
+            Object.hasOwn(found, error.reference) ? (found[error.reference] ?? []) : []
+          )
             .filter((candidate) => candidate !== error.reference)
             .slice(0, maxCandidates);
 

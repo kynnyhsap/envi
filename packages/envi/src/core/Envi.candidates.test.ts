@@ -177,36 +177,56 @@ describe("the close references of a NotFound failure", () => {
     Effect.gen(function* () {
       const names = ["toString", "constructor", "__proto__"];
 
-      const provider = Provider.make({
+      const base = {
         id: providerId,
         scope: providerId,
-        describe: (key) => key,
-        resolveMany: (requests) =>
+        describe: (key: string) => key,
+        resolveMany: (requests: ReadonlyArray<Provider.ProviderRequest<string>>) =>
           Effect.succeed(
             Object.fromEntries(
               requests.map((request) => [request.key, Result.fail(ReferenceFailure.NotFound)]),
             ),
           ),
-        discover: () => Effect.succeed({}),
         helpers: {},
+      };
+
+      const unavailable = new ProviderError({
+        reason: ProviderFailure.Unavailable,
+        provider: providerId,
+        detail: "The test search is down.",
       });
 
-      const config = defineConfig({
-        providers: [provider],
-        vars: Object.fromEntries(
-          names.map((name) => [name.toUpperCase(), reference(providerId, name)]),
-        ),
-      });
+      const answering = Provider.make({ ...base, discover: () => Effect.succeed({}) });
 
-      const failures = yield* failuresOf(config);
-      const report = yield* Effect.flatMap(Envi.Envi, (envi) => envi.find(config, names));
+      // A search that fails, and a provider without a search, give no answer at all.
+      const providers = [
+        answering,
+        Provider.make({ ...base, discover: () => Effect.fail(unavailable) }),
+        Provider.make(base),
+      ];
 
-      expect(failures.map(({ key }) => key)).toEqual(names.map((name) => name.toUpperCase()));
+      const configOfProvider = (provider: Provider.Provider) =>
+        defineConfig({
+          providers: [provider],
+          vars: Object.fromEntries(
+            names.map((name) => [name.toUpperCase(), reference(providerId, name)]),
+          ),
+        });
 
-      for (const { error } of failures) {
-        expect(error).toMatchObject({ reason: ReferenceFailure.NotFound });
-        expect(error).not.toHaveProperty("candidates");
+      for (const provider of providers) {
+        const failures = yield* failuresOf(configOfProvider(provider));
+
+        expect(failures.map(({ key }) => key)).toEqual(names.map((name) => name.toUpperCase()));
+
+        for (const { error } of failures) {
+          expect(error).toMatchObject({ reason: ReferenceFailure.NotFound });
+          expect(error).not.toHaveProperty("candidates");
+        }
       }
+
+      const report = yield* Effect.flatMap(Envi.Envi, (envi) =>
+        envi.find(configOfProvider(answering), names),
+      );
 
       expect(report.queries).toEqual(names.map((query) => ({ query, references: [] })));
     }).pipe(Effect.provide(enviLayer())),
