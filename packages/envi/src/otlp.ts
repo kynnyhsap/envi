@@ -131,7 +131,16 @@ const protocolOf = (signal: Signal) =>
 
 const decodeComponent = Schema.decodeUnknownEffect(Schema.StringFromUriComponent);
 
-/** One header of `key=value`. The value is the text after the first `=`, so it can hold `=`. */
+/** The name of an HTTP header: a token of RFC 9110. */
+const headerName = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/u;
+
+/** The value of an HTTP header: visible bytes, spaces, and tabs, with no line break. */
+const headerValue = /^[\t\x20-\x7E\x80-\xFF]*$/u;
+
+/**
+ * One header of `key=value`. The value is the text after the first `=`, so it can hold `=`. A name
+ * or a value that HTTP does not allow fails here, so the export never fails on it later.
+ */
 const headerOf = (variable: string, pair: string) => {
   const at = pair.indexOf("=");
 
@@ -139,7 +148,9 @@ const headerOf = (variable: string, pair: string) => {
     decodeComponent(pair.slice(0, at).trim()),
     decodeComponent(pair.slice(at + 1).trim()),
   ]).pipe(
-    Effect.filterOrFail(([key]) => at > 0 && key !== ""),
+    Effect.filterOrFail(
+      ([key, value]) => at > 0 && headerName.test(key) && headerValue.test(value),
+    ),
     Effect.mapError(() => unusable(variable)),
   );
 };

@@ -26,8 +26,6 @@ const Tagged = Schema.Struct({ _tag: Schema.String });
 
 const ErrorInstance = Schema.instanceOf(Error);
 
-const isTagged = Schema.is(Tagged);
-
 const isErrorInstance = Schema.is(ErrorInstance);
 
 /** The text that stands in for a value inside itself. */
@@ -92,11 +90,50 @@ const isPlainData = (value: Value): value is Array<Value> | Readonly<Record<stri
   return Array.isArray(value) || prototype === Object.prototype || prototype === null;
 };
 
+/** The text that stands in for a getter. Envi never runs a getter of a value. */
+const getter = "[Getter]";
+
+/** The type of a value, such as `[object Map]`. It never runs code of the value. */
+const typeOf = (value: Value) => Object.prototype.toString.call(value);
+
+/** The value of a property. Envi reads only a data property, so no getter runs. */
+const propertyOf = (descriptor: PropertyDescriptor | undefined, walk: Walk): Value => {
+  if (descriptor === undefined) {
+    return undefined;
+  }
+
+  return "value" in descriptor ? walk(descriptor.value) : getter;
+};
+
+/**
+ * New plain data with the safe form of each property. It holds only the own enumerable properties
+ * with a string key, so no hook of the value, such as `toJSON`, reaches a serializer.
+ */
+const dataOf = (value: Array<Value> | Readonly<Record<string, Value>>, walk: Walk): Value => {
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+
+  if (Array.isArray(value)) {
+    return Array.from({ length: value.length }, (_, index) => propertyOf(descriptors[index], walk));
+  }
+
+  const tag = descriptors["_tag"];
+
+  if (tag !== undefined && "value" in tag && Predicate.isString(tag.value)) {
+    return safeText(Cause.makeFailReason(value));
+  }
+
+  return Object.fromEntries(
+    Object.entries(descriptors).flatMap(([key, descriptor]) =>
+      descriptor.enumerable === true ? [[key, propertyOf(descriptor, walk)]] : [],
+    ),
+  );
+};
+
 /**
  * The safe form of an object that is not plain data. Envi keeps only the objects that it knows: an
  * error shows its safe text, a cause its safe form, and Envi walks the value of an `Option`. A
- * `Redacted` and a `Date` stay. Any other object shows only its type, such as `[object Map]`,
- * because it can hold an error that Envi cannot reach.
+ * `Redacted` stays, and a `Date` becomes a new `Date`. Any other object, and a function, shows only
+ * its type, such as `[object Map]`, because it can hold an error that Envi cannot reach.
  */
 const safeInstance = (value: Value, walk: Walk): Value => {
   if (isErrorInstance(value)) {
@@ -111,9 +148,11 @@ const safeInstance = (value: Value, walk: Walk): Value => {
     return Option.map(value, walk);
   }
 
-  return Redacted.isRedacted(value) || Predicate.isDate(value)
-    ? value
-    : Object.prototype.toString.call(value);
+  if (Predicate.isDate(value)) {
+    return new Date(Date.prototype.getTime.call(value));
+  }
+
+  return Redacted.isRedacted(value) ? value : typeOf(value);
 };
 
 /**
@@ -124,6 +163,10 @@ const safeValue: Walk = (input) => {
   const ancestors = new WeakSet<object>();
 
   const walk: Walk = (value) => {
+    if (Predicate.isFunction(value)) {
+      return typeOf(value);
+    }
+
     if (!Predicate.isObjectOrArray(value)) {
       return value;
     }
@@ -132,16 +175,12 @@ const safeValue: Walk = (input) => {
       return safeInstance(value, walk);
     }
 
-    if (!Array.isArray(value) && isTagged(value)) {
-      return safeText(Cause.makeFailReason(value));
-    }
-
     if (ancestors.has(value)) {
       return circular;
     }
 
     ancestors.add(value);
-    const safe = Array.isArray(value) ? value.map(walk) : Record.map(value, walk);
+    const safe = dataOf(value, walk);
     ancestors.delete(value);
 
     return safe;

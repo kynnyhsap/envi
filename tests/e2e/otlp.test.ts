@@ -132,6 +132,25 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi OTLP settings", (
       }),
     );
 
+    it.effect("turns off a signal whose header is not an HTTP header, and names the variable", () =>
+      Effect.gen(function* () {
+        const { url, received } = yield* collector;
+        const variable = "OTEL_EXPORTER_OTLP_TRACES_HEADERS";
+        const name = "bad header";
+
+        const result = yield* exportJson(runtime, app, yield* makeSandbox("none"), {
+          ...exportTo(url),
+          [variable]: `${name}=value`,
+          OTEL_EXPORTER_OTLP_LOGS_HEADERS: "x-team=my-team",
+        });
+
+        expect(result.exitCode).toBe(0);
+        expect(pathsOf(received)).toEqual(["/v1/logs"]);
+        expect(result.stderr).toContain(variable);
+        expect(result.stderr).not.toContain(name);
+      }),
+    );
+
     it.effect(
       "turns off a signal whose exporter Envi cannot use, and warns only with an endpoint",
       () =>

@@ -68,6 +68,20 @@ export default defineConfig({
           Effect.andThen(Effect.logError(Option.some(new Error(`bad key ${password}`)))),
           Effect.andThen(Effect.logError({ cause: Cause.fail(new Error(`bad key ${password}`)) })),
           Effect.andThen(Effect.logError(new Map([["error", new Error(`bad key ${password}`)]]))),
+          // A hook of a serializer returns the error, and a getter throws. The logs after them still run.
+          Effect.andThen(
+            Effect.logError({
+              toJSON: () => [new Error(`bad key ${password}`)],
+              [Symbol.for("nodejs.util.inspect.custom")]: () => new Error(`bad key ${password}`),
+            }),
+          ),
+          Effect.andThen(
+            Effect.logError({
+              get status(): string {
+                throw new Error(`bad key ${password}`);
+              },
+            }),
+          ),
           Effect.andThen(
             Effect.logError("The count is ready.").pipe(
               Effect.annotateLogs("_tag", "Ready"),
