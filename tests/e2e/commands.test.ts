@@ -129,6 +129,8 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const web = path.join(stages, "web/envi.config.ts");
           const api = path.join(stages, "api/envi.config.ts");
           const configs = ["--config", web, "--config", api];
+          // The default stages of the web config and the api config, in this order.
+          const defaultStages = ["development", "production"];
           const text = yield* cli(runtime, sandbox, ["sync", ...configs]);
           const json = yield* cli(runtime, sandbox, ["sync", ...configs, "--json"]);
 
@@ -140,11 +142,10 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
             "--json",
           ]);
 
-          expect(text.stdout).toContain("Synced the stages development, production from 2 configs");
-          expect((yield* decodeJson(SyncReport, json.stdout)).stages).toEqual([
-            "development",
-            "production",
-          ]);
+          expect(text.stdout).toContain(
+            `Synced the stages ${defaultStages.join(", ")} from ${defaultStages.length} configs`,
+          );
+          expect((yield* decodeJson(SyncReport, json.stdout)).stages).toEqual(defaultStages);
           expect((yield* decodeJson(SyncReport, one.stdout)).stages).toEqual(["development"]);
         }),
       );

@@ -1,3 +1,4 @@
+import * as Arr from "effect/Array";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -124,30 +125,31 @@ describe("createEnvi", () => {
     await api.dispose();
   });
 
-  it("reports every stage when the clients have different default stages", async () => {
-    const shared = memoryProvider({ "db/url": "postgres://fake", port: "5432" });
+  it("reports every stage once, in the order of the clients", async () => {
+    const shared = memoryProvider({ port: "5432" });
+    const defaultStages = ["production", "development", "production"] as const;
 
-    const web = createEnvi(
-      defineConfig({ providers: [shared], cache: false, vars: { DATABASE_URL: mem("db/url") } }),
+    const clients = Arr.map(defaultStages, (defaultStage) =>
+      createEnvi(
+        defineConfig({
+          stages: ["development", "production"],
+          defaultStage,
+          providers: [shared],
+          cache: false,
+          vars: { PORT: mem("port") },
+        }),
+      ),
     );
 
-    const api = createEnvi(
-      defineConfig({
-        stages: ["development", "production"],
-        defaultStage: "production",
-        providers: [shared],
-        cache: false,
-        vars: { PORT: mem("port") },
-      }),
-    );
+    const report = await syncAll(clients);
+    const one = await syncAll(clients, { stage: "development" });
 
-    const report = await syncAll([web, api]);
-    const one = await syncAll([web, api], { stage: "development" });
-
-    expect(report.stages).toEqual(["development", "production"]);
+    expect(report.stages).toEqual([...new Set(defaultStages)]);
     expect(one.stages).toEqual(["development"]);
-    await web.dispose();
-    await api.dispose();
+
+    for (const client of clients) {
+      await client.dispose();
+    }
   });
 });
 
