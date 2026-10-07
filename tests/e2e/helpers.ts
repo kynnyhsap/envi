@@ -69,6 +69,17 @@ export const cleared = {
   ENVI_CACHE_ENABLED: undefined,
   ENVI_CACHE_KEY: undefined,
   ENVI_DELEGATED: undefined,
+  ENVI_DEBUG: undefined,
+  ENVI_LOG_FILE: undefined,
+  OTEL_SDK_DISABLED: undefined,
+  OTEL_EXPORTER_OTLP_ENDPOINT: undefined,
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: undefined,
+  OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: undefined,
+  OTEL_EXPORTER_OTLP_PROTOCOL: undefined,
+  OTEL_EXPORTER_OTLP_HEADERS: undefined,
+  OTEL_TRACES_EXPORTER: undefined,
+  OTEL_LOGS_EXPORTER: undefined,
+  TRACEPARENT: undefined,
 };
 
 export interface Sandbox {

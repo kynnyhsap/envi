@@ -173,6 +173,10 @@ const fromBackend = (backend: Backend) =>
         return yield* unavailable(`${backend.name} refused access to the Envi key.`);
       }
 
+      yield* Effect.logDebug("Envi creates the cache key in the keychain.").pipe(
+        Effect.annotateLogs({ keychain: backend.name }),
+      );
+
       // A parallel Envi process can create the key first. The second read returns the key that won.
       yield* create;
 
@@ -198,7 +202,12 @@ export const layer = (store: Store): Layer.Layer<EncryptionKey, never, ChildProc
           : yield* fromBackend(backends[store]);
 
       return Effect.flatMap(fromVariable, (key) =>
-        Option.match(key, { onNone: () => fromStore, onSome: Effect.succeed }),
+        Effect.andThen(
+          Effect.logDebug("Envi selected the source of the cache key.").pipe(
+            Effect.annotateLogs({ source: Option.isSome(key) ? keyVariable : store }),
+          ),
+          Option.match(key, { onNone: () => fromStore, onSome: Effect.succeed }),
+        ),
       ).pipe(Timing.measure(Timing.Step.KeychainKey));
     }),
   );

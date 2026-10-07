@@ -387,14 +387,12 @@ const down = Effect.fn("ConfigLoader.down")(function* (host: Host, start: string
     : yield* noConfig(start, `No ${configBaseName}.ts exists in this directory or below it.`);
 });
 
-const find = (host: Host, directory: string, search: ConfigSearch) => {
-  const start = host.path.resolve(directory);
-
-  if (search === ConfigSearch.Up) {
+const searchFrom = (host: Host, start: string, direction: ConfigSearch) => {
+  if (direction === ConfigSearch.Up) {
     return up(host, start);
   }
 
-  return search === ConfigSearch.Down
+  return direction === ConfigSearch.Down
     ? down(host, start)
     : Effect.flatMap(projectRoot(host, start), (root) =>
         down(
@@ -403,6 +401,21 @@ const find = (host: Host, directory: string, search: ConfigSearch) => {
         ),
       );
 };
+
+const find = Effect.fn("ConfigLoader.find")(function* (
+  host: Host,
+  directory: string,
+  direction: ConfigSearch,
+) {
+  const start = host.path.resolve(directory);
+  const found = yield* searchFrom(host, start, direction);
+
+  yield* Effect.logDebug("Envi found the configs.").pipe(
+    Effect.annotateLogs({ search: direction, from: start, files: found.join(", ") }),
+  );
+
+  return found;
+});
 
 const make = Effect.gen(function* () {
   const host: Host = {

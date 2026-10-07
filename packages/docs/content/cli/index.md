@@ -47,3 +47,5 @@ A boolean flag also takes a value, such as `--json=true` or `--debug=false`.
 
 All logs go to stderr, so stdout stays clean for `export` and `--json`. `--json` changes only
 stdout, and `--log-format` alone selects the format of the logs. A log never holds a secret value.
+`ENVI_DEBUG`, `ENVI_LOG_FILE`, and the OpenTelemetry variables send the logs and the spans to more
+places. See [Logs and traces](./telemetry.md).

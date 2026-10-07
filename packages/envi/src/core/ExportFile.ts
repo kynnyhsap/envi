@@ -25,5 +25,9 @@ export const write = Effect.fn("ExportFile.write")(function* (file: string, text
     ),
   );
 
+  yield* Effect.logDebug("Envi wrote the export to a file.").pipe(
+    Effect.annotateLogs({ file: absolute }),
+  );
+
   return absolute;
 });

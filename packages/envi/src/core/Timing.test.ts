@@ -1,6 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Logger from "effect/Logger";
+import * as Option from "effect/Option";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
@@ -50,7 +52,8 @@ describe("Timing.measure", () => {
       const step = Effect.andThen(TestClock.adjust("40 millis"), Effect.fail("down"));
       const { exit, lines } = yield* capture(step.pipe(Timing.measure("provider.resolve")));
 
-      expect(exit).toEqual(Effect.runSync(Effect.exit(Effect.fail("down"))));
+      // The span of the step adds itself to the cause, so the test compares only the error.
+      expect(Exit.findErrorOption(exit)).toEqual(Option.some("down"));
       expect(lines).toEqual([
         { level: "DEBUG", step: "provider.resolve", durationMs: 40, outcome: "failure" },
       ]);

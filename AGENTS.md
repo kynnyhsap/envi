@@ -71,8 +71,13 @@ This repository is public. These rules have no exception.
 - **Envi never changes `process.env`.** Do not add a helper that only saves the user one line.
 - **Provider agnostic core.** The core never imports a provider. The provider interface and the
   cache interface are public and unstable until a second real provider proves them.
-- **No secret in an error or a log.** An error holds the var key or the safe `describe()` text,
-  never a value or a rejected input.
+- **No secret in an error, a log, or a span.** An error holds the var key or the safe
+  `describe()` text, never a value or a rejected input.
+- **Telemetry follows OpenTelemetry.** The CLI exports its spans and its logs over OTLP only when
+  the standard `OTEL_*` variables name a collector. `src/telemetry.ts` reads them. The core only
+  creates spans and logs, and the SDK leaves the tracer and the logger to the program. Telemetry
+  never fails a command and never changes its output. `envi run` replaces `TRACEPARENT` of the
+  child only while Envi exports its spans.
 - **Never fall back from encryption to plaintext.** Plaintext is an explicit opt-in.
 - **One precedence order for every setting:** CLI flag or call option, client option,
   environment variable, config key, default.
