@@ -289,7 +289,7 @@ describe("Envi", () => {
       const first = yield* envi.sync(config);
       const second = yield* envi.sync(config);
 
-      expect(first.stage).toBe("development");
+      expect(first.stages).toEqual(["development"]);
       expect(first.configs).toBe(1);
       expect(first.providers).toEqual([{ provider: "memory", secrets: 3, cached: 0, resolved: 3 }]);
       expect(first.failures).toEqual([

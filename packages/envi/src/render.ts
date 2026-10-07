@@ -45,7 +45,7 @@ const lines = (parts: ReadonlyArray<string>): string => `${parts.join("\n")}\n`;
 /** The text of `envi sync`. */
 export const sync = (report: SyncReport): string =>
   lines([
-    `Synced the stage ${report.stage} from ${report.configs} ${report.configs === 1 ? "config" : "configs"} in ${report.durationMillis} ms.`,
+    `Synced the ${report.stages.length === 1 ? "stage" : "stages"} ${report.stages.join(", ")} from ${report.configs} ${report.configs === 1 ? "config" : "configs"} in ${report.durationMillis} ms.`,
     ...report.providers.map(
       (entry) =>
         `  ${entry.provider}: ${entry.secrets} secrets, ${entry.cached} cached, ${entry.resolved} resolved`,

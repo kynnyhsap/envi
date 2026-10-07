@@ -28,6 +28,10 @@ and directory, or `sync` fails with a [`SettingsError`](../errors/settings.md) a
 the `cache` field of its `--json` report is `false`, only when no config uses the cache. See
 [Cache](../cache.md).
 
+Without `--stage` and `ENVI_STAGE`, each config of `envi sync` uses its own `defaultStage`, so one
+sync can cover several stages. `envi sync` names each stage once, and the `stages` field of its
+`--json` report lists them in the order of the configs.
+
 | Flag                                | Commands                                      | Does                                                                                    |
 | ----------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `--config <file>`                   | run, sync, check, inspect, export, find       | Selects a config file. Repeat it for several files.                                     |
