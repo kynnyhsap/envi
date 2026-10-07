@@ -26,8 +26,10 @@ you remember, because they match the installed version.
 
 ## Keep secrets out of the chat
 
-- Never print a secret value. Do not run `envi export --no-redact` or `envi inspect --no-redact`,
-  and do not print the env inside `envi run`, such as with `printenv` or `env`.
+- Never print a secret value. `envi export` prints the real values by default: run it only with
+  `--redact`, or with `--output` to a file outside the repo. Do not run
+  `envi inspect --no-redact`, and do not print the env inside `envi run`, such as with `printenv`
+  or `env`.
 - To learn about the vars, use `envi check`, which shows no value, and `envi inspect`, which hides
   secrets.
 - Never write a secret value into a file, a commit, or a message. Put a reference into

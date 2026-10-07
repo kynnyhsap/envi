@@ -26,22 +26,22 @@ and directory, or `sync` fails with a [`SettingsError`](../errors/settings.md) a
 the `cache` field of its `--json` report is `false`, only when no config uses the cache. See
 [Cache](../cache.md).
 
-| Flag                                | Commands                                      | Does                                                        |
-| ----------------------------------- | --------------------------------------------- | ----------------------------------------------------------- |
-| `--config <file>`                   | run, sync, check, inspect, export             | Selects a config file. Repeat it for several files.         |
-| `--config-search <direction>`       | run, sync, check, inspect, export             | `up`, `down`, or `repo`. See below.                         |
-| `--stage <name>`                    | run, sync, check, inspect, export             | Selects the stage.                                          |
-| `--refresh`                         | run, sync, check, inspect, export             | Ignores fresh cache entries.                                |
-| `--strict`                          | run, sync, check, inspect, export             | Never uses an expired cache entry.                          |
-| `--interactive`, `--no-interactive` | run, sync, check, inspect, export             | Allows or forbids a prompt, such as a desktop app approval. |
-| `--cache`, `--no-cache`             | run, sync, check, inspect, export             | Turns the cache on or off.                                  |
-| `--cache-dir <dir>`                 | run, sync, check, inspect, export, cache      | Selects the cache directory.                                |
-| `--json`                            | every command except run and bare `envi docs` | Prints the report, or the error, as JSON on stdout.         |
-| `--redact`, `--no-redact`           | inspect, export                               | Hides or shows the secret values.                           |
-| `--format dotenv\|json`             | export                                        | Selects the output format.                                  |
-| `--output <file>`                   | export                                        | Writes a file with the mode `0600`.                         |
-| `--debug`                           | every command                                 | Shows debug logs, with the duration of each step.           |
-| `--log-format pretty\|json`         | every command                                 | Selects the format of the logs on stderr.                   |
+| Flag                                | Commands                                      | Does                                                                                    |
+| ----------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `--config <file>`                   | run, sync, check, inspect, export             | Selects a config file. Repeat it for several files.                                     |
+| `--config-search <direction>`       | run, sync, check, inspect, export             | `up`, `down`, or `repo`. See below.                                                     |
+| `--stage <name>`                    | run, sync, check, inspect, export             | Selects the stage.                                                                      |
+| `--refresh`                         | run, sync, check, inspect, export             | Ignores fresh cache entries.                                                            |
+| `--strict`                          | run, sync, check, inspect, export             | Never uses an expired cache entry.                                                      |
+| `--interactive`, `--no-interactive` | run, sync, check, inspect, export             | Allows or forbids a prompt, such as a desktop app approval.                             |
+| `--cache`, `--no-cache`             | run, sync, check, inspect, export             | Turns the cache on or off.                                                              |
+| `--cache-dir <dir>`                 | run, sync, check, inspect, export, cache      | Selects the cache directory.                                                            |
+| `--json`                            | every command except run and bare `envi docs` | Prints the report, or the error, as JSON on stdout.                                     |
+| `--redact`, `--no-redact`           | inspect, export                               | Hides or shows the secret values. `inspect` hides them by default, `export` shows them. |
+| `--format dotenv\|json`             | export                                        | Selects the output format.                                                              |
+| `--output <file>`                   | export                                        | Writes a file with the mode `0600`.                                                     |
+| `--debug`                           | every command                                 | Shows debug logs, with the duration of each step.                                       |
+| `--log-format pretty\|json`         | every command                                 | Selects the format of the logs on stderr.                                               |
 
 A boolean flag also takes a value, such as `--json=true` or `--debug=false`.
 
