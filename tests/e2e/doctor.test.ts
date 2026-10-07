@@ -7,7 +7,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
-import { decodeJson, enviVersion, gitInit, runCli, runtimes } from "./helpers.ts";
+import { decodeJson, enviVersion, gitInit, runCli, runProcess, runtimes } from "./helpers.ts";
 
 /** A config that leaves a marker file when a process imports it. */
 const markingConfig = `import { writeFileSync } from "node:fs";
@@ -18,6 +18,13 @@ export default {};
 const fakeKey = "fake-cache-key-sentinel";
 
 const fakeStage = "fake-stage-sentinel";
+
+const malformedSetting = "malformed-setting-sentinel";
+
+/** A git fsmonitor hook that leaves a marker file when git runs it. */
+const markingHook = (marker: string) => `#!/bin/sh
+echo ran > "${marker}"
+`;
 
 /** The keychain of each platform. Another platform has none. */
 const stores = new Map([
@@ -38,48 +45,66 @@ const makeProject = Effect.fn("makeProject")(function* () {
   yield* fs.writeFileString(path.join(api, "envi.config.ts"), markingConfig);
   yield* gitInit(project);
 
-  return { root, project, api, marker: path.join(root, "imported") };
+  // Git runs the fsmonitor hook of the repo before it lists the files.
+  const hook = path.join(root, "fsmonitor");
+  const hookMarker = path.join(root, "hook-ran");
+
+  yield* fs.writeFileString(hook, markingHook(hookMarker));
+  yield* fs.chmod(hook, 0o755);
+  yield* runProcess("git", ["config", "core.fsmonitor", hook], project);
+
+  return { root, project, api, marker: path.join(root, "imported"), hookMarker };
 });
 
 layer(NodeServices.layer, { excludeTestServices: true })("envi doctor", (it) => {
   describe.each(runtimes)("on %s", (runtime) => {
-    it.effect("reports the setup without importing a config or printing a path or a value", () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const project = yield* makeProject();
+    it.effect(
+      "reports the setup without user code, a path, or a value, also with a bad setting",
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const project = yield* makeProject();
 
-        const env = {
-          CI: "true",
-          ENVI_CONFIG_SEARCH: undefined,
-          ENVI_CACHE_DIR: project.root,
-          ENVI_CACHE_KEY: fakeKey,
-          ENVI_STAGE: fakeStage,
-          DOCTOR_E2E_IMPORT_MARKER: project.marker,
-        };
+          const env = {
+            CI: "true",
+            ENVI_CONFIG_SEARCH: undefined,
+            ENVI_CACHE_DIR: project.root,
+            ENVI_CACHE_ENABLED: malformedSetting,
+            ENVI_CACHE_KEY: fakeKey,
+            ENVI_STAGE: fakeStage,
+            DOCTOR_E2E_IMPORT_MARKER: project.marker,
+          };
 
-        const json = yield* runCli(runtime, project.api, ["doctor", "--json"], env);
-        const text = yield* runCli(runtime, project.api, ["doctor"], env);
-        const report = yield* decodeJson(DoctorReport, json.stdout);
+          const json = yield* runCli(runtime, project.api, ["doctor", "--json"], env);
+          const text = yield* runCli(runtime, project.api, ["doctor"], env);
+          const report = yield* decodeJson(DoctorReport, json.stdout);
 
-        expect(json.exitCode).toBe(0);
-        expect(text.exitCode).toBe(0);
-        expect(report.version).toBe(enviVersion);
-        expect(report.runtime.name).toBe(runtime);
-        expect(report.platform).toBe(process.platform);
-        expect(report.arch).toBe(process.arch);
-        expect(report.ci).toBe(true);
-        expect(report.configs).toEqual({ up: 1, repo: 2 });
-        expect(report.cacheDirectory).toBe(true);
-        expect(report.keychain.store).toBe(stores.get(process.platform) ?? "none");
-        expect(report.variables).toEqual(["ENVI_CACHE_DIR", "ENVI_CACHE_KEY", "ENVI_STAGE"]);
-        expect(yield* fs.exists(project.marker)).toBe(false);
+          expect(json.exitCode).toBe(0);
+          expect(text.exitCode).toBe(0);
+          expect(report.version).toBe(enviVersion);
+          expect(report.runtime.name).toBe(runtime);
+          expect(report.platform).toBe(process.platform);
+          expect(report.arch).toBe(process.arch);
+          expect(report.ci).toBe(true);
+          expect(report.configs).toEqual({ up: 1, repo: 2 });
+          expect(report.cacheDirectory).toBe(true);
+          expect(report.keychain.store).toBe(stores.get(process.platform) ?? "none");
+          expect(report.variables).toEqual([
+            "ENVI_CACHE_DIR",
+            "ENVI_CACHE_ENABLED",
+            "ENVI_CACHE_KEY",
+            "ENVI_STAGE",
+          ]);
 
-        for (const output of [json, text]) {
-          for (const hidden of [project.root, fakeKey, fakeStage]) {
-            expect(output.stdout + output.stderr).not.toContain(hidden);
+          expect(yield* fs.exists(project.marker)).toBe(false);
+          expect(yield* fs.exists(project.hookMarker)).toBe(false);
+
+          for (const output of [json, text]) {
+            for (const hidden of [project.root, fakeKey, fakeStage, malformedSetting]) {
+              expect(output.stdout + output.stderr).not.toContain(hidden);
+            }
           }
-        }
-      }),
+        }),
     );
 
     it.effect("reports no config and no cache directory in an empty folder without HOME", () =>

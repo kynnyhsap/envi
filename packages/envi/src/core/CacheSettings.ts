@@ -233,6 +233,20 @@ const decideStorage = Effect.fn("CacheSettings.decideStorage")(function* (
 });
 
 /**
+ * Tells whether the default cache has a directory without a config: `ENVI_CACHE_DIR`, then the
+ * home folder. It reads no other setting, so a bad cache setting does not hide the answer.
+ */
+export const hasDirectoryWithoutConfig: Effect.Effect<boolean> = Effect.map(
+  Effect.all([
+    Effect.orElseSucceed(Settings.readString(directoryVariable, expected.directory), () =>
+      Option.none<string>(),
+    ),
+    Settings.home,
+  ]),
+  ([directory, home]) => Option.isSome(directory) || Option.isSome(home),
+);
+
+/**
  * Selects the policy and the directory of the default cache, with the same order. Without a
  * setting that decides, the cache is off in CI.
  */

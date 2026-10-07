@@ -46,16 +46,27 @@ const countConfigs = (directory: string, search: ConfigLoader.ConfigSearch) =>
     ),
   );
 
-/** `true` when a folder of `PATH` holds the command. Envi does not run it. */
+/** The execute bits of the owner, the group, and the others. */
+const executeBits = 0o111;
+
+/** `true` for an executable file. A directory or a file without an execute bit cannot run. */
+const isExecutable = (file: string) =>
+  Effect.flatMap(FileSystem.FileSystem, (fs) =>
+    Effect.orElseSucceed(
+      Effect.map(fs.stat(file), (info) => info.type === "File" && (info.mode & executeBits) !== 0),
+      () => false,
+    ),
+  );
+
+/** `true` when a folder of `PATH` holds the command as an executable file. Envi does not run it. */
 const onPath = Effect.fn("Doctor.onPath")(function* (command: string) {
-  const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const environment = yield* ParentEnvironment;
   const folders = (environment[pathVariable] ?? "").split(pathSeparator);
 
   const found = yield* Effect.findFirst(
     folders.filter((folder) => folder !== ""),
-    (folder) => Effect.orElseSucceed(fs.exists(path.join(folder, command)), () => false),
+    (folder) => isExecutable(path.join(folder, command)),
   );
 
   return Option.isSome(found);
@@ -67,7 +78,6 @@ export const report = Effect.fn("Doctor.report")(function* () {
   const path = yield* Path.Path;
   const environment = yield* ParentEnvironment;
   const here = path.resolve(".");
-  const cache = yield* CacheSettings.select(CacheSettings.noOverrides, Option.none());
   const command = Keychain.commandOf(system.keychain);
 
   const doctor: DoctorReport = {
@@ -80,7 +90,7 @@ export const report = Effect.fn("Doctor.report")(function* () {
       up: yield* countConfigs(here, ConfigLoader.ConfigSearch.Up),
       repo: yield* countConfigs(here, ConfigLoader.ConfigSearch.Repo),
     },
-    cacheDirectory: Option.isSome(cache.directory),
+    cacheDirectory: yield* CacheSettings.hasDirectoryWithoutConfig,
     keychain: {
       store: system.keychain,
       command: Option.isSome(command) ? yield* onPath(command.value) : null,

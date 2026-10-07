@@ -269,6 +269,9 @@ const up = Effect.fn("ConfigLoader.up")(function* (host: Host, start: string) {
   }
 });
 
+/** The git command that lists the files that git tracks or does not ignore. */
+const listFiles = ["ls-files", "-z", "--cached", "--others", "--exclude-standard"];
+
 /** The files that git tracks or does not ignore. None when git fails, as outside a repo. */
 const gitFiles = (
   host: Host,
@@ -277,7 +280,8 @@ const gitFiles = (
   Effect.scoped(
     Effect.gen(function* () {
       const handle = yield* host.spawner.spawn(
-        ChildProcess.make("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
+        // A repo can set `core.fsmonitor` to a hook. The search never runs code of the repo.
+        ChildProcess.make("git", ["-c", "core.fsmonitor=false", ...listFiles], {
           cwd: directory,
           stdin: "ignore",
           stderr: "ignore",
