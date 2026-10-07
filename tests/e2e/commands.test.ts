@@ -26,6 +26,7 @@ import {
   providerCalls,
   providerInteractive,
   runCli,
+  cliPath,
   runProcess,
   runtimes,
   type Sandbox,
@@ -329,6 +330,60 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           expect((yield* fs.stat(file)).mode & 0o777).toBe(0o600);
           expect(yield* fs.readDirectory(folder)).toEqual(["out.env"]);
         }),
+      );
+
+      it.effect.each(["0200", "0400"])(
+        "writes a readable private file under the umask %s",
+        (mask) =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const sandbox = yield* makeSandbox("none");
+            const file = path.join(sandbox.directory, "out.env");
+
+            const result = yield* runProcess(
+              "sh",
+              [
+                "-c",
+                `umask ${mask} && exec "$@"`,
+                "sh",
+                runtime,
+                cliPath,
+                "export",
+                "--no-cache",
+                "--output",
+                file,
+              ],
+              app,
+              sandbox.env,
+            );
+
+            expect(result.exitCode).toBe(0);
+            expect((yield* fs.stat(file)).mode & 0o777).toBe(0o600);
+            expect(yield* fs.readFileString(file)).toContain("PORT=3000\n");
+          }),
+      );
+
+      it.effect.each(["relative", "absolute"])(
+        "keeps a dangling %s symlink and creates the file that it points to",
+        (kind) =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const sandbox = yield* makeSandbox("none");
+            const target = path.join(sandbox.directory, "target.env");
+            const link = path.join(sandbox.directory, "link.env");
+            const pointer = kind === "relative" ? "target.env" : target;
+
+            yield* fs.symlink(pointer, link);
+
+            const result = yield* cli(runtime, sandbox, ["export", "--output", link]);
+
+            expect(result.exitCode).toBe(0);
+            expect(yield* fs.readLink(link)).toBe(pointer);
+            expect(yield* fs.readFileString(target)).toContain("PORT=3000\n");
+            expect((yield* fs.stat(target)).mode & 0o777).toBe(0o600);
+          }),
       );
 
       it.effect("writes the file that a symlink points to, and keeps the link", () =>
