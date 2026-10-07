@@ -87,6 +87,11 @@ while an endpoint of the signal is set.
   under another attribute, stays as the user code writes it.
 - Envi waits for each batch in flight and sends the last batch before it exits. A collector that
   does not answer delays the exit by 2 seconds at most.
+- A request to a collector that fails changes no output. Envi logs it at the debug level, with the
+  signal and the kind of failure, such as `TransportError`, and never with the text of the error.
+  So when a collector receives nothing, run with `--debug` or `ENVI_LOG_FILE`. The cause can be the
+  collector, or a port or a header that `fetch` of the runtime refuses, such as the port `6000` or
+  the header `expect` on Node.
 - The CLI supports only OTLP over HTTP. Another protocol, such as `grpc`, is a value that Envi
   cannot use.
 - A variable that Envi cannot use turns off its signal, and only its signal. A warning on stderr

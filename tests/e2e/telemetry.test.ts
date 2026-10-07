@@ -41,6 +41,12 @@ const traceparent = `00-${parentTraceId}-${parentSpanId}-01`;
 
 const debugLine = /level=DEBUG/u;
 
+/** A line of the log file: its level and its annotations. */
+const LogLine = Schema.Struct({
+  level: Schema.String,
+  annotations: Schema.Record(Schema.String, Schema.Unknown),
+});
+
 layer(NodeServices.layer, { excludeTestServices: true })("envi telemetry", (it) => {
   describe.each(runtimes)("on %s", (runtime) => {
     it.effect("sends the spans and the logs of a command to an OTLP collector", () =>
@@ -302,19 +308,40 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi telemetry", (it) 
       }),
     );
 
-    it.effect("runs the command when the collector does not answer", () =>
-      Effect.gen(function* () {
-        const sandbox = yield* makeSandbox("none");
-        // A port that nothing listens on: the collector closes before the run.
-        const closed = yield* Effect.scoped(Effect.map(collector, (server) => server.url));
+    it.effect(
+      "runs the command when the collector does not answer, and logs each failed request to the log file",
+      () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const sandbox = yield* makeSandbox("none");
+          const logFile = path.join(sandbox.directory, "envi.log");
+          // A port that nothing listens on: the collector closes before the run.
+          const closed = yield* Effect.scoped(Effect.map(collector, (server) => server.url));
 
-        const traced = yield* exportJson(runtime, app, sandbox, exportTo(closed));
-        const plain = yield* exportJson(runtime, app, yield* makeSandbox("none"));
+          const traced = yield* exportJson(runtime, app, sandbox, {
+            ...exportTo(closed),
+            ENVI_LOG_FILE: logFile,
+          });
 
-        expect(traced.exitCode).toBe(0);
-        expect(traced.stdout).toBe(plain.stdout);
-        expect(traced.stderr).toBe(plain.stderr);
-      }),
+          const plain = yield* exportJson(runtime, app, yield* makeSandbox("none"));
+
+          const lines = yield* Effect.forEach(
+            (yield* fs.readFileString(logFile)).split("\n").filter((line) => line !== ""),
+            (line) => Schema.decodeEffect(Schema.fromJsonString(LogLine))(line),
+          );
+
+          const failed = new Set(
+            lines.flatMap((line) =>
+              line.annotations["failure"] === undefined ? [] : [line.annotations["signal"]],
+            ),
+          );
+
+          expect(traced.exitCode).toBe(0);
+          expect(traced.stdout).toBe(plain.stdout);
+          expect(traced.stderr).toBe(plain.stderr);
+          expect(failed).toEqual(new Set(["logs", "traces"]));
+        }),
     );
 
     it.effect("prints the debug logs with ENVI_DEBUG, and --debug=false wins over it", () =>

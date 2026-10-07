@@ -8,6 +8,7 @@ import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import * as HttpClient from "effect/http/HttpClient";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as LogLevel from "effect/LogLevel";
@@ -108,11 +109,32 @@ interface ExporterOptions {
 }
 
 /**
+ * The HTTP client of the exporter of one signal. It logs each failed request at the debug level
+ * with the kind of the failure, such as `TransportError`, and never with its text. So `--debug` and
+ * the log file show why a collector receives nothing, such as a port or a header that `fetch` of
+ * the runtime refuses.
+ */
+const clientOf = (signal: Otlp.Signal) =>
+  Layer.effect(
+    HttpClient.HttpClient,
+    Effect.map(HttpClient.HttpClient, (client) =>
+      HttpClient.tapError(client, (error) =>
+        Effect.logDebug(`Envi cannot send the ${signal}.`).pipe(
+          Effect.annotateLogs({ signal, failure: error.reason._tag }),
+        ),
+      ),
+    ),
+  ).pipe(Layer.provide(FetchHttpClient.layer));
+
+/**
  * Starts the exporter of one signal in its own scope, when the settings of the signal name a
- * collector. The scope closes at exit, so the exporter sends its last batch.
+ * collector. The scope closes at exit, so the exporter sends its last batch. The exporter logs a
+ * failed export at the debug level to `local`: stderr and the log file, never to OTLP, so a failed
+ * export never feeds itself.
  */
 const exporterOf = <A, R>(
   scope: Scope.Scope,
+  local: ReadonlySet<Logger.Logger<unknown, unknown>>,
   signal: Otlp.Signal,
   make: (options: ExporterOptions) => Effect.Effect<A, never, R | Scope.Scope>,
 ) =>
@@ -124,11 +146,13 @@ const exporterOf = <A, R>(
             Effect.provide(
               Layer.mergeAll(
                 serializations[value.protocol],
-                FetchHttpClient.layer,
+                clientOf(signal),
                 OtlpExporter.layerFlusher,
               ),
             ),
             Scope.provide(scope),
+            Effect.provideService(Logger.CurrentLoggers, local),
+            Effect.provideService(References.MinimumLogLevel, "Debug"),
           ),
         ),
       ),
@@ -209,14 +233,29 @@ export const layer = (flags: Flags) =>
 
       yield* closeTogether(scopes);
 
-      const otlpLogger = yield* exporterOf(scopes[0], Otlp.Signal.Logs, OtlpLogger.make);
-      const tracer = yield* exporterOf(scopes[1], Otlp.Signal.Traces, OtlpTracer.make);
-
       // Every logger gets a safe cause, so a log never shows the text of an unknown error.
-      const loggers = [
+      const local = [
         safeLogger(consoleLogger(flags.logFormat, debug.value)),
-        safeLogger(Logger.tracerLogger),
         ...Option.toArray(Option.map(fileLogger.value, safeLogger)),
+      ];
+
+      const otlpLogger = yield* exporterOf(
+        scopes[0],
+        new Set(local),
+        Otlp.Signal.Logs,
+        OtlpLogger.make,
+      );
+
+      const tracer = yield* exporterOf(
+        scopes[1],
+        new Set(local),
+        Otlp.Signal.Traces,
+        OtlpTracer.make,
+      );
+
+      const loggers = [
+        ...local,
+        safeLogger(Logger.tracerLogger),
         ...Option.toArray(Option.map(otlpLogger.value, safeLogger)),
       ];
 
