@@ -12,6 +12,8 @@ import {
 } from "@kynnyhsap/envi";
 import * as Effect from "effect/Effect";
 import * as Logger from "effect/Logger";
+import * as Predicate from "effect/Predicate";
+import * as Redacted from "effect/Redacted";
 import * as References from "effect/References";
 import type * as Schema from "effect/Schema";
 
@@ -70,6 +72,35 @@ const withDebugLogs = <A, E>(effect: Effect.Effect<A, E>) =>
     return { result, logs: lines.join("\n") };
   });
 
+/** A value that a caller can read from an error: a field, an error, or a `Redacted`. */
+type ErrorField = Schema.Json | Error | Redacted.Redacted<ErrorField>;
+
+/**
+ * Every text that the value holds in a field, also in a field that JSON skips, such as a
+ * non-enumerable `cause`, and inside a `Redacted`. A caller can read each of them.
+ */
+const reachableTexts = (value: ErrorField, seen = new Set<ErrorField>()): Array<string> => {
+  if (Predicate.isString(value)) {
+    return [value];
+  }
+
+  if (Redacted.isRedacted(value)) {
+    return reachableTexts(Redacted.value(value), seen);
+  }
+
+  if (!Predicate.isObjectOrArray(value) || seen.has(value)) {
+    return [];
+  }
+
+  seen.add(value);
+
+  return Reflect.ownKeys(value).flatMap((key) => {
+    const field: ErrorField | undefined = Object.getOwnPropertyDescriptor(value, key)?.value;
+
+    return field === undefined ? [] : reachableTexts(field, seen);
+  });
+};
+
 const malformedAnswers: ReadonlyArray<readonly [string, Schema.Json]> = [
   [
     "a secret of another type",
@@ -93,7 +124,7 @@ const malformedAnswers: ReadonlyArray<readonly [string, Schema.Json]> = [
 
 describe("a malformed answer of the 1Password SDK", () => {
   it.effect.each(malformedAnswers)(
-    "fails with InvalidResponse and keeps the secret out of the error and the logs: %s",
+    "fails with InvalidResponse and keeps the secret out of every field of the error and the logs: %s",
     ([, answer]) =>
       Effect.gen(function* () {
         const { result: error, logs } = yield* withDebugLogs(Effect.flip(load(answer)));
@@ -103,7 +134,7 @@ describe("a malformed answer of the 1Password SDK", () => {
         expect(failures.map(({ key }) => key)).toEqual(["DATABASE_URL"]);
         expect(failures[0]?.error).toBeInstanceOf(ProviderError);
         expect(failures[0]?.error).toMatchObject({ reason: ProviderFailure.InvalidResponse });
-        expect(JSON.stringify(error)).not.toContain(sentinel);
+        expect(reachableTexts(error).filter((text) => text.includes(sentinel))).toEqual([]);
         expect(String(error)).not.toContain(sentinel);
         expect(logs).not.toContain(sentinel);
       }),
