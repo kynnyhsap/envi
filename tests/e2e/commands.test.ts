@@ -317,12 +317,38 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const fs = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
           const sandbox = yield* makeSandbox("none");
-          const file = path.join(sandbox.directory, "out.env");
+          const folder = path.join(sandbox.directory, "out");
+          const file = path.join(folder, "out.env");
+
+          yield* fs.makeDirectory(folder);
+
           const result = yield* cli(runtime, sandbox, ["export", "--output", file]);
 
           expect(result.exitCode).toBe(0);
           expect(yield* fs.readFileString(file)).toContain("PORT=3000\n");
           expect((yield* fs.stat(file)).mode & 0o777).toBe(0o600);
+          expect(yield* fs.readDirectory(folder)).toEqual(["out.env"]);
+        }),
+      );
+
+      it.effect("writes the file that a symlink points to, and keeps the link", () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const sandbox = yield* makeSandbox("none");
+          const target = path.join(sandbox.directory, "target.env");
+          const link = path.join(sandbox.directory, "link.env");
+
+          yield* fs.writeFileString(target, "PORT=1\n");
+          yield* fs.chmod(target, 0o644);
+          yield* fs.symlink(target, link);
+
+          const result = yield* cli(runtime, sandbox, ["export", "--output", link]);
+
+          expect(result.exitCode).toBe(0);
+          expect(yield* fs.readLink(link)).toBe(target);
+          expect(yield* fs.readFileString(target)).toContain("PORT=3000\n");
+          expect((yield* fs.stat(target)).mode & 0o777).toBe(0o600);
         }),
       );
     });
