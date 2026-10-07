@@ -280,8 +280,10 @@ const gitFiles = (
   Effect.scoped(
     Effect.gen(function* () {
       const handle = yield* host.spawner.spawn(
-        // A repo can set `core.fsmonitor` to a hook. The search never runs code of the repo.
-        ChildProcess.make("git", ["-c", "core.fsmonitor=false", ...listFiles], {
+        // A repo can set `core.fsmonitor` to a hook. The search never runs code of the repo. An
+        // empty value turns the hook off in every Git version. Git 2.35 and older read `false` as
+        // the path of a hook.
+        ChildProcess.make("git", ["-c", "core.fsmonitor=", ...listFiles], {
           cwd: directory,
           stdin: "ignore",
           stderr: "ignore",

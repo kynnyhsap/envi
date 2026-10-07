@@ -31,5 +31,6 @@ cache settings, and `envi doctor` does not import it. Run `envi check` to resolv
 config. A bad value of another cache setting, such as `ENVI_CACHE_ENABLED`, does not stop the
 report. `variables` names the variable, and `envi check` shows its error.
 
-`keychain` shows only that the command exists. `envi check` reads the key, and the keychain can
+`keychain` shows only that the command exists. An empty entry of `PATH` names the working folder,
+as for the shell. `envi check` reads the key, and the keychain can
 still be locked or refuse access. See [Cache](../cache.md).

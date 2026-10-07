@@ -9,6 +9,12 @@ import * as Path from "effect/Path";
 
 import { decodeJson, enviVersion, gitInit, runCli, runProcess, runtimes } from "./helpers.ts";
 
+/** The keychain command of each platform. */
+const commands = new Map([
+  ["darwin", "security"],
+  ["linux", "secret-tool"],
+]);
+
 /** A config that leaves a marker file when a process imports it. */
 const markingConfig = `import { writeFileSync } from "node:fs";
 writeFileSync(process.env.DOCTOR_E2E_IMPORT_MARKER, "imported");
@@ -105,6 +111,35 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi doctor", (it) => 
             }
           }
         }),
+    );
+
+    it.effect("finds the keychain command in the working folder through an empty PATH entry", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: "envi-doctor-" });
+        const bin = path.join(root, "bin");
+        const work = path.join(root, "work");
+        const command = path.join(work, commands.get(process.platform) ?? "");
+        const located = yield* runProcess(runtime, ["-e", "console.log(process.execPath)"], root);
+
+        yield* fs.makeDirectory(bin);
+        yield* fs.makeDirectory(work);
+        yield* fs.symlink(located.stdout.trim(), path.join(bin, runtime));
+
+        // The empty entry at the end of `PATH` names the working folder.
+        const found = Effect.flatMap(
+          runCli(runtime, work, ["doctor", "--json"], { PATH: `${bin}:` }),
+          (result) => decodeJson(DoctorReport, result.stdout),
+        );
+
+        expect((yield* found).keychain.command).toBe(false);
+
+        yield* fs.writeFileString(command, "");
+        yield* fs.chmod(command, 0o755);
+
+        expect((yield* found).keychain.command).toBe(true);
+      }),
     );
 
     it.effect("reports no config and no cache directory in an empty folder without HOME", () =>

@@ -64,9 +64,9 @@ const onPath = Effect.fn("Doctor.onPath")(function* (command: string) {
   const environment = yield* ParentEnvironment;
   const folders = (environment[pathVariable] ?? "").split(pathSeparator);
 
-  const found = yield* Effect.findFirst(
-    folders.filter((folder) => folder !== ""),
-    (folder) => isExecutable(path.join(folder, command)),
+  // An empty folder of `PATH` names the working folder, as for the shell.
+  const found = yield* Effect.findFirst(folders, (folder) =>
+    isExecutable(path.join(folder === "" ? "." : folder, command)),
   );
 
   return Option.isSome(found);
