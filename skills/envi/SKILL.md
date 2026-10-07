@@ -26,13 +26,14 @@ you remember, because they match the installed version.
 
 ## Keep secrets out of the chat
 
-- Never print a secret value. Do not run `envi export --no-redact` or `envi inspect --no-redact`,
-  and do not print the env inside `envi run`, such as with `printenv` or `env`.
+- Never print a secret value. `envi export` prints the real values by default, so add `--redact`
+  when it prints to stdout. Do not run `envi inspect --no-redact`, and do not print the env inside
+  `envi run`, such as with `printenv` or `env`.
 - To learn about the vars, use `envi check`, which shows no value, and `envi inspect`, which hides
   secrets.
 - Never write a secret value into a file, a commit, or a message. Put a reference into
-  `envi.config.ts` instead.
-- Do not write the output of `envi export` into the repo.
+  `envi.config.ts` instead. Only when the user asks for an env file, run
+  `envi export --output <file>` with a path outside the repo.
 
 ## Common tasks
 
