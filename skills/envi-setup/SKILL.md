@@ -7,8 +7,14 @@ description: "Set up Envi in a project: install it, write envi.config.ts from th
 
 This skill adds Envi to a project. Use the `envi` skill for the work after the setup.
 
-Never print or copy a secret value during the setup. Read only the keys of an env file, such as
-with `cut -d= -f1 .env`, never its values.
+Never print or copy a secret value during the setup. Read only the keys of an env file, never its
+values. Do not open an env file, and do not cut its lines with `cut`, `grep`, or `sed`: a quoted
+value can span several lines, and a line tool prints the lines of the value. Print the keys with
+the dotenv parser of Node instead. On Bun, replace `node` with `bun`:
+
+```sh
+node -e 'const { parseEnv } = require("node:util"); const { readFileSync } = require("node:fs"); console.log(Object.keys(parseEnv(readFileSync(process.argv[1], "utf8"))).join("\n"))' .env
+```
 
 ## 1. Install
 

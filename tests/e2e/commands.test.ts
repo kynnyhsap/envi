@@ -26,6 +26,7 @@ import {
   providerCalls,
   providerInteractive,
   runCli,
+  cliPath,
   runProcess,
   runtimes,
   type Sandbox,
@@ -33,6 +34,9 @@ import {
 } from "./helpers.ts";
 
 const app = fixture("cached");
+
+/** The longest file name of macOS and Linux, in bytes. */
+const longestName = 255;
 
 const workspace = fixture("workspace");
 
@@ -317,12 +321,161 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const fs = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
           const sandbox = yield* makeSandbox("none");
-          const file = path.join(sandbox.directory, "out.env");
+          const folder = path.join(sandbox.directory, "out");
+          const file = path.join(folder, "out.env");
+
+          yield* fs.makeDirectory(folder);
+
           const result = yield* cli(runtime, sandbox, ["export", "--output", file]);
 
           expect(result.exitCode).toBe(0);
           expect(yield* fs.readFileString(file)).toContain("PORT=3000\n");
           expect((yield* fs.stat(file)).mode & 0o777).toBe(0o600);
+          expect(yield* fs.readDirectory(folder)).toEqual(["out.env"]);
+        }),
+      );
+
+      it.effect.each(["0200", "0400"])(
+        "writes a readable private file under the umask %s",
+        (mask) =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const sandbox = yield* makeSandbox("none");
+            const file = path.join(sandbox.directory, "out.env");
+
+            const result = yield* runProcess(
+              "sh",
+              [
+                "-c",
+                `umask ${mask} && exec "$@"`,
+                "sh",
+                runtime,
+                cliPath,
+                "export",
+                "--no-cache",
+                "--output",
+                file,
+              ],
+              app,
+              sandbox.env,
+            );
+
+            expect(result.exitCode).toBe(0);
+            expect((yield* fs.stat(file)).mode & 0o777).toBe(0o600);
+            expect(yield* fs.readFileString(file)).toContain("PORT=3000\n");
+          }),
+      );
+
+      it.effect.each([
+        { name: "a relative path", pointer: "target.env", absolute: false, target: "target.env" },
+        { name: "an absolute path", pointer: "target.env", absolute: true, target: "target.env" },
+        {
+          name: "../ after a linked folder",
+          pointer: "alias/../target.env",
+          absolute: false,
+          target: "real/target.env",
+        },
+      ])("keeps a dangling link to $name and creates the file that it points to", (link) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const sandbox = yield* makeSandbox("none");
+          const real = path.join(sandbox.directory, "real");
+          const file = path.join(sandbox.directory, "link.env");
+          const target = path.join(sandbox.directory, link.target);
+          const pointer = link.absolute ? path.join(sandbox.directory, link.pointer) : link.pointer;
+          const collapsed = path.join(sandbox.directory, "target.env");
+
+          // The OS follows `alias` before `..`, so `alias/../target.env` is in `real`. A file at
+          // the path without `alias/..` must stay as it is.
+          yield* fs.makeDirectory(path.join(real, "sub"), { recursive: true });
+          yield* fs.symlink(path.join(real, "sub"), path.join(sandbox.directory, "alias"));
+          yield* fs.symlink(pointer, file);
+
+          if (target !== collapsed) {
+            yield* fs.writeFileString(collapsed, "PORT=1\n");
+          }
+
+          const result = yield* cli(runtime, sandbox, ["export", "--output", file]);
+
+          expect(result.exitCode).toBe(0);
+          expect(yield* fs.readLink(file)).toBe(pointer);
+          expect(yield* fs.readFileString(target)).toContain("PORT=3000\n");
+          expect((yield* fs.stat(target)).mode & 0o777).toBe(0o600);
+          expect(yield* fs.readDirectory(real)).toEqual(
+            target === collapsed ? ["sub"] : ["sub", "target.env"],
+          );
+
+          if (target !== collapsed) {
+            expect(yield* fs.readFileString(collapsed)).toBe("PORT=1\n");
+          }
+        }),
+      );
+
+      it.effect(
+        "writes an output path with ../ after a linked folder where the OS resolves it",
+        () =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const sandbox = yield* makeSandbox("none");
+            const real = path.join(sandbox.directory, "real");
+
+            yield* fs.makeDirectory(path.join(real, "sub"), { recursive: true });
+            yield* fs.symlink(path.join(real, "sub"), path.join(sandbox.directory, "alias"));
+
+            // A file at the path without `alias/..` must stay as it is.
+            const collapsed = path.join(sandbox.directory, "out.env");
+
+            yield* fs.writeFileString(collapsed, "PORT=1\n");
+
+            // A plain string, because `path.join` would remove `alias/..`.
+            const output = `${sandbox.directory}/alias/../out.env`;
+            const result = yield* cli(runtime, sandbox, ["export", "--output", output]);
+
+            expect(result.exitCode).toBe(0);
+            expect(yield* fs.readFileString(path.join(real, "out.env"))).toContain("PORT=3000\n");
+            expect(yield* fs.readFileString(collapsed)).toBe("PORT=1\n");
+          }),
+      );
+
+      it.effect("writes a file whose name has the longest length that the OS allows", () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const sandbox = yield* makeSandbox("none");
+          const folder = path.join(sandbox.directory, "out");
+          const file = path.join(folder, `${"x".repeat(longestName - ".env".length)}.env`);
+
+          yield* fs.makeDirectory(folder);
+
+          const result = yield* cli(runtime, sandbox, ["export", "--output", file]);
+
+          expect(result.exitCode).toBe(0);
+          expect(yield* fs.readFileString(file)).toContain("PORT=3000\n");
+          expect(yield* fs.readDirectory(folder)).toEqual([path.basename(file)]);
+        }),
+      );
+
+      it.effect("writes the file that a symlink points to, and keeps the link", () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const sandbox = yield* makeSandbox("none");
+          const target = path.join(sandbox.directory, "target.env");
+          const link = path.join(sandbox.directory, "link.env");
+
+          yield* fs.writeFileString(target, "PORT=1\n");
+          yield* fs.chmod(target, 0o644);
+          yield* fs.symlink(target, link);
+
+          const result = yield* cli(runtime, sandbox, ["export", "--output", link]);
+
+          expect(result.exitCode).toBe(0);
+          expect(yield* fs.readLink(link)).toBe(target);
+          expect(yield* fs.readFileString(target)).toContain("PORT=3000\n");
+          expect((yield* fs.stat(target)).mode & 0o777).toBe(0o600);
         }),
       );
     });
