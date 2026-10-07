@@ -8,8 +8,9 @@ description: "Build a provider with Provider.make, or a cache as a layer of Cach
 `Provider.make({ id, Reference, describe, scope, resolveMany, helpers })` builds a provider.
 `resolveMany` resolves a whole batch in one call. The optional `discover(queries, context)` lists
 the references whose names match each query, best match first, for [`envi find`](../cli/find.md).
-It gets every query in one call, and it must return and log no value. `reference(id, ref)` builds a
-descriptor for it.
+It gets every query in one call, and it must return and log no value. Envi also calls it with the
+`describe()` texts of the references of `NotFound` failures, and names the results as close
+references in the error. `reference(id, ref)` builds a descriptor for it.
 A custom cache is a layer of the `Cache.Cache` service. It can also provide `Cache.Status`, which
 gives `cache path` its directory and tells `sync` whether the cache stores values. Both interfaces
 are public and unstable

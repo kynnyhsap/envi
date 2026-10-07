@@ -16,4 +16,11 @@ itself and lists the closest references first, without a value:
 envi find op://app/postgress/url
 ```
 
+When the provider can search, the error names up to three close references, such as
+`Close references: op://app/postgres/url`. The summary holds them, and the `candidates` field of
+the SDK error holds the same `describe()` texts. Envi searches after the resolution, with one
+search call for each provider, for every missing reference of a required var. The search is best
+effort. If it fails or takes more than 10 seconds, the error names no close reference and stays
+`NotFound`. A missing optional var, or a var with a default, starts no search.
+
 See [envi find](../cli/find.md).

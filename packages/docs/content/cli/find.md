@@ -29,6 +29,8 @@ postgres
   provider](../sdk/custom-providers.md) can search through `discover`.
 - `find` makes one search call for each provider, with every query. It never uses the cache.
 - A query without a match shows `no match`. `find` still exits with 0.
+- A [`NotFound` error](../errors/secret-reference-not-found.md) runs the same search for its
+  reference, and names the closest references.
 
 | Flag                                | Does                                                              |
 | ----------------------------------- | ----------------------------------------------------------------- |

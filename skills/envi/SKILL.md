@@ -66,6 +66,9 @@ the user for the vault, the item, and the field. Do not read secret values to fi
 Each Envi error has a summary, a hint, and a docs link. Follow the hint first. For more, run
 `envi docs show <docs link>`. With `--json`, a command prints the error as JSON on stdout.
 
+A `NotFound` error can name close references. A close reference is a guess. Ask the user to
+confirm it before you change the config.
+
 Without a service account token, the 1Password provider asks for an approval in the 1Password
 app. If a command waits, tell the user to approve it in the app, or to run `envi sync` in their
 own terminal. After that, the cache serves the next runs.
