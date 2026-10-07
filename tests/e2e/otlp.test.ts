@@ -133,6 +133,34 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi OTLP settings", (
     );
 
     it.effect(
+      "turns off a signal whose exporter Envi cannot use, and warns only with an endpoint",
+      () =>
+        Effect.gen(function* () {
+          const { url, received } = yield* collector;
+          const variable = "OTEL_TRACES_EXPORTER";
+          const value = "zipkin";
+
+          const result = yield* exportJson(runtime, app, yield* makeSandbox("none"), {
+            ...exportTo(url),
+            [variable]: value,
+            OTEL_LOGS_EXPORTER: "console,OTLP",
+          });
+
+          // Without an endpoint, Envi would send nothing, so the variable of another tool is no error.
+          const plain = yield* exportJson(runtime, app, yield* makeSandbox("none"), {
+            [variable]: value,
+          });
+
+          expect(result.exitCode).toBe(0);
+          expect(result.stdout).toBe(plain.stdout);
+          expect(pathsOf(received)).toEqual(["/v1/logs"]);
+          expect(result.stderr).toContain(variable);
+          expect(result.stderr).not.toContain(value);
+          expect(plain.stderr).toBe("");
+        }),
+    );
+
+    it.effect(
       "sends nothing when OTEL_SDK_DISABLED is true in any case, and sends with FALSE",
       () =>
         Effect.gen(function* () {

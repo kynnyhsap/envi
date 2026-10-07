@@ -126,25 +126,29 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi telemetry", (it) 
       }),
     );
 
-    it.effect("keeps an error of a span in user code out of the spans", () =>
-      Effect.gen(function* () {
-        const sandbox = yield* makeSandbox("none");
-        const { url, received } = yield* collector;
+    it.effect(
+      "keeps an error or a URL of a span, an event, or a link in user code out of the spans",
+      () =>
+        Effect.gen(function* () {
+          const sandbox = yield* makeSandbox("none");
+          const { url, received } = yield* collector;
 
-        const result = yield* runCli(runtime, leaky, ["check"], {
-          ...sandbox.env,
-          ...exportTo(url),
-        });
+          const result = yield* runCli(runtime, leaky, ["check"], {
+            ...sandbox.env,
+            ...exportTo(url),
+          });
 
-        const spans = yield* spansOf(received);
+          const spans = yield* spansOf(received);
 
-        expect(result.exitCode).toBe(1);
-        // The span of the config ends before Envi maps the error, with an error status.
-        expect(spans.some((span) => span.name === "exchange" && span.status.code === 2)).toBe(true);
-        expect(received.every((request) => !request.body.includes(secrets["db-password"]))).toBe(
-          true,
-        );
-      }),
+          expect(result.exitCode).toBe(1);
+          // The span of the config ends before Envi maps the error, with an error status.
+          expect(spans.some((span) => span.name === "exchange" && span.status.code === 2)).toBe(
+            true,
+          );
+          expect(received.every((request) => !request.body.includes(secrets["db-password"]))).toBe(
+            true,
+          );
+        }),
     );
 
     it.effect("keeps the URL of an HTTP request in user code out of the spans, and traces it", () =>
@@ -186,19 +190,25 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi telemetry", (it) 
 
     it.effect("keeps an error of a log in user code off stderr and out of the logs", () =>
       Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
         const sandbox = yield* makeSandbox("none");
         const { url, received } = yield* collector;
+        const logFile = path.join(sandbox.directory, "envi.log");
 
         const result = yield* runCli(runtime, leaky, ["check"], {
           ...sandbox.env,
           ...exportTo(url),
+          ENVI_LOG_FILE: logFile,
         });
 
         const logs = yield* logsOf(received);
 
         expect(result.stderr).toContain("The exchange failed.");
         expect(result.stderr).toContain("The retry failed.");
+        expect(result.stderr).toContain("The call failed.");
         expect(result.stderr).not.toContain(secrets["db-password"]);
+        expect(yield* fs.readFileString(logFile)).not.toContain(secrets["db-password"]);
         expect(logs.some((log) => log.body.stringValue === "The exchange failed.")).toBe(true);
         expect(received.every((request) => !request.body.includes(secrets["db-password"]))).toBe(
           true,

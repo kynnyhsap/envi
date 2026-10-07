@@ -57,6 +57,11 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 envi sync
 `OTEL_EXPORTER_OTLP_TRACES_HEADERS`, and `OTEL_EXPORTER_OTLP_LOGS_HEADERS` set one signal. A
 variable of one signal wins over the variable of every signal.
 
+`OTEL_TRACES_EXPORTER` and `OTEL_LOGS_EXPORTER` hold a list, such as `otlp,console`. Envi sends the
+signal when the list holds `otlp`, and Envi uses no other exporter. A list of only `none` sends
+nothing. Any other list, such as `zipkin`, is a value that Envi cannot use. Envi warns about it only
+while an endpoint of the signal is set.
+
 - The service name of every span and log is `envi`, with the version of Envi.
 - The root span of a command is `envi <command>`, such as `envi sync`. Its children are the steps:
   the config search, the config import, the cache read, the provider batch, each `custom()`
@@ -64,11 +69,14 @@ variable of one signal wins over the variable of every signal.
   `custom()`, joins the trace.
 - A failed span holds the error of the step. An Envi error shows its tag and its summary. Any other
   error shows only its name, such as `Error`, because its text can hold a secret or an argument of
-  a command. A log with an error in its cause or in its message follows the same rule on stderr,
-  in the log file, and in OTLP.
-- A span of an HTTP request in user code holds the method, the host, the scheme, and the status.
-  It never holds the path, the query, or the headers, because they can hold a secret. The request
-  still sends `traceparent`, so the server joins the trace.
+  a command. The same rule covers an error in a log: in its cause, in its message, or in its
+  annotations, on stderr, in the log file, and in OTLP. It also covers an error in an attribute of
+  a span, an event, or a link. Envi finds an error at any depth of an array or a plain object.
+- Envi drops the attributes `url.full`, `url.path`, `url.query`, and the HTTP headers from each
+  span, event, and link, because they can hold a secret. So a span of an HTTP request in user code
+  holds the method, the host, the scheme, and the status. The request still sends `traceparent`,
+  so the server joins the trace. A name that user code gives a span, or a value that it writes
+  under another attribute, stays as the user code writes it.
 - Envi waits for each batch in flight and sends the last batch before it exits. A collector that
   does not answer delays the exit by 2 seconds at most.
 - The CLI supports only OTLP over HTTP. Another protocol, such as `grpc`, is a value that Envi

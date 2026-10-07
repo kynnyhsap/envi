@@ -37,8 +37,13 @@ export class UnusableVariable extends Schema.TaggedError<UnusableVariable>()("Un
 /** The prefix of the variables of the OTLP exporter. */
 const prefix = "OTEL_EXPORTER_OTLP";
 
-/** The name of OTLP in `OTEL_TRACES_EXPORTER` and `OTEL_LOGS_EXPORTER`. */
-const otlpExporter = "otlp";
+/**
+ * What `OTEL_TRACES_EXPORTER` or `OTEL_LOGS_EXPORTER` selects: OTLP, no export, or only exporters
+ * that Envi cannot use, such as `zipkin`.
+ */
+const Selection = { Otlp: "otlp", None: "none", Unusable: "unusable" } as const;
+
+type Selection = (typeof Selection)[keyof typeof Selection];
 
 /** The value of `OTEL_SDK_DISABLED` that turns telemetry off, in any case. */
 const disabledValue = "true";
@@ -155,17 +160,23 @@ const headersOf = (signal: Signal) =>
     }),
   );
 
-/** `false` when the exporter variable of the signal leaves out OTLP, such as with `none`. */
-const exportsOtlp = (signal: Signal) =>
+const exporterVariable = (signal: Signal) => `OTEL_${signal.toUpperCase()}_EXPORTER`;
+
+/** The selection of the exporter variable of a signal. Without the variable, OTLP. */
+const selectionOf = (signal: Signal) =>
   Effect.map(
-    read(`OTEL_${signal.toUpperCase()}_EXPORTER`),
+    read(exporterVariable(signal)),
     Option.match({
-      onNone: () => true,
-      onSome: (names) =>
-        names
-          .split(",")
-          .map((name) => name.trim().toLowerCase())
-          .includes(otlpExporter),
+      onNone: (): Selection => Selection.Otlp,
+      onSome: (value): Selection => {
+        const names = value.split(",").map((name) => name.trim().toLowerCase());
+
+        if (names.includes(Selection.Otlp)) {
+          return Selection.Otlp;
+        }
+
+        return names.every((name) => name === Selection.None) ? Selection.None : Selection.Unusable;
+      },
     }),
   );
 
@@ -176,12 +187,15 @@ const disabled = Effect.map(
 );
 
 /**
- * Where one signal goes. None when no endpoint is set, when the exporter variable of the signal
- * leaves out OTLP, or when `OTEL_SDK_DISABLED` is `true`.
+ * Where one signal goes. None when no endpoint is set, when the exporter variable of the signal is
+ * `none`, or when `OTEL_SDK_DISABLED` is `true`. An exporter variable without OTLP or `none` fails
+ * only with an endpoint, so the variable of another tool warns only when Envi would send.
  */
 export const targetOf = (signal: Signal): Effect.Effect<Option.Option<Target>, UnusableVariable> =>
   Effect.gen(function* () {
-    if ((yield* disabled) || !(yield* exportsOtlp(signal))) {
+    const selection = yield* selectionOf(signal);
+
+    if ((yield* disabled) || selection === Selection.None) {
       return Option.none();
     }
 
@@ -189,6 +203,10 @@ export const targetOf = (signal: Signal): Effect.Effect<Option.Option<Target>, U
 
     if (Option.isNone(endpoint)) {
       return Option.none();
+    }
+
+    if (selection === Selection.Unusable) {
+      return yield* unusable(exporterVariable(signal));
     }
 
     return Option.some({
