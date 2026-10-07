@@ -41,7 +41,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends dbus gnome-keyring libsecret-tools \
   && rm -rf /var/lib/apt/lists/*
 
-ENV ENVI_E2E_SECRET_SERVICE=1
+ENV ENVI_E2E_KEYCHAIN=1
 
 # A D-Bus session with an unlocked keyring, as after a desktop login. The password is empty.
 CMD ["dbus-run-session", "--", "sh", "-c", "printf '\\n' | gnome-keyring-daemon --unlock --components=secrets > /dev/null && bun run test"]
