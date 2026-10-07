@@ -27,7 +27,7 @@ as one JSON document on stdout:
         "error": "SecretReferenceError",
         "reason": "NotFound",
         "summary": "Envi reference failed: NotFound for op://app/api/token (provider onepassword)",
-        "hint": "Check that the reference names an existing secret, and that the credential can see it.",
+        "hint": "Check that the reference names an existing secret, and that the credential can see it. Run `envi find <name>` to list the references of a close name. If the var may be missing, add `.optional()` or `.default(value)`.",
         "docs": "https://github.com/kynnyhsap/envi/blob/main/packages/docs/content/errors/secret-reference-not-found.md"
       }
     ]
