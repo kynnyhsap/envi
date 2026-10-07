@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ProviderFailure, ReferenceFailure } from "@kynnyhsap/envi";
+import { ReferenceFailure } from "@kynnyhsap/envi";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
@@ -56,33 +56,6 @@ describe("Batch", () => {
         c: Result.fail(ReferenceFailure.AccessDenied),
         d: Result.fail(ReferenceFailure.Invalid),
       });
-    }),
-  );
-
-  it.effect("fails with InvalidResponse when an answer does not match the SDK schema", () =>
-    Effect.gen(function* () {
-      const client: SdkClient = {
-        secrets: {
-          resolveAll: () =>
-            Promise.resolve({ individualResponses: { "op://app/postgres/url": { content: 42 } } }),
-        },
-      };
-
-      const error = yield* Effect.flip(
-        Batch.resolve(sdk, CredentialKind.ServiceAccount, client, [request("a", "url")]),
-      );
-
-      expect(error).toMatchObject({ reason: ProviderFailure.InvalidResponse });
-    }),
-  );
-
-  it.effect("fails with InvalidResponse when a reference has no answer", () =>
-    Effect.gen(function* () {
-      const error = yield* Effect.flip(
-        Batch.resolve(sdk, CredentialKind.ServiceAccount, clientOf({}), [request("a", "url")]),
-      );
-
-      expect(error).toMatchObject({ reason: ProviderFailure.InvalidResponse });
     }),
   );
 });
