@@ -5,6 +5,7 @@
 import * as Arr from "effect/Array";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 
@@ -29,23 +30,38 @@ const missingOf = (
       error instanceof SecretReferenceError && error.reason === ReferenceFailure.NotFound,
   );
 
-/** The search of one provider for its missing references. Every failure gives no result. */
+const noResults = (): Provider.DiscoverResults<string> => ({});
+
+/**
+ * The search of one provider for its missing references. Every failure gives no result. The
+ * search runs in its own fiber, so a search that ignores the deadline, or a slow cleanup after
+ * it, never holds the failure back.
+ */
 const search = (
   providers: Provider.Interface,
   id: string,
   references: ReadonlyArray<string>,
   context: Provider.ResolveContext,
 ) =>
-  providers.get(id).pipe(
-    Effect.flatMap((provider) =>
-      Option.match(provider.discover, {
-        onNone: () => Effect.succeed<Provider.DiscoverResults<string>>({}),
-        onSome: (discover) => discover(references, context),
-      }),
-    ),
-    Effect.timeoutOption(searchTimeout),
-    Effect.map(Option.getOrElse((): Provider.DiscoverResults<string> => ({}))),
-    Effect.catchCause(() => Effect.succeed<Provider.DiscoverResults<string>>({})),
+  Effect.gen(function* () {
+    const fiber = yield* Effect.forkDetach(
+      Effect.flatMap(providers.get(id), (provider) =>
+        Option.match(provider.discover, {
+          onNone: () => Effect.succeed(noResults()),
+          onSome: (discover) => discover(references, context),
+        }),
+      ),
+    );
+
+    const results = yield* Effect.timeoutOption(Fiber.join(fiber), searchTimeout);
+
+    if (Option.isNone(results)) {
+      yield* Effect.forkDetach(Fiber.interrupt(fiber));
+    }
+
+    return Option.getOrElse(results, noResults);
+  }).pipe(
+    Effect.catchCause(() => Effect.succeed(noResults())),
     Effect.map((results) => [id, results] as const),
   );
 

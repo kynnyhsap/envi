@@ -21,6 +21,9 @@ When the provider can search, the error names up to three close references, such
 the SDK error holds the same `describe()` texts. Envi searches after the resolution, with one
 search call for each provider, for every missing reference of a required var. The search is best
 effort. If it fails or takes more than 10 seconds, the error names no close reference and stays
-`NotFound`. A missing optional var, or a var with a default, starts no search.
+`NotFound`. After 10 seconds, Envi stops the search and does not wait for it to end. A missing
+optional var, or a var with a default, starts no search. The search always uses the account of
+the provider. For a reference with its own `account`, the close references come from the account
+of the provider, not from the account of the reference.
 
 See [envi find](../cli/find.md).

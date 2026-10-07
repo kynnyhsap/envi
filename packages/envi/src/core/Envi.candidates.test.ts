@@ -68,6 +68,16 @@ const configOf = (provider: Provider.Provider) =>
     },
   });
 
+/** Moves the test clock until the fiber ends. A timer can start after the fork, so one move can miss it. */
+const joinWithClock = <A, E>(fiber: Fiber.Fiber<A, E>) =>
+  Effect.gen(function* () {
+    while (fiber.pollUnsafe() === undefined) {
+      yield* TestClock.adjust("10 seconds");
+    }
+
+    return yield* Fiber.join(fiber);
+  });
+
 /** The failed vars of a load, and the summary of each. */
 const failuresOf = (config: ReturnType<typeof configOf>) =>
   Effect.gen(function* () {
@@ -96,33 +106,39 @@ describe("the close references of a NotFound failure", () => {
       }).pipe(Effect.provide(enviLayer())),
   );
 
-  it.effect("keeps a plain NotFound when the search fails or does not answer", () =>
-    Effect.gen(function* () {
-      const failing = searching(() =>
-        Effect.fail(
-          new ProviderError({
-            reason: ProviderFailure.Unavailable,
-            provider: providerId,
-            detail: "The test search is down.",
-          }),
-        ),
-      );
+  it.effect(
+    "keeps a plain NotFound when the search fails, does not answer, or never cleans up",
+    () =>
+      Effect.gen(function* () {
+        const failing = searching(() =>
+          Effect.fail(
+            new ProviderError({
+              reason: ProviderFailure.Unavailable,
+              provider: providerId,
+              detail: "The test search is down.",
+            }),
+          ),
+        );
 
-      const hanging = searching(() => Effect.never);
-      const failed = yield* failuresOf(configOf(failing.provider));
-      const fiber = yield* Effect.forkChild(failuresOf(configOf(hanging.provider)));
+        const hanging = searching(() => Effect.never);
+        const stuck = searching(() => Effect.never.pipe(Effect.onInterrupt(() => Effect.never)));
+        const failed = yield* failuresOf(configOf(failing.provider));
+        const unanswered = yield* Effect.forkChild(failuresOf(configOf(hanging.provider)));
+        const uncleaned = yield* Effect.forkChild(failuresOf(configOf(stuck.provider)));
 
-      yield* TestClock.adjust("1 minute");
+        for (const failures of [
+          failed,
+          yield* joinWithClock(unanswered),
+          yield* joinWithClock(uncleaned),
+        ]) {
+          expect(failures.map(({ key }) => key)).toEqual(["DATABASE_URL", "REPLICA_URL"]);
 
-      for (const failures of [failed, yield* Fiber.join(fiber)]) {
-        expect(failures.map(({ key }) => key)).toEqual(["DATABASE_URL", "REPLICA_URL"]);
-
-        for (const { error } of failures) {
-          expect(error).toMatchObject({ reason: ReferenceFailure.NotFound });
-          expect(error).not.toHaveProperty("candidates");
+          for (const { error } of failures) {
+            expect(error).toMatchObject({ reason: ReferenceFailure.NotFound });
+            expect(error).not.toHaveProperty("candidates");
+          }
         }
-      }
-    }).pipe(Effect.provide(enviLayer())),
+      }).pipe(Effect.provide(enviLayer())),
   );
 
   it.effect("does not search when only an optional var is missing", () =>
