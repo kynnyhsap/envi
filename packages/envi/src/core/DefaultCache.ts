@@ -54,6 +54,16 @@ const withoutKeyFallback = (
     return [guardedCache, Effect.map(Ref.get(off), (isOff) => !isOff)] as const;
   });
 
+/** Logs the cache that the settings select: on or off, the directory, and the encryption. */
+const logSelection = (selection: CacheSettings.Selection) =>
+  Effect.logDebug("Envi selected the cache.").pipe(
+    Effect.annotateLogs({
+      enabled: selection.enabled,
+      directory: Option.getOrElse(selection.directory, () => "none"),
+      encryption: selection.encryption,
+    }),
+  );
+
 /**
  * Selects the cache of a run with `CacheSettings.select`: the encrypted file cache, the plaintext
  * file cache after an explicit opt-in, or no cache. Without a key, the cache is off with a warning,
@@ -68,30 +78,33 @@ export const layer = (
   FileSystem.FileSystem | Path.Path | FileCache.EncryptionKey
 > =>
   Layer.unwrap(
-    Effect.map(CacheSettings.select(overrides, configKey), (selection) => {
-      if (!selection.enabled || Option.isNone(selection.directory)) {
-        return Cache.layerNone;
-      }
+    Effect.map(
+      Effect.tap(CacheSettings.select(overrides, configKey), logSelection),
+      (selection) => {
+        if (!selection.enabled || Option.isNone(selection.directory)) {
+          return Cache.layerNone;
+        }
 
-      const directory = selection.directory.value;
+        const directory = selection.directory.value;
 
-      const status = (active: Effect.Effect<boolean>) =>
-        Layer.succeed(Cache.Status, { directory: Option.some(directory), active });
+        const status = (active: Effect.Effect<boolean>) =>
+          Layer.succeed(Cache.Status, { directory: Option.some(directory), active });
 
-      if (selection.encryption === CacheSettings.Encryption.None) {
-        return Layer.merge(FileCache.layerPlaintext({ directory }), status(Effect.succeed(true)));
-      }
+        if (selection.encryption === CacheSettings.Encryption.None) {
+          return Layer.merge(FileCache.layerPlaintext({ directory }), status(Effect.succeed(true)));
+        }
 
-      const encrypted = FileCache.layer({ directory });
+        const encrypted = FileCache.layer({ directory });
 
-      if (selection.explicit) {
-        return Layer.merge(encrypted, status(Effect.succeed(true)));
-      }
+        if (selection.explicit) {
+          return Layer.merge(encrypted, status(Effect.succeed(true)));
+        }
 
-      return Layer.unwrap(
-        Effect.map(Effect.flatMap(Cache.Cache, withoutKeyFallback), ([cache, active]) =>
-          Layer.merge(Layer.succeed(Cache.Cache, cache), status(active)),
-        ),
-      ).pipe(Layer.provide(encrypted));
-    }),
+        return Layer.unwrap(
+          Effect.map(Effect.flatMap(Cache.Cache, withoutKeyFallback), ([cache, active]) =>
+            Layer.merge(Layer.succeed(Cache.Cache, cache), status(active)),
+          ),
+        ).pipe(Layer.provide(encrypted));
+      },
+    ),
   );

@@ -5,12 +5,10 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as Layer from "effect/Layer";
-import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Record from "effect/Record";
 import * as Ref from "effect/Ref";
-import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 
 import * as CacheSettings from "./core/CacheSettings.ts";
@@ -49,14 +47,13 @@ import {
 import * as Settings from "./core/Settings.ts";
 import * as Timing from "./core/Timing.ts";
 import * as Render from "./render.ts";
+import * as Telemetry from "./telemetry.ts";
 
 /** The exit code of the process. `run` sets the exit code of the child. */
 export class ExitCode extends Context.Service<ExitCode, Ref.Ref<number>>()("envi/cli/ExitCode") {}
 
 /** The keychain that holds the key of the cache. The entry point selects it from the platform. */
 export class KeyStore extends Context.Service<KeyStore, Keychain.Store>()("envi/cli/KeyStore") {}
-
-const LogFormat = { Pretty: "pretty", Json: "json" } as const;
 
 /** The names of the commands. The timing line of a command names it too. */
 const CommandName = {
@@ -86,16 +83,14 @@ const failureExitCode = 1;
 /** The flags of the root. Every command takes them, and they select the logger. */
 const sharedFlags = {
   debug: Flag.Boolean("debug").pipe(
-    Flag.withDescription("Show debug logs."),
-    Flag.withDefault(false),
+    Flag.withDescription("Show debug logs on stderr. It wins over ENVI_DEBUG."),
+    Flag.optional,
   ),
-  logFormat: Flag.Literals("log-format", Record.values(LogFormat)).pipe(
+  logFormat: Flag.Literals("log-format", Record.values(Telemetry.LogFormat)).pipe(
     Flag.withDescription("The format of the logs on stderr."),
-    Flag.withDefault(LogFormat.Pretty),
+    Flag.withDefault(Telemetry.LogFormat.Pretty),
   ),
 };
-
-type SharedFlags = Command.Command.Config.Infer<typeof sharedFlags>;
 
 const root = Command.make(CommandName.Root).pipe(
   Command.withDescription(
@@ -103,18 +98,6 @@ const root = Command.make(CommandName.Root).pipe(
   ),
   Command.withSharedFlags(sharedFlags),
 );
-
-const logFormatters = {
-  [LogFormat.Pretty]: Logger.formatLogFmt,
-  [LogFormat.Json]: Logger.formatJson,
-};
-
-/** All logs go to stderr, so stdout stays clean for `export` and `--json`. */
-const loggerLayer = (flags: SharedFlags) =>
-  Layer.mergeAll(
-    Logger.layer([Logger.withConsoleError(logFormatters[flags.logFormat])]),
-    Layer.succeed(References.MinimumLogLevel, flags.debug ? "Debug" : "Info"),
-  );
 
 const fail = Effect.flatMap(ExitCode, (code) => Ref.set(code, failureExitCode));
 
@@ -134,17 +117,20 @@ const reportError = (json: boolean) => (error: AnyEnviError) =>
   );
 
 /**
- * Times one command and reports its Envi error. `json` is the parsed `--json` of the command, so
- * an error has the format of the report.
+ * Times one command in its span, such as `envi sync`, and reports its Envi error. `json` is the
+ * parsed `--json` of the command, so an error has the format of the report.
  */
 const handle =
   (json: boolean, ...names: ReadonlyArray<string>) =>
-  <A, E, R>(self: Effect.Effect<A, E | AnyEnviError, R>) =>
-    Effect.catchIf(
-      Timing.measure(Timing.Step.Command, { command: names.join(" ") })(self),
+  <A, E, R>(self: Effect.Effect<A, E | AnyEnviError, R>) => {
+    const command = names.join(" ");
+
+    return Effect.catchIf(
+      Timing.measure(Timing.Step.Command, { command }, `${CommandName.Root} ${command}`)(self),
       isEnviError,
       reportError(json),
     );
+  };
 
 const jsonFlag = Flag.Boolean("json").pipe(
   Flag.withDescription("Print the report as JSON on stdout."),
@@ -211,6 +197,14 @@ const readConfigSearch = Settings.read(
   ),
 );
 
+/** Where the config files of a command come from, when no search finds them. */
+const ConfigFrom = { Flag: "--config", Variable: configVariable } as const;
+
+const logConfigFiles = (from: string, files: ReadonlyArray<string>) =>
+  Effect.logDebug("Envi selected the config files.").pipe(
+    Effect.annotateLogs({ from, files: files.join(", ") }),
+  );
+
 /**
  * The config files of a command: `--config`, then `ENVI_CONFIG`, then the search. The search
  * direction comes from `--config-search`, then `ENVI_CONFIG_SEARCH`, then the command.
@@ -223,13 +217,19 @@ const configFiles = Effect.fn("cli.configFiles")(function* (
   const path = yield* Path.Path;
 
   if (flags.config.length > 0) {
+    yield* logConfigFiles(ConfigFrom.Flag, flags.config);
+
     return flags.config;
   }
 
   const fromVariable = yield* readConfigVariable;
 
   if (Option.isSome(fromVariable)) {
-    return fromVariable.value.split(",").map((file) => file.trim());
+    const files = fromVariable.value.split(",").map((file) => file.trim());
+
+    yield* logConfigFiles(ConfigFrom.Variable, files);
+
+    return files;
   }
 
   const search = yield* Option.match(flags.configSearch, {
@@ -605,7 +605,7 @@ export const main = (argv: ReadonlyArray<string>, startupMs: number) =>
       Command.provideEffectDiscard(
         Timing.report(Timing.Step.Startup, startupMs, Timing.Outcome.Success),
       ),
-      Command.provide(loggerLayer),
+      Command.provide(Telemetry.layer),
     ),
     { version: Package.version },
   )(argv).pipe(Effect.provide(ConfigLoader.layer));

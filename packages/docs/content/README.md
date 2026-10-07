@@ -25,6 +25,7 @@ folder, and `envi docs` reads them offline. Read the smallest page that answers 
 | Understand which config a command uses                    | [Config search](./cli/config-search.md)                  |
 | Run a command with the vars                               | [envi run](./cli/run.md)                                 |
 | Read these docs offline, or find a page                   | [envi docs](./cli/docs.md)                               |
+| Debug a command, or send its traces to OpenTelemetry      | [Logs and traces](./cli/telemetry.md)                    |
 | Set up a coding agent with the skills and the docs        | [Coding agents](./agents.md)                             |
 | Find an environment variable or the order of the settings | [Settings](./settings.md)                                |
 | Understand the cache, its expiry, and its encryption      | [Cache](./cache.md)                                      |

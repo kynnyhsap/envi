@@ -135,7 +135,9 @@ const readPage = (source: Source, file: string) => {
 const fetchPage = (source: Source, input: string, name: string) => {
   const url = `${source.remote}${fileOf(name)}`;
 
-  const text = source.http.get(url).pipe(
+  const text = Effect.logDebug("Envi reads a docs page from GitHub.").pipe(
+    Effect.annotateLogs({ url }),
+    Effect.andThen(source.http.get(url)),
     Effect.filterOrFail(
       (response) => response.status !== notFoundStatus,
       () => notFound(input),

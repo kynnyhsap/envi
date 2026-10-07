@@ -1,6 +1,7 @@
 import * as Arr from "effect/Array";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
@@ -43,6 +44,7 @@ import * as Settings from "./Settings.ts";
 import * as Signals from "./Signals.ts";
 import * as Source from "./Source.ts";
 import * as Timing from "./Timing.ts";
+import * as TraceContext from "./TraceContext.ts";
 
 /**
  * The failures of an operation that resolves values. An operation on the vars of a config fails
@@ -203,15 +205,34 @@ export interface Interface {
 /** The Envi service. */
 export class Envi extends Context.Service<Envi, Interface>()("envi/Envi") {}
 
+/** The name of a config in a debug line: its file, or `defineConfig()` without a file. */
+const nameOf = (config: Config.Config) => Option.getOrElse(config.path, () => "defineConfig()");
+
+/** Where the stage of a run comes from. A debug line names it. */
+const StageFrom = {
+  Option: "option",
+  Variable: Settings.stageVariable,
+  Config: "config",
+} as const;
+
 /** The stage of a config: the option, then `ENVI_STAGE`, then the default stage of the config. */
 const stageOf = (config: Config.Config, requested: string | undefined) =>
-  Effect.flatMap(
-    Option.match(Option.fromUndefinedOr(requested), {
-      onSome: Effect.succeedSome,
-      onNone: () => Settings.stage,
-    }),
-    (stage) => Config.selectStage(config, stage),
-  );
+  Effect.gen(function* () {
+    const fromVariable = requested === undefined ? yield* Settings.stage : Option.none<string>();
+    const wanted = requested === undefined ? fromVariable : Option.some(requested);
+    const stage = yield* Config.selectStage(config, wanted);
+
+    const fromSetting = Option.isSome(fromVariable) ? StageFrom.Variable : StageFrom.Config;
+    const from = requested === undefined ? fromSetting : StageFrom.Option;
+
+    yield* Effect.annotateCurrentSpan("stage", stage);
+
+    yield* Effect.logDebug("Envi selected the stage.").pipe(
+      Effect.annotateLogs({ config: nameOf(config), stage, from }),
+    );
+
+    return stage;
+  });
 
 /** The status of a cache layer that reports none: a cache without files that stores values. */
 const activeWithoutFiles: Cache.StatusInterface = {
@@ -269,6 +290,19 @@ const resolutionPolicyOf = Effect.fn("Envi.resolutionPolicyOf")(function* (
 ) {
   const policy = yield* policyOf(runtime, config);
   const settings = yield* resolverOptions(runtime, policy, config, stage, options);
+
+  yield* Effect.logDebug("Envi selected the settings of a resolution.").pipe(
+    Effect.annotateLogs({
+      config: nameOf(config),
+      stage,
+      cache: policy.enabled,
+      refresh: settings.refresh,
+      strict: settings.strict,
+      interactive: settings.interactive,
+      ttl: Duration.format(settings.ttl),
+      maxStale: Duration.format(settings.maxStale),
+    }),
+  );
 
   return { cache: policy.enabled, settings } satisfies Groups.Policy;
 });
@@ -463,6 +497,10 @@ const sync = Effect.fn("Envi.sync")(function* (
 
   const groups = Groups.of(members);
 
+  yield* Effect.logDebug("Envi grouped the configs of a sync into batches.").pipe(
+    Effect.annotateLogs({ configs: list.length, batches: groups.length }),
+  );
+
   const resolved = yield* Effect.forEach(groups, (group) =>
     Effect.map(
       resolveWithPolicy(runtime, group.policy, group.providers, group.sources),
@@ -568,7 +606,12 @@ const run = Effect.fn("Envi.run")(function* (
     ),
     values: Outcomes.rawEntries(entries, false),
     stage,
+    traceParent: Option.getOrUndefined(yield* TraceContext.current),
   });
+
+  yield* Effect.logDebug("Envi starts the child with the resolved vars.").pipe(
+    Effect.annotateLogs({ command, args: args?.length ?? 0, vars: entries.length, stage }),
+  );
 
   const child = ChildProcess.make(command, args ?? [], {
     cwd: options?.cwd,

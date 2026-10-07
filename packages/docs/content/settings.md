@@ -28,7 +28,12 @@ config that uses the cache must end with the same cache encryption and directory
 | `ENVI_CACHE_ENABLED`                              | `true` or `false`. Default: `false` in CI, `true` elsewhere.     |
 | `ENVI_CACHE_DIR`                                  | The cache directory. Default: `~/.cache/envi`.                   |
 | `ENVI_CACHE_KEY`                                  | The key of the encrypted cache, for a system without a keychain. |
+| `ENVI_DEBUG`                                      | `true` shows the debug logs on stderr, as `--debug` does.        |
+| `ENVI_LOG_FILE`                                   | A file that receives every log as JSON lines.                    |
 | `CI`                                              | Any value except empty, `false`, and `0` means CI.               |
 | `ENVI_PROVIDER_ONEPASSWORD_ACCOUNT`               | The 1Password account.                                           |
 | `ENVI_PROVIDER_ONEPASSWORD_SERVICE_ACCOUNT_TOKEN` | A 1Password service account token.                               |
 | `OP_SERVICE_ACCOUNT_TOKEN`                        | A 1Password service account token, with a lower priority.        |
+
+The CLI also reads the OpenTelemetry variables, such as `OTEL_EXPORTER_OTLP_ENDPOINT`, and
+`TRACEPARENT`. See [Logs and traces](./cli/telemetry.md).

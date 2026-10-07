@@ -86,5 +86,9 @@ export const write = Effect.fn("ExportFile.write")(function* (file: string, text
     }),
   ).pipe(Effect.mapError(failed));
 
+  yield* Effect.logDebug("Envi wrote the export to a file.").pipe(
+    Effect.annotateLogs({ file: absolute }),
+  );
+
   return absolute;
 });
