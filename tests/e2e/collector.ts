@@ -1,5 +1,6 @@
 // A small OTLP collector for the end-to-end tests. It runs in the test process and records each
 // request that the CLI sends, and it decodes the JSON bodies of the traces and the logs.
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { createServer } from "node:http";
@@ -18,16 +19,24 @@ export interface Received {
 const Address = Schema.Struct({ port: Schema.Number });
 
 /**
- * An OTLP collector on a free port. It records each request. With `answer: false`, it accepts each
- * request and never answers, as a collector that hangs.
+ * An OTLP collector on a free port. It records each request, and it answers each request after
+ * `delay` with an empty success. Without a delay, it never answers, as a collector that hangs.
+ * `answered` holds the path of each request that got its answer before the CLI closed the
+ * connection.
  */
-const collectorWith = (options: { readonly answer: boolean }) =>
+const collectorWith = (delay: Duration.Duration | undefined) =>
   Effect.acquireRelease(
     Effect.callback<
-      { readonly url: string; readonly received: Array<Received>; close: () => void },
+      {
+        readonly url: string;
+        readonly received: Array<Received>;
+        readonly answered: Array<string>;
+        close: () => void;
+      },
       Schema.SchemaError
     >((resume) => {
       const received: Array<Received> = [];
+      const answered: Array<string> = [];
 
       const server = createServer((request, response) => {
         const chunks: Array<Buffer> = [];
@@ -41,9 +50,14 @@ const collectorWith = (options: { readonly answer: boolean }) =>
             body: Buffer.concat(chunks).toString("utf8"),
           });
 
-          if (options.answer) {
-            response.writeHead(200, { "content-type": "application/json" });
-            response.end("{}");
+          if (delay !== undefined) {
+            setTimeout(() => {
+              if (!request.socket.destroyed) {
+                answered.push(request.url ?? "");
+                response.writeHead(200, { "content-type": "application/json" });
+                response.end("{}");
+              }
+            }, Duration.toMillis(delay));
           }
         });
       });
@@ -53,6 +67,7 @@ const collectorWith = (options: { readonly answer: boolean }) =>
           Effect.map(Schema.decodeUnknownEffect(Address)(server.address()), ({ port }) => ({
             url: `http://127.0.0.1:${port}`,
             received,
+            answered,
             close: () => {
               server.closeAllConnections();
               server.close();
@@ -65,10 +80,13 @@ const collectorWith = (options: { readonly answer: boolean }) =>
   );
 
 /** A collector that answers every request with an empty success. */
-export const collector = collectorWith({ answer: true });
+export const collector = collectorWith(Duration.zero);
 
 /** A collector that accepts every request and never answers. */
-export const silentCollector = collectorWith({ answer: false });
+export const silentCollector = collectorWith(undefined);
+
+/** A healthy collector that answers each request after `delay`. */
+export const slowCollector = (delay: Duration.Duration) => collectorWith(delay);
 
 const AnyValue = Schema.Struct({
   stringValue: Schema.optional(Schema.String),

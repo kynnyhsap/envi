@@ -196,19 +196,26 @@ export const targetOf = (signal: Signal): Effect.Effect<Option.Option<Target>, U
     });
   });
 
-/** The W3C `traceparent` format: version, trace ID, parent span ID, and flags, in lowercase hex. */
+/**
+ * The W3C `traceparent` format: version, trace ID, parent span ID, and flags, in lowercase hex. A
+ * later version can add fields after the flags.
+ */
 const traceParentPattern =
-  /^(?<version>[0-9a-f]{2})-(?<traceId>[0-9a-f]{32})-(?<spanId>[0-9a-f]{16})-(?<flags>[0-9a-f]{2})$/u;
+  /^(?<version>[0-9a-f]{2})-(?<traceId>[0-9a-f]{32})-(?<spanId>[0-9a-f]{16})-(?<flags>[0-9a-f]{2})(?<rest>-.*)?$/u;
 
 const TraceParentGroups = Schema.Struct({
   version: Schema.String,
   traceId: Schema.String,
   spanId: Schema.String,
   flags: Schema.String,
+  rest: Schema.optional(Schema.String),
 });
 
 /** The version that the W3C spec forbids. */
 const forbiddenVersion = "ff";
+
+/** The version of the spec. It has no field after the flags. */
+const currentVersion = "00";
 
 /** An ID of only zeros is invalid. */
 const zeroId = /^0+$/u;
@@ -223,6 +230,7 @@ const parseTraceParent = (value: string): Option.Option<Tracer.ExternalSpan> =>
     Option.filter(
       (parts) =>
         parts.version !== forbiddenVersion &&
+        (parts.version !== currentVersion || parts.rest === undefined) &&
         !zeroId.test(parts.traceId) &&
         !zeroId.test(parts.spanId),
     ),

@@ -7,7 +7,14 @@ import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
-import { collector, exportTo, type Received, silentCollector, spansOf } from "./collector.ts";
+import {
+  collector,
+  exportTo,
+  type Received,
+  silentCollector,
+  slowCollector,
+  spansOf,
+} from "./collector.ts";
 import { exportJson, fixture, makeSandbox, runtimes } from "./helpers.ts";
 
 const app = fixture("cached");
@@ -25,6 +32,9 @@ const parentSpanId = "00f067aa0ba902b7";
 
 /** The longest delay of the exit by a collector that never answers, as the docs say. */
 const shutdownLimit = Duration.seconds(2);
+
+/** An answer of a healthy collector that comes before the shutdown limit. */
+const slowAnswer = Duration.millis(1500);
 
 /** The slack for the start of the runtime and the load of the machine. */
 const slack = Duration.seconds(1);
@@ -154,6 +164,39 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi OTLP settings", (
       }),
     );
 
+    it.effect("continues the trace of a TRACEPARENT of a later version with more fields", () =>
+      Effect.gen(function* () {
+        const { url, received } = yield* collector;
+
+        yield* exportJson(runtime, app, yield* makeSandbox("none"), {
+          ...exportTo(url),
+          TRACEPARENT: `01-${parentTraceId}-${parentSpanId}-01-more`,
+        });
+
+        const root = (yield* spansOf(received)).find((span) => span.name === "envi export");
+
+        expect(root?.traceId).toBe(parentTraceId);
+        expect(root?.parentSpanId).toBe(parentSpanId);
+      }),
+    );
+
+    it.effect("ignores a bad ENVI_DEBUG when --debug decides", () =>
+      Effect.gen(function* () {
+        const variable = "ENVI_DEBUG";
+        const env = { [variable]: "sometimes" };
+
+        const decided = yield* exportJson(runtime, app, yield* makeSandbox("none"), env, [
+          "--debug=false",
+        ]);
+
+        const undecided = yield* exportJson(runtime, app, yield* makeSandbox("none"), env);
+
+        expect(decided.exitCode).toBe(0);
+        expect(decided.stderr).toBe("");
+        expect(undecided.stderr).toContain(variable);
+      }),
+    );
+
     it.effect("runs the command when OTEL_RESOURCE_ATTRIBUTES does not parse", () =>
       Effect.gen(function* () {
         const { url, received } = yield* collector;
@@ -189,6 +232,18 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi OTLP settings", (
         expect(traced.stderr).toBe(plain.stderr);
         expect(received.length).toBeGreaterThan(0);
         expect(delay).toBeLessThan(Duration.toMillis(Duration.sum(shutdownLimit, slack)));
+      }),
+    );
+
+    it.effect("waits for a slow collector that answers within the shutdown limit", () =>
+      Effect.gen(function* () {
+        const { url, received, answered } = yield* slowCollector(slowAnswer);
+
+        const result = yield* exportJson(runtime, app, yield* makeSandbox("none"), exportTo(url));
+
+        expect(result.exitCode).toBe(0);
+        expect(pathsOf(received)).toEqual(["/v1/logs", "/v1/traces"]);
+        expect(answered.toSorted()).toEqual(received.map((request) => request.path).toSorted());
       }),
     );
   });

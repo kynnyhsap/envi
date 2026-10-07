@@ -4,9 +4,11 @@
 // command: a part that fails to start turns off with a warning.
 import * as Cause from "effect/Cause";
 import * as EffectConfig from "effect/Config";
+import * as Context from "effect/Context";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import * as HttpClient from "effect/http/HttpClient";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as LogLevel from "effect/LogLevel";
@@ -45,10 +47,16 @@ const serializations = {
 } satisfies Record<Otlp.Protocol, Layer.Layer<OtlpSerialization.OtlpSerialization>>;
 
 /**
- * The longest wait of one exporter for its last export when Envi exits. The two exporters close
- * one after the other, so a collector that does not answer delays the exit by 2 seconds at most.
+ * The longest wait for the last export when Envi exits. One flush sends the last batch of both
+ * signals at once, so a collector that does not answer delays the exit by this time at most.
  */
-const shutdownTimeout: Duration.Input = "1 second";
+const flushTimeout: Duration.Input = "2 seconds";
+
+/**
+ * The wait of each exporter when its scope closes. The flush has already sent its last batch, so
+ * the exporter does not wait again.
+ */
+const shutdownTimeout: Duration.Input = "0 millis";
 
 /** The lowest level of a log on stderr without `--debug`. */
 const consoleLevel: LogLevel.LogLevel = "Info";
@@ -104,8 +112,12 @@ interface ExporterOptions {
   readonly shutdownTimeout: Duration.Input;
 }
 
+/** The services that both exporters share. One flusher sends the last batch of both at once. */
+type ExporterServices = Context.Context<HttpClient.HttpClient | OtlpExporter.Flusher>;
+
 /** Starts the exporter of one signal, when the settings of the signal name a collector. */
 const exporterOf = <A, R>(
+  services: ExporterServices,
   signal: Otlp.Signal,
   make: (options: ExporterOptions) => Effect.Effect<A, never, R>,
 ) =>
@@ -114,19 +126,22 @@ const exporterOf = <A, R>(
       Effect.transposeOption(
         Option.map(target, (value) =>
           make({ url: value.url, headers: value.headers, resource, shutdownTimeout }).pipe(
-            Effect.provide(
-              Layer.mergeAll(
-                serializations[value.protocol],
-                FetchHttpClient.layer,
-                OtlpExporter.layerFlusher,
-              ),
-            ),
+            Effect.provide(serializations[value.protocol]),
+            Effect.provide(services),
           ),
         ),
       ),
     ),
     Option.none<A>(),
     signalWarning(signal),
+  );
+
+/** Sends the last batch of both signals when the layer closes, within one deadline. */
+const flushOnClose = (services: ExporterServices) =>
+  Effect.addFinalizer(() =>
+    Effect.asVoid(
+      Effect.timeoutOption(Context.get(services, OtlpExporter.Flusher).flush, flushTimeout),
+    ),
   );
 
 const noFileLogger: Part<Option.Option<Logger.Logger<unknown, void>>> = {
@@ -157,22 +172,23 @@ export interface Flags {
   readonly logFormat: LogFormat;
 }
 
-/** `--debug`, then `ENVI_DEBUG`, then off. */
-const debugOf = (flags: Flags) =>
-  Effect.map(
-    guard(
-      EffectConfig.option(EffectConfig.Boolean(debugVariable)),
-      Option.none<boolean>(),
-      () => `${debugVariable} must be true or false. Envi ignores it.`,
-    ),
-    (setting): Part<boolean> => ({
-      value: Option.getOrElse(
-        Option.orElse(flags.debug, () => setting.value),
-        () => false,
+/** `--debug`, then `ENVI_DEBUG`, then off. Envi reads the variable only when the flag is unset. */
+const debugOf = (flags: Flags): Effect.Effect<Part<boolean>> =>
+  Option.match(flags.debug, {
+    onSome: (value) => Effect.succeed({ value, warning: Option.none() }),
+    onNone: () =>
+      Effect.map(
+        guard(
+          EffectConfig.option(EffectConfig.Boolean(debugVariable)),
+          Option.none<boolean>(),
+          () => `${debugVariable} must be true or false. Envi ignores it.`,
+        ),
+        (setting) => ({
+          value: Option.getOrElse(setting.value, () => false),
+          warning: setting.warning,
+        }),
       ),
-      warning: setting.warning,
-    }),
-  );
+  });
 
 /**
  * The loggers, the log level, and the tracer of one command. The exporters send their last batch
@@ -183,12 +199,20 @@ export const layer = (flags: Flags) =>
     Effect.gen(function* () {
       const debug = yield* debugOf(flags);
       const fileLogger = yield* fileLoggerOf;
-      const otlpLogger = yield* exporterOf(Otlp.Signal.Logs, OtlpLogger.make);
-      const tracer = yield* exporterOf(Otlp.Signal.Traces, OtlpTracer.make);
 
-      // Every logger that sends a log off stderr gets a safe cause.
+      const services = yield* Layer.build(
+        Layer.mergeAll(FetchHttpClient.layer, OtlpExporter.layerFlusher),
+      );
+
+      const otlpLogger = yield* exporterOf(services, Otlp.Signal.Logs, OtlpLogger.make);
+      const tracer = yield* exporterOf(services, Otlp.Signal.Traces, OtlpTracer.make);
+
+      // Added after the exporters, so it runs before their own finalizers.
+      yield* flushOnClose(services);
+
+      // Every logger gets a safe cause, so a log never shows the text of an unknown error.
       const loggers = [
-        consoleLogger(flags.logFormat, debug.value),
+        safeLogger(consoleLogger(flags.logFormat, debug.value)),
         safeLogger(Logger.tracerLogger),
         ...Option.toArray(Option.map(fileLogger.value, safeLogger)),
         ...Option.toArray(Option.map(otlpLogger.value, safeLogger)),
@@ -211,6 +235,8 @@ export const layer = (flags: Flags) =>
         Logger.layer(loggers),
         Layer.succeed(References.MinimumLogLevel, minimum),
         Layer.succeed(TraceContext.Propagate, Option.isSome(tracer.value)),
+        // The span of an HTTP request holds its URL, and a URL can hold a secret.
+        Layer.succeed(HttpClient.TracerDisabledWhen, () => true),
         Option.match(tracer.value, {
           onNone: () => Layer.empty,
           onSome: (value) => Layer.succeed(Tracer.Tracer, safeTracer(value)),

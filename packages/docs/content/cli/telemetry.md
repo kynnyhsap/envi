@@ -64,7 +64,8 @@ variable of one signal wins over the variable of every signal.
   `custom()`, joins the trace.
 - A failed span holds the error of the step. An Envi error shows its tag and its summary. Any other
   error shows only its name, such as `Error`, because its text can hold a secret or an argument of
-  a command. A log with a cause follows the same rule in the log file and in OTLP.
+  a command. A log with a cause follows the same rule on stderr, in the log file, and in OTLP.
+- Envi turns off the spans of HTTP requests, because the URL of a request can hold a secret.
 - Envi sends the last batch before it exits. A collector that does not answer delays the exit by 2
   seconds at most.
 - The CLI supports only OTLP over HTTP. Another protocol, such as `grpc`, is a value that Envi
@@ -76,7 +77,8 @@ variable of one signal wins over the variable of every signal.
 
 When `TRACEPARENT` holds a W3C trace context, the root span of the command continues that trace.
 A parent process, such as a test runner or a CI step, sets it. Envi ignores a value that breaks the
-W3C rules, such as an ID of only zeros, and starts a new trace.
+W3C rules, such as an ID of only zeros, and starts a new trace. A later version of the format
+continues the trace, and Envi ignores its extra fields.
 
 While the CLI sends its spans, `envi run` sets `TRACEPARENT` of the child to the span of the
 command. A child that reads it continues the trace. Without an export, the child inherits

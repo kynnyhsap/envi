@@ -147,6 +147,47 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi telemetry", (it) 
       }),
     );
 
+    it.effect("keeps the URL of an HTTP request in user code out of the spans", () =>
+      Effect.gen(function* () {
+        const sandbox = yield* makeSandbox("none");
+        const { url, received } = yield* collector;
+
+        const result = yield* runCli(runtime, leaky, ["check"], {
+          ...sandbox.env,
+          ...exportTo(url),
+        });
+
+        const spans = yield* spansOf(received);
+
+        expect(result.exitCode).toBe(1);
+        expect(spans.some((span) => span.name === "custom.resolve")).toBe(true);
+        expect(received.every((request) => !request.body.includes(secrets["db-password"]))).toBe(
+          true,
+        );
+      }),
+    );
+
+    it.effect("keeps the cause of a log in user code off stderr and out of the logs", () =>
+      Effect.gen(function* () {
+        const sandbox = yield* makeSandbox("none");
+        const { url, received } = yield* collector;
+
+        const result = yield* runCli(runtime, leaky, ["check"], {
+          ...sandbox.env,
+          ...exportTo(url),
+        });
+
+        const logs = yield* logsOf(received);
+
+        expect(result.stderr).toContain("The exchange failed.");
+        expect(result.stderr).not.toContain(secrets["db-password"]);
+        expect(logs.some((log) => log.body.stringValue === "The exchange failed.")).toBe(true);
+        expect(received.every((request) => !request.body.includes(secrets["db-password"]))).toBe(
+          true,
+        );
+      }),
+    );
+
     it.effect("keeps the arguments of a command that run cannot start out of the spans", () =>
       Effect.gen(function* () {
         const sandbox = yield* makeSandbox("none");
