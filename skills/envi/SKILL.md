@@ -71,6 +71,6 @@ own terminal. After that, the cache serves the next runs.
 ## Report a problem
 
 If an Envi command fails in a way that its hint and docs do not explain, tell the user, and offer
-to open an issue. Read `envi docs show reporting` first. Search the issues that exist, replace
-every private name with a placeholder, show the text to the user, and post only after the user
+to open an issue. Read `envi docs show reporting` first. Search the issues that exist, remove
+every value, replace every private name with a placeholder, show the text to the user, and post only after the user
 agrees. Report a secret value in an output, an error, or a log in private, never in an issue.
