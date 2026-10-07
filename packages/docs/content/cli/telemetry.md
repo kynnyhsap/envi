@@ -41,32 +41,42 @@ variables. Without an endpoint, the CLI sends nothing.
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 envi sync
 ```
 
-| Variable                             | Does                                                                |
-| ------------------------------------ | ------------------------------------------------------------------- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`        | The base URL. Envi adds `/v1/traces` and `/v1/logs`.                |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | The full URL of the spans. It wins over the base URL.               |
-| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`   | The full URL of the logs. It wins over the base URL.                |
-| `OTEL_EXPORTER_OTLP_PROTOCOL`        | `http/protobuf` or `http/json`. Default: `http/protobuf`.           |
-| `OTEL_EXPORTER_OTLP_HEADERS`         | Headers for each request, such as `authorization=Bearer%20<token>`. |
-| `OTEL_TRACES_EXPORTER`               | `none` sends no spans. Default: `otlp`.                             |
-| `OTEL_LOGS_EXPORTER`                 | `none` sends no logs. Default: `otlp`.                              |
-| `OTEL_SDK_DISABLED`                  | `true` sends nothing.                                               |
+| Variable                             | Does                                                                  |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`        | The base URL. Envi adds `/v1/traces` and `/v1/logs` to its path.      |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | The full URL of the spans. It wins over the base URL.                 |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`   | The full URL of the logs. It wins over the base URL.                  |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`        | `http/protobuf` or `http/json`. Default: `http/protobuf`.             |
+| `OTEL_EXPORTER_OTLP_HEADERS`         | Headers of each request, such as `authorization=Bearer%20<token>`.    |
+| `OTEL_TRACES_EXPORTER`               | `none` sends no spans. Default: `otlp`.                               |
+| `OTEL_LOGS_EXPORTER`                 | `none` sends no logs. Default: `otlp`.                                |
+| `OTEL_SDK_DISABLED`                  | `true`, in any case, sends nothing. Any other value changes nothing.  |
+| `OTEL_RESOURCE_ATTRIBUTES`           | More attributes of the resource, such as `deployment.environment=ci`. |
+
+`OTEL_EXPORTER_OTLP_TRACES_PROTOCOL`, `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL`,
+`OTEL_EXPORTER_OTLP_TRACES_HEADERS`, and `OTEL_EXPORTER_OTLP_LOGS_HEADERS` set one signal. A
+variable of one signal wins over the variable of every signal.
 
 - The service name of every span and log is `envi`, with the version of Envi.
 - The root span of a command is `envi <command>`, such as `envi sync`. Its children are the steps:
   the config search, the config import, the cache read, the provider batch, each `custom()`
-  resolution, and the cache write.
-- A span of a failed step holds the tag and the safe message of the error. A throw in user code
-  shows only its class name, as on stderr.
+  resolution, and the cache write. A span in user code, such as an `Effect.withSpan` in
+  `custom()`, joins the trace.
+- A failed span holds the error of the step. An Envi error shows its tag and its summary. Any other
+  error shows only its name, such as `Error`, because its text can hold a secret or an argument of
+  a command. A log with a cause follows the same rule in the log file and in OTLP.
 - Envi sends the last batch before it exits. A collector that does not answer delays the exit by 2
   seconds at most.
-- The CLI supports only OTLP over HTTP. Another protocol, such as `grpc`, sends nothing and warns.
-- A variable that does not parse turns off its part with a warning on stderr.
+- The CLI supports only OTLP over HTTP. Another protocol, such as `grpc`, is a value that Envi
+  cannot use.
+- A variable that Envi cannot use turns off its signal, and only its signal. A warning on stderr
+  names the variable and never shows its value. The command runs as usual.
 
 ## Trace context
 
 When `TRACEPARENT` holds a W3C trace context, the root span of the command continues that trace.
-A parent process, such as a test runner or a CI step, sets it.
+A parent process, such as a test runner or a CI step, sets it. Envi ignores a value that breaks the
+W3C rules, such as an ID of only zeros, and starts a new trace.
 
 While the CLI sends its spans, `envi run` sets `TRACEPARENT` of the child to the span of the
 command. A child that reads it continues the trace. Without an export, the child inherits

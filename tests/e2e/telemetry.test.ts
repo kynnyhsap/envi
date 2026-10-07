@@ -1,14 +1,22 @@
 // The logs and the traces of the CLI: the OTLP export, the trace context of a parent and a child,
-// `ENVI_DEBUG`, and `ENVI_LOG_FILE`. A small OTLP collector in the test process records each
-// request that the CLI sends.
+// `ENVI_DEBUG`, `ENVI_LOG_FILE`, and the secrets that telemetry must never hold. A small OTLP
+// collector in the test process records each request that the CLI sends.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, layer } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { createServer } from "node:http";
 
+import {
+  bodiesOn,
+  collector,
+  exportTo,
+  holdsNoSecret,
+  logsOf,
+  spansOf,
+  valueOf,
+} from "./collector.ts";
 import {
   enviVersion,
   exportJson,
@@ -23,143 +31,6 @@ import {
 const app = fixture("cached");
 
 const leaky = fixture("telemetry");
-
-interface Received {
-  readonly path: string;
-  readonly contentType: string;
-  readonly body: string;
-}
-
-/** The address of a server that listens on a TCP port. */
-const Address = Schema.Struct({ port: Schema.Number });
-
-/** An OTLP collector on a free port. It answers every request with an empty success. */
-const collector = Effect.acquireRelease(
-  Effect.callback<
-    { readonly url: string; readonly received: Array<Received>; close: () => void },
-    Schema.SchemaError
-  >((resume) => {
-    const received: Array<Received> = [];
-
-    const server = createServer((request, response) => {
-      const chunks: Array<Buffer> = [];
-
-      request.on("data", (chunk: Buffer) => chunks.push(chunk));
-      request.on("end", () => {
-        received.push({
-          path: request.url ?? "",
-          contentType: request.headers["content-type"] ?? "",
-          body: Buffer.concat(chunks).toString("utf8"),
-        });
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end("{}");
-      });
-    });
-
-    server.listen(0, "127.0.0.1", () => {
-      resume(
-        Effect.map(Schema.decodeUnknownEffect(Address)(server.address()), ({ port }) => ({
-          url: `http://127.0.0.1:${port}`,
-          received,
-          close: () => {
-            server.closeAllConnections();
-            server.close();
-          },
-        })),
-      );
-    });
-  }),
-  (server) => Effect.sync(server.close),
-);
-
-const AnyValue = Schema.Struct({
-  stringValue: Schema.optional(Schema.String),
-  intValue: Schema.optional(Schema.Union([Schema.String, Schema.Number])),
-});
-
-const Attribute = Schema.Struct({ key: Schema.String, value: AnyValue });
-
-const Resource = Schema.Struct({ attributes: Schema.Array(Attribute) });
-
-const Span = Schema.Struct({
-  traceId: Schema.String,
-  spanId: Schema.String,
-  parentSpanId: Schema.optional(Schema.String),
-  name: Schema.String,
-  attributes: Schema.Array(Attribute),
-  status: Schema.Struct({ code: Schema.Number }),
-});
-
-const Traces = Schema.fromJsonString(
-  Schema.Struct({
-    resourceSpans: Schema.Array(
-      Schema.Struct({
-        resource: Resource,
-        scopeSpans: Schema.Array(Schema.Struct({ spans: Schema.Array(Span) })),
-      }),
-    ),
-  }),
-);
-
-const LogRecord = Schema.Struct({
-  body: AnyValue,
-  traceId: Schema.optional(Schema.String),
-  severityText: Schema.String,
-});
-
-const Logs = Schema.fromJsonString(
-  Schema.Struct({
-    resourceLogs: Schema.Array(
-      Schema.Struct({
-        resource: Resource,
-        scopeLogs: Schema.Array(Schema.Struct({ logRecords: Schema.Array(LogRecord) })),
-      }),
-    ),
-  }),
-);
-
-/** The JSON bodies that the collector received on one path. */
-const bodiesOn = (received: ReadonlyArray<Received>, path: string) =>
-  received.flatMap((request) => (request.path === path ? [request.body] : []));
-
-/** Every span of every traces request, with the attributes of its resource. */
-const spansOf = (received: ReadonlyArray<Received>) =>
-  Effect.map(
-    Effect.forEach(bodiesOn(received, "/v1/traces"), (body) => Schema.decodeEffect(Traces)(body)),
-    (requests) =>
-      requests.flatMap((request) =>
-        request.resourceSpans.flatMap((resource) =>
-          resource.scopeSpans.flatMap((scope) =>
-            scope.spans.map((span) => ({ ...span, resource: resource.resource.attributes })),
-          ),
-        ),
-      ),
-  );
-
-/** Every log record of every logs request. */
-const logsOf = (received: ReadonlyArray<Received>) =>
-  Effect.map(
-    Effect.forEach(bodiesOn(received, "/v1/logs"), (body) => Schema.decodeEffect(Logs)(body)),
-    (requests) =>
-      requests.flatMap((request) =>
-        request.resourceLogs.flatMap((resource) =>
-          resource.scopeLogs.flatMap((scope) => scope.logRecords),
-        ),
-      ),
-  );
-
-const valueOf = (attributes: ReadonlyArray<typeof Attribute.Type>, key: string) =>
-  attributes.find((attribute) => attribute.key === key)?.value.stringValue;
-
-/** The variables that point the CLI at the collector, with the JSON protocol. */
-const exportTo = (url: string) => ({
-  OTEL_EXPORTER_OTLP_ENDPOINT: url,
-  OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
-});
-
-/** No request body holds a secret value. The bodies of protobuf hold their strings as UTF-8. */
-const holdsNoSecret = (received: ReadonlyArray<Received>) =>
-  received.every((request) => hiddenSecrets.every((secret) => !request.body.includes(secret)));
 
 /** A trace context of a parent process, in the W3C `traceparent` format. */
 const parentTraceId = "4bf92f3577b34da6a3ce929d0e0e4736";
@@ -252,6 +123,48 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi telemetry", (it) 
           true,
         );
         expect(result.stderr).not.toContain(secrets["db-password"]);
+      }),
+    );
+
+    it.effect("keeps an error of a span in user code out of the spans", () =>
+      Effect.gen(function* () {
+        const sandbox = yield* makeSandbox("none");
+        const { url, received } = yield* collector;
+
+        const result = yield* runCli(runtime, leaky, ["check"], {
+          ...sandbox.env,
+          ...exportTo(url),
+        });
+
+        const spans = yield* spansOf(received);
+
+        expect(result.exitCode).toBe(1);
+        // The span of the config ends before Envi maps the error, with an error status.
+        expect(spans.some((span) => span.name === "exchange" && span.status.code === 2)).toBe(true);
+        expect(received.every((request) => !request.body.includes(secrets["db-password"]))).toBe(
+          true,
+        );
+      }),
+    );
+
+    it.effect("keeps the arguments of a command that run cannot start out of the spans", () =>
+      Effect.gen(function* () {
+        const sandbox = yield* makeSandbox("none");
+        const { url, received } = yield* collector;
+        const argument = "argument-of-the-command";
+
+        const result = yield* runCli(
+          runtime,
+          app,
+          ["run", "--cache-dir", sandbox.cacheDirectory, "--", "envi-missing-command", argument],
+          { ...sandbox.env, ...exportTo(url) },
+        );
+
+        const spans = yield* spansOf(received);
+
+        expect(result.exitCode).not.toBe(0);
+        expect(spans.some((span) => span.name === "envi run" && span.status.code === 2)).toBe(true);
+        expect(received.every((request) => !request.body.includes(argument))).toBe(true);
       }),
     );
 
