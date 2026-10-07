@@ -34,8 +34,8 @@ const noResults = (): Provider.DiscoverResults<string> => ({});
 
 /**
  * The search of one provider for its missing references. Every failure gives no result. The
- * search runs in its own fiber, so a search that ignores the deadline, or a slow cleanup after
- * it, never holds the failure back.
+ * search runs in its own fiber, so a slow cleanup after the deadline never holds the failure
+ * back.
  */
 const search = (
   providers: Provider.Interface,
@@ -53,11 +53,11 @@ const search = (
       ),
     );
 
-    const results = yield* Effect.timeoutOption(Fiber.join(fiber), searchTimeout);
-
-    if (Option.isNone(results)) {
-      yield* Effect.forkDetach(Fiber.interrupt(fiber));
-    }
+    // At the deadline, or when the caller cancels the resolution, the search stops. Its cleanup
+    // runs in the background. An ended search ignores the interruption.
+    const results = yield* Effect.timeoutOption(Fiber.join(fiber), searchTimeout).pipe(
+      Effect.ensuring(Effect.forkDetach(Fiber.interrupt(fiber))),
+    );
 
     return Option.getOrElse(results, noResults);
   }).pipe(

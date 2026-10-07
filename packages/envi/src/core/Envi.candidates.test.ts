@@ -2,6 +2,7 @@
 // search for the references close to each missing reference. The search is best effort: it never
 // turns NotFound into another failure.
 import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
@@ -139,6 +140,28 @@ describe("the close references of a NotFound failure", () => {
           }
         }
       }).pipe(Effect.provide(enviLayer())),
+  );
+
+  it.effect("stops the search when a program cancels the load", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const stopped = yield* Deferred.make<void>();
+
+      const { provider } = searching(() =>
+        Deferred.succeed(started, undefined).pipe(
+          Effect.andThen(Effect.never),
+          Effect.onInterrupt(() => Deferred.succeed(stopped, undefined)),
+        ),
+      );
+
+      const load = yield* Effect.forkChild(failuresOf(configOf(provider)));
+
+      yield* Deferred.await(started);
+      yield* Fiber.interrupt(load);
+      yield* Deferred.await(stopped);
+
+      expect(yield* Deferred.isDone(stopped)).toBe(true);
+    }).pipe(Effect.provide(enviLayer())),
   );
 
   it.effect("does not search when only an optional var is missing", () =>
