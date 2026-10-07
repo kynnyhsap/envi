@@ -67,7 +67,8 @@ export const VarFailure = Schema.Struct({
 export type VarFailure = typeof VarFailure.Type;
 
 export const SyncReport = Schema.Struct({
-  stage: Schema.String,
+  /** Each stage of the sync once, in the order of the configs. Each config has its own default stage. */
+  stages: Schema.Array(Schema.String),
   configs: Schema.Number,
   providers: Schema.Array(
     Schema.Struct({

@@ -40,6 +40,9 @@ const longestName = 255;
 
 const workspace = fixture("workspace");
 
+/** Two configs with two default stages. */
+const stages = fixture("stages");
+
 /** Runs a command on the cache of the sandbox. A flag follows the name of its command. */
 const cli = (runtime: string, sandbox: Sandbox, args: ReadonlyArray<string>, cwd = app) => {
   const name = args[0] === "cache" ? 2 : 1;
@@ -114,8 +117,36 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
           const sandbox = yield* makeSandbox("none");
           const result = yield* cli(runtime, sandbox, ["sync", "--stage", "production", "--json"]);
 
-          expect((yield* decodeJson(SyncReport, result.stdout)).stage).toBe("production");
+          expect((yield* decodeJson(SyncReport, result.stdout)).stages).toEqual(["production"]);
           expect((yield* providerCalls(sandbox))[0]).toContain("token-production");
+        }),
+      );
+
+      it.effect("reports every stage of configs with different default stages", () =>
+        Effect.gen(function* () {
+          const path = yield* Path.Path;
+          const sandbox = yield* makeSandbox("none");
+          const web = path.join(stages, "web/envi.config.ts");
+          const api = path.join(stages, "api/envi.config.ts");
+          const configs = ["--config", web, "--config", api];
+          // The default stages of the web config and the api config, in this order.
+          const defaultStages = ["development", "production"];
+          const text = yield* cli(runtime, sandbox, ["sync", ...configs]);
+          const json = yield* cli(runtime, sandbox, ["sync", ...configs, "--json"]);
+
+          const one = yield* cli(runtime, sandbox, [
+            "sync",
+            ...configs,
+            "--stage",
+            "development",
+            "--json",
+          ]);
+
+          expect(text.stdout).toContain(
+            `Synced the stages ${defaultStages.join(", ")} from ${defaultStages.length} configs`,
+          );
+          expect((yield* decodeJson(SyncReport, json.stdout)).stages).toEqual(defaultStages);
+          expect((yield* decodeJson(SyncReport, one.stdout)).stages).toEqual(["development"]);
         }),
       );
 

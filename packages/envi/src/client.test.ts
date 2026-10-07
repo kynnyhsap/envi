@@ -1,3 +1,4 @@
+import * as Arr from "effect/Array";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -122,6 +123,33 @@ describe("createEnvi", () => {
     expect(shared.calls()).toEqual([["db/url", "port"]]);
     await web.dispose();
     await api.dispose();
+  });
+
+  it("reports every stage once, in the order of the clients", async () => {
+    const shared = memoryProvider({ port: "5432" });
+    const defaultStages = ["production", "development", "production"] as const;
+
+    const clients = Arr.map(defaultStages, (defaultStage) =>
+      createEnvi(
+        defineConfig({
+          stages: ["development", "production"],
+          defaultStage,
+          providers: [shared],
+          cache: false,
+          vars: { PORT: mem("port") },
+        }),
+      ),
+    );
+
+    const report = await syncAll(clients);
+    const one = await syncAll(clients, { stage: "development" });
+
+    expect(report.stages).toEqual([...new Set(defaultStages)]);
+    expect(one.stages).toEqual(["development"]);
+
+    for (const client of clients) {
+      await client.dispose();
+    }
   });
 });
 

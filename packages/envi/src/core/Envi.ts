@@ -525,7 +525,7 @@ const sync = Effect.fn("Envi.sync")(function* (
   );
 
   return {
-    stage: members[0]?.stage ?? Config.fallbackStage,
+    stages: Arr.dedupe(members.map((member) => member.stage)),
     configs: list.length,
     providers: Object.entries(counts).map(([provider, entries]) => ({
       provider,
