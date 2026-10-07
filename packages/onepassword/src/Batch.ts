@@ -51,7 +51,7 @@ const resultOf = (response: Sdk.SdkResponse): Result.Result<string, ReferenceFai
 export const resolve = <DesktopAuth>(
   sdk: Sdk.Sdk<DesktopAuth>,
   kind: CredentialKind,
-  client: Sdk.SdkClient,
+  client: Pick<Sdk.SdkClient, "secrets">,
   requests: ReadonlyArray<Provider.ProviderRequest<OpReference>>,
 ): Effect.Effect<Provider.BatchResults, ProviderError> =>
   Sdk.call(sdk, kind, "The request to 1Password failed.", () =>

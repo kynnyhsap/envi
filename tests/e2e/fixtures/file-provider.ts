@@ -7,7 +7,8 @@ import {
 } from "@kynnyhsap/envi";
 // A custom provider for the end-to-end tests. It reads fake secrets from a real JSON file and
 // appends the keys and the `interactive` value of each batch to real log files. A test sees each provider call across
-// several CLI processes this way. Both paths come from the environment of the test.
+// several CLI processes this way. Both paths come from the environment of the test. Its search
+// lists the keys that hold the query.
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
@@ -38,6 +39,12 @@ const unavailable = () =>
     detail: "The secrets file does not read.",
   });
 
+/** Reads the secrets file. */
+const readSecrets = Effect.try({
+  try: () => readFileSync(process.env[secretsVariable] ?? "", "utf8"),
+  catch: unavailable,
+}).pipe(Effect.flatMap((text) => Effect.mapError(Schema.decodeEffect(Secrets)(text), unavailable)));
+
 export const fileProvider = Provider.make({
   id: fileProviderId,
   Reference: Schema.String,
@@ -47,20 +54,18 @@ export const fileProvider = Provider.make({
   credentialVariables: [tokenVariable],
   resolveMany: (requests, context) =>
     Effect.gen(function* () {
-      const text = yield* Effect.try({
+      yield* Effect.try({
         try: () => {
           appendFileSync(
             process.env[callsVariable] ?? "",
             `${requests.map((request) => request.reference).join(",")}\n`,
           );
           appendFileSync(process.env[interactiveVariable] ?? "", `${context.interactive}\n`);
-
-          return readFileSync(process.env[secretsVariable] ?? "", "utf8");
         },
         catch: unavailable,
       });
 
-      const secrets = yield* Effect.mapError(Schema.decodeEffect(Secrets)(text), unavailable);
+      const secrets = yield* readSecrets;
 
       return Object.fromEntries(
         requests.map((request) => {
@@ -73,5 +78,12 @@ export const fileProvider = Provider.make({
         }),
       );
     }),
+  // A key matches a query that it contains. The search logs no batch, because it resolves nothing.
+  discover: (queries) =>
+    Effect.map(readSecrets, (secrets) =>
+      Object.fromEntries(
+        queries.map((query) => [query, Object.keys(secrets).filter((key) => key.includes(query))]),
+      ),
+    ),
   helpers: { file },
 });

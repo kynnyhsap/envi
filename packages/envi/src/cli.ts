@@ -13,6 +13,7 @@ import * as Ref from "effect/Ref";
 import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 
+import * as Cache from "./core/Cache.ts";
 import * as CacheSettings from "./core/CacheSettings.ts";
 import type * as Config from "./core/Config.ts";
 import * as ConfigLoader from "./core/ConfigLoader.ts";
@@ -42,6 +43,7 @@ import {
   DoctorReport,
   ErrorReport,
   ExportFormat,
+  FindReport,
   InspectReport,
   jsonIndent,
   SyncReport,
@@ -66,6 +68,7 @@ const CommandName = {
   Check: "check",
   Inspect: "inspect",
   Export: "export",
+  Find: "find",
   Cache: "cache",
   CachePath: "path",
   CacheList: "list",
@@ -156,8 +159,8 @@ const cacheDirFlag = Flag.String("cache-dir").pipe(
   Flag.optional,
 );
 
-/** The flags of every command that loads a config and resolves its vars. */
-const resolveFlags = {
+/** The flags that select the config files. */
+const configFlags = {
   config: Flag.String("config").pipe(
     Flag.withDescription("A config file. Repeat the flag for several files."),
     Flag.atLeast(0),
@@ -168,6 +171,18 @@ const resolveFlags = {
     ),
     Flag.optional,
   ),
+};
+
+const interactiveFlag = Flag.Boolean("interactive").pipe(
+  Flag.withDescription(
+    "Allow a prompt, such as a desktop app approval: --interactive or --no-interactive.",
+  ),
+  Flag.optional,
+);
+
+/** The flags of every command that loads a config and resolves its vars. */
+const resolveFlags = {
+  ...configFlags,
   stage: Flag.String("stage").pipe(
     Flag.withDescription("The stage, such as development or production."),
     Flag.optional,
@@ -180,18 +195,15 @@ const resolveFlags = {
     Flag.withDescription("Never use an expired cache entry."),
     Flag.optional,
   ),
-  interactive: Flag.Boolean("interactive").pipe(
-    Flag.withDescription(
-      "Allow a prompt, such as a desktop app approval: --interactive or --no-interactive.",
-    ),
-    Flag.optional,
-  ),
+  interactive: interactiveFlag,
   cache: Flag.Boolean("cache").pipe(
     Flag.withDescription("Turn the cache on or off: --cache or --no-cache."),
     Flag.optional,
   ),
   cacheDir: cacheDirFlag,
 };
+
+type ConfigFlags = Command.Command.Config.Infer<typeof configFlags>;
 
 type ResolveFlags = Command.Command.Config.Infer<typeof resolveFlags>;
 
@@ -216,7 +228,7 @@ const readConfigSearch = Settings.read(
  * direction comes from `--config-search`, then `ENVI_CONFIG_SEARCH`, then the command.
  */
 const configFiles = Effect.fn("cli.configFiles")(function* (
-  flags: ResolveFlags,
+  flags: ConfigFlags,
   fallback: ConfigLoader.ConfigSearch,
 ) {
   const loader = yield* ConfigLoader.ConfigLoader;
@@ -244,13 +256,13 @@ const configFiles = Effect.fn("cli.configFiles")(function* (
   return yield* loader.find(path.resolve("."), search);
 });
 
-const loadConfigs = (flags: ResolveFlags, fallback: ConfigLoader.ConfigSearch) =>
+const loadConfigs = (flags: ConfigFlags, fallback: ConfigLoader.ConfigSearch) =>
   Effect.flatMap(ConfigLoader.ConfigLoader, (loader) =>
     Effect.flatMap(configFiles(flags, fallback), (files) => Effect.forEach(files, loader.load)),
   );
 
 /** A command that works on one config rejects a list, so it never picks one at random. */
-const loadOneConfig = (flags: ResolveFlags) =>
+const loadOneConfig = (flags: ConfigFlags) =>
   Effect.gen(function* () {
     const files = yield* configFiles(flags, ConfigLoader.ConfigSearch.Up);
     const [file, ...rest] = files;
@@ -453,6 +465,34 @@ const cacheLayer = (cacheDir: Option.Option<string>) =>
     ),
   );
 
+const find = Command.make(
+  CommandName.Find,
+  {
+    queries: Argument.String("query").pipe(
+      Argument.withDescription("A name to look for, such as stripe, or a reference."),
+      Argument.variadic({ min: 1 }),
+    ),
+    ...configFlags,
+    interactive: interactiveFlag,
+    json: jsonFlag,
+  },
+  (input) =>
+    Effect.gen(function* () {
+      const config = yield* loadOneConfig(input);
+
+      // `find` reads no value, so it needs no cache.
+      const report = yield* Envi.Envi.use((envi) => envi.find(config, input.queries)).pipe(
+        Effect.provide(
+          Envi.layer({ interactive: Option.getOrUndefined(input.interactive) }).pipe(
+            Layer.provide(Cache.layerNone),
+          ),
+        ),
+      );
+
+      yield* print(input.json, FindReport, report, Render.find);
+    }).pipe(handle(input.json, CommandName.Find)),
+).pipe(Command.withDescription("List the references whose names match each query. Show no value."));
+
 const cacheFlags = { cacheDir: cacheDirFlag, json: jsonFlag };
 
 const cachePath = Command.make(CommandName.CachePath, cacheFlags, (flags) =>
@@ -590,7 +630,7 @@ const doctor = Command.make(CommandName.Doctor, { json: jsonFlag }, (flags) =>
 
 /** The `envi` command with all subcommands. */
 const command = root.pipe(
-  Command.withSubcommands([run, sync, inspect, check, exportCommand, cache, docs, doctor]),
+  Command.withSubcommands([run, sync, inspect, check, exportCommand, find, cache, docs, doctor]),
 );
 
 /**

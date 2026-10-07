@@ -24,7 +24,9 @@ const sdk: Sdk<FakeDesktopAuth> = {
 };
 
 /** A client that answers every batch with the given responses. */
-const clientOf = (individualResponses: Readonly<Record<string, SdkResponse>>): SdkClient => ({
+const clientOf = (
+  individualResponses: Readonly<Record<string, SdkResponse>>,
+): Pick<SdkClient, "secrets"> => ({
   secrets: { resolveAll: () => Promise.resolve({ individualResponses }) },
 });
 

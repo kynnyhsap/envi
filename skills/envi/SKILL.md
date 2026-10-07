@@ -45,6 +45,7 @@ you remember, because they match the installed version.
 | Fill the cache for every config | `envi sync` at the repo root               |
 | Resolve every secret again      | `envi sync --refresh`                      |
 | Use another stage               | `envi run --stage production -- <command>` |
+| Find the reference of a secret  | `envi find <name>`                         |
 
 A flag follows its command, and the flags of `envi run` come before `--`.
 
@@ -56,8 +57,9 @@ A flag follows its command, and the flags of `envi run` come before `--`.
    no I/O.
 3. Run `envi check`.
 
-Ask the user for the vault, the item, and the field of a new secret. Do not read secret values to
-find a reference.
+To find the reference of a new secret, run `envi find <name>`, such as `envi find stripe`. It lists
+references and shows no value. Ask the user to confirm the reference. If `find` lists none, ask
+the user for the vault, the item, and the field. Do not read secret values to find a reference.
 
 ## Fix an error
 

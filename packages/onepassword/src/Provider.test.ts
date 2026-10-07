@@ -54,6 +54,12 @@ const fakeSdk = (
       connections.push(config.auth);
 
       return Promise.resolve({
+        // The search has its own tests in `Discover.test.ts`.
+        vaults: { list: () => Promise.resolve([]) },
+        items: {
+          list: () => Promise.resolve([]),
+          getAll: () => Promise.resolve({ individualResponses: [] }),
+        },
         secrets: {
           resolveAll: (references) => {
             batches.push(references);

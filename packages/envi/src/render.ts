@@ -7,6 +7,7 @@ import {
   type DocsPage,
   type DocsSearchReport,
   type DoctorReport,
+  type FindReport,
   type InspectReport,
   type SyncReport,
   redactedText,
@@ -81,6 +82,20 @@ export const inspect = (report: InspectReport): string =>
           : (entry.value ?? absent),
       ]),
     ]),
+  ]);
+
+/** The text of `envi find`. */
+export const find = (report: FindReport): string =>
+  lines([
+    ...report.queries.flatMap((entry) => [
+      entry.query,
+      ...(entry.references.length === 0
+        ? ["  no match"]
+        : entry.references.map((found) => `  ${found.reference}`)),
+    ]),
+    ...(report.skipped.length === 0
+      ? []
+      : [`These providers cannot search: ${report.skipped.join(", ")}.`]),
   ]);
 
 /** The text of `envi cache list`. */

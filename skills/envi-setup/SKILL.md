@@ -43,8 +43,11 @@ list them for each package.
 ## 3. Pick a source for each var
 
 - A public value, such as a port, is a literal: `PORT: "3000"`.
-- A secret is a reference, such as `op("app", "postgres", "url")`. Ask the user for the vault,
-  the item, and the field of each secret. Never guess them.
+- A secret is a reference, such as `op("app", "postgres", "url")`. Write `envi.config.ts` with
+  its providers first (step 4), and run `envi find <name>` for each secret, such as
+  `envi find postgres`. It lists references and shows no value. Ask the user to confirm each
+  reference. If `find` lists none, ask the user for the vault, the item, and the field. Never
+  guess them.
 - A value that differs by stage uses the `stage` argument of `vars`, such as
   ``op(`op://app-${stage}/postgres/url`)``.
 

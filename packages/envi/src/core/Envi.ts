@@ -33,6 +33,7 @@ import type {
   CacheListReport,
   CheckReport,
   ExportFormat,
+  FindReport,
   InspectReport,
   RunReport,
   SyncReport,
@@ -192,6 +193,14 @@ export interface Interface {
     args?: ReadonlyArray<string>,
     options?: RunOptions<Config.StageOf<C>>,
   ) => Effect.Effect<RunReport, EnviError | RunError, ChildProcessSpawner | ParentEnvironment>;
+  /**
+   * Lists the references whose names match each query, from every provider of the config that can
+   * search. It reads no value, and it makes one call for each provider.
+   */
+  readonly find: (
+    config: Config.Config,
+    queries: ReadonlyArray<string>,
+  ) => Effect.Effect<FindReport, ProviderError | SettingsError>;
   readonly cache: {
     /** The directory of a file cache. */
     readonly path: Effect.Effect<Option.Option<string>>;
@@ -584,6 +593,50 @@ const run = Effect.fn("Envi.run")(function* (
   return { exitCode: yield* superviseChild(child, command) } satisfies RunReport;
 });
 
+const find = Effect.fn("Envi.find")(function* (
+  runtime: Runtime,
+  config: Config.Config,
+  queries: ReadonlyArray<string>,
+) {
+  const providers = yield* Effect.provide(
+    Provider.Providers,
+    Provider.layer(providersOf(runtime, config)),
+  );
+
+  const context = {
+    interactive: yield* ResolveSettings.selectInteractive(
+      Option.fromUndefinedOr(runtime.layerOptions.interactive),
+    ),
+  };
+
+  const searched = yield* Effect.forEach(providers.all, (provider) =>
+    Option.match(provider.discover, {
+      onNone: () => Effect.succeed({ provider, results: Option.none() }),
+      onSome: (discover) =>
+        Effect.map(discover(Arr.dedupe(queries), context), (results) => ({
+          provider,
+          results: Option.some(results),
+        })),
+    }),
+  );
+
+  return {
+    queries: queries.map((query) => ({
+      query,
+      references: searched.flatMap(({ provider, results }) =>
+        Option.match(results, {
+          onNone: () => [],
+          onSome: (found) =>
+            (found[query] ?? []).map((reference) => ({ provider: provider.id, reference })),
+        }),
+      ),
+    })),
+    skipped: searched.flatMap(({ provider, results }) =>
+      Option.isNone(results) ? [provider.id] : [],
+    ),
+  } satisfies FindReport;
+});
+
 const listCache = (runtime: Runtime) =>
   Effect.map(runtime.cache.list(), (entries): CacheListReport => ({
     directory: Option.getOrNull(runtime.status.directory),
@@ -614,6 +667,7 @@ const make = Effect.fn("Envi.make")(function* (layerOptions: LayerOptions) {
     inspect: (config, options) => inspect(runtime, config, options),
     export: (config, format, options) => exportVars(runtime, config, format, options),
     run: (config, command, args, options) => run(runtime, config, command, args, options),
+    find: (config, queries) => find(runtime, config, queries),
     cache: {
       path: Effect.succeed(runtime.status.directory),
       list: listCache(runtime),

@@ -19,8 +19,8 @@ const parsed = await envi.parse(process.env); // decodes existing strings, resol
 const key = await envi.resolve(op("payments", "stripe", "secret-key")); // one secret
 ```
 
-The client also has `run`, `sync`, `check`, `inspect`, `export`, and `cache.path`, `cache.list`,
-and `cache.clear`. Each returns the report that `--json` prints. `syncAll(clients)` syncs several
+The client also has `run`, `sync`, `check`, `inspect`, `export`, `find(queries)`, and
+`cache.path`, `cache.list`, and `cache.clear`. Each returns the report that `--json` prints. `syncAll(clients)` syncs several
 clients with one call for each shared provider. A var that names a provider outside its own config
 fails with `UnknownProvider`, as in `check`. Configs with different cache settings or `strict`
 resolve in separate batches. Every client must have the same overrides: the same provider

@@ -25,6 +25,26 @@ export interface Selection {
 }
 
 /**
+ * Selects `interactive` from the client or the layer, `ENVI_INTERACTIVE`, and the default: `true`
+ * outside CI. Envi reads the variable only when the client or the layer does not decide.
+ */
+export const selectInteractive = Effect.fn("ResolveSettings.selectInteractive")(function* (
+  override: Option.Option<boolean>,
+): Effect.fn.Return<boolean, SettingsError> {
+  const isCi = yield* Settings.isCi;
+
+  const fromEnvironment = yield* Option.match(override, {
+    onSome: () => Effect.succeedNone,
+    onNone: () => Settings.interactive,
+  });
+
+  return Option.getOrElse(
+    Option.orElse(override, () => fromEnvironment),
+    () => !isCi,
+  );
+});
+
+/**
  * Selects `strict` from the call, the client or the layer, `ENVI_STRICT`, the config, and the
  * default `false`. CI is always strict. Selects `interactive` from the client or the layer,
  * `ENVI_INTERACTIVE`, and the default: `true` outside CI. Envi reads a variable only when no
@@ -46,20 +66,10 @@ export const select = Effect.fn("ResolveSettings.select")(function* (
     onNone: () => Settings.readBoolean(strictVariable),
   });
 
-  const interactiveFromEnvironment = yield* Option.match(overrides.interactive, {
-    onSome: () => Effect.succeedNone,
-    onNone: () => Settings.interactive,
-  });
-
   const strict = Option.getOrElse(
     Option.firstSomeOf([strictAbove, strictFromEnvironment, configStrict]),
     () => false,
   );
 
-  const interactive = Option.getOrElse(
-    Option.orElse(overrides.interactive, () => interactiveFromEnvironment),
-    () => !isCi,
-  );
-
-  return { strict, interactive };
+  return { strict, interactive: yield* selectInteractive(overrides.interactive) };
 });

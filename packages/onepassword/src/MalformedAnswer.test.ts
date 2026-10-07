@@ -40,7 +40,15 @@ const sdkAnswering = (answer: Schema.Json): Sdk<FakeDesktopAuth> => ({
   AuthExpiredError: class extends Error {},
   DesktopSessionExpiredError: class extends Error {},
   RateLimitExceededError: class extends Error {},
-  createClient: () => Promise.resolve({ secrets: { resolveAll: () => Promise.resolve(answer) } }),
+  createClient: () =>
+    Promise.resolve({
+      secrets: { resolveAll: () => Promise.resolve(answer) },
+      vaults: { list: () => Promise.resolve([]) },
+      items: {
+        list: () => Promise.resolve([]),
+        getAll: () => Promise.resolve({ individualResponses: [] }),
+      },
+    }),
 });
 
 const configOf = (answer: Schema.Json) =>

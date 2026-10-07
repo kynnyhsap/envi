@@ -10,6 +10,7 @@ import * as Result from "effect/Result";
 import * as Batch from "./Batch.ts";
 import * as Clients from "./Clients.ts";
 import * as Credential from "./Credential.ts";
+import * as Discover from "./Discover.ts";
 import { failure } from "./Failure.ts";
 import {
   describeReference,
@@ -39,6 +40,46 @@ const withAccount =
       Option.map((known) => ({ account: known, request })),
       Result.fromOption(() => request),
     );
+
+const notInteractive = () =>
+  failure(
+    ProviderFailure.AuthenticationFailed,
+    `This run is not interactive, so Envi does not use the 1Password app. Set ${Credential.tokenVariables.join(" or ")}.`,
+  );
+
+const noAccount = () =>
+  failure(
+    ProviderFailure.Misconfigured,
+    `No 1Password account is set. Pass \`account\` to onePasswordProvider, or set ${Credential.accountVariable}.`,
+  );
+
+/** The client of the account of the provider, for a search, which names no account. */
+const defaultClient = (
+  settings: Credential.OnePasswordSettings,
+  clients: Clients.Clients,
+  context: Provider.ResolveContext,
+) =>
+  Effect.gen(function* () {
+    const credential = yield* Credential.read(settings);
+
+    if (credential.kind === Credential.CredentialKind.ServiceAccount) {
+      return { kind: credential.kind, client: yield* Cache.get(clients, credential) };
+    }
+
+    if (!context.interactive) {
+      return yield* notInteractive();
+    }
+
+    const account = yield* Option.match(credential.account, {
+      onNone: () => Effect.fail(noAccount()),
+      onSome: Effect.succeed,
+    });
+
+    return {
+      kind: credential.kind,
+      client: yield* Cache.get(clients, { kind: credential.kind, account }),
+    };
+  });
 
 /**
  * Builds the provider on top of an SDK loader. `onePasswordProvider` passes the real SDK.
@@ -73,20 +114,14 @@ export const makeProvider = <DesktopAuth>(
         }
 
         if (!context.interactive) {
-          return yield* failure(
-            ProviderFailure.AuthenticationFailed,
-            `This run is not interactive, so Envi does not use the 1Password app. Set ${Credential.tokenVariables.join(" or ")}.`,
-          );
+          return yield* notInteractive();
         }
 
         const sdk = yield* loadSdk;
         const [known, unknown] = Arr.partition(requests, withAccount(credential.account));
 
         if (Arr.isReadonlyArrayNonEmpty(unknown)) {
-          return yield* failure(
-            ProviderFailure.Misconfigured,
-            `No 1Password account is set. Pass \`account\` to onePasswordProvider, or set ${Credential.accountVariable}.`,
-          );
+          return yield* noAccount();
         }
 
         const batches = yield* Effect.forEach(
@@ -103,6 +138,12 @@ export const makeProvider = <DesktopAuth>(
         );
 
         return Object.fromEntries(batches.flatMap((batch) => Object.entries(batch)));
+      }),
+    discover: (queries, context) =>
+      Effect.gen(function* () {
+        const { kind, client } = yield* defaultClient(settings, clients, context);
+
+        return yield* Discover.discover(yield* loadSdk, kind, client, queries);
       }),
     helpers: { op },
   });

@@ -24,6 +24,7 @@ folder, and `envi docs` reads them offline. Read the smallest page that answers 
 | Find a command or a flag                                  | [CLI](./cli/index.md)                                    |
 | Understand which config a command uses                    | [Config search](./cli/config-search.md)                  |
 | Run a command with the vars                               | [envi run](./cli/run.md)                                 |
+| Find the reference of a secret by its name                | [envi find](./cli/find.md)                               |
 | Read these docs offline, or find a page                   | [envi docs](./cli/docs.md)                               |
 | Set up a coding agent with the skills and the docs        | [Coding agents](./agents.md)                             |
 | Find an environment variable or the order of the settings | [Settings](./settings.md)                                |
