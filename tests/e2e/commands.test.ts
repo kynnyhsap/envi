@@ -150,6 +150,29 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
         }),
       );
 
+      it.effect("names the close references of a renamed secret", () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const sandbox = yield* makeSandbox("none");
+          const missing = "token-development";
+          const renamed = `${missing}-v2`;
+          const { [missing]: token, ...rest } = secrets;
+
+          yield* fs.writeFileString(
+            sandbox.secretsFile,
+            JSON.stringify({ ...rest, [renamed]: token }),
+          );
+
+          const result = yield* cli(runtime, sandbox, ["sync", "--json"]);
+          const [failure] = (yield* decodeJson(SyncReport, result.stdout)).failures;
+
+          expect(result.exitCode).toBe(1);
+          expect(failure).toMatchObject({ reason: "NotFound", reference: `file://${missing}` });
+          expect(failure?.summary).toContain(`file://${renamed}`);
+          expect(result.stdout + result.stderr).not.toContain(token);
+        }),
+      );
+
       it.effect("lists each failed var and exits with 1", () =>
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;

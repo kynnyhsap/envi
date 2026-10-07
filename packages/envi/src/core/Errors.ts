@@ -216,14 +216,28 @@ export const hints: Catalog = {
   },
 };
 
-/** One reference failed. `reference` holds the `describe()` text and never a secret. */
+/** The text of the close references of a `NotFound` failure, or nothing without one. */
+const closeText = (candidates: ReadonlyArray<string> | undefined): string =>
+  candidates === undefined || candidates.length === 0
+    ? ""
+    : `. Close references: ${candidates.join(", ")}`;
+
+/**
+ * One reference failed. `reference` holds the `describe()` text and never a secret. `candidates`
+ * holds the `describe()` texts of the closest references of a `NotFound` failure, when the
+ * provider can search. It never holds a value.
+ */
 export class SecretReferenceError extends ReasonError<SecretReferenceError>()(
   "SecretReferenceError",
   ReferenceFailureSchema,
-  { provider: Schema.String, reference: Schema.String },
+  {
+    provider: Schema.String,
+    reference: Schema.String,
+    candidates: Schema.optionalKey(Schema.Array(Schema.String)),
+  },
   {
     summary: (error) =>
-      `Envi reference failed: ${error.reason} for ${error.reference} (provider ${error.provider})`,
+      `Envi reference failed: ${error.reason} for ${error.reference} (provider ${error.provider})${closeText(error.candidates)}`,
     hints: hints.SecretReferenceError,
   },
 ) {}

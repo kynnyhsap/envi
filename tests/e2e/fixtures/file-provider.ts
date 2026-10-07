@@ -16,6 +16,9 @@ import { appendFileSync, readFileSync } from "node:fs";
 
 export const fileProviderId = "file";
 
+/** The prefix of the `describe()` text of a key. */
+const scheme = `${fileProviderId}://`;
+
 export const secretsVariable = "ENVI_E2E_SECRETS_FILE";
 
 export const callsVariable = "ENVI_E2E_CALLS_FILE";
@@ -48,7 +51,7 @@ const readSecrets = Effect.try({
 export const fileProvider = Provider.make({
   id: fileProviderId,
   Reference: Schema.String,
-  describe: (key) => `file://${key}`,
+  describe: (key) => `${scheme}${key}`,
   // Each secrets file is its own source of values.
   scope: Effect.sync(() => process.env[secretsVariable] ?? ""),
   credentialVariables: [tokenVariable],
@@ -78,11 +81,16 @@ export const fileProvider = Provider.make({
         }),
       );
     }),
-  // A key matches a query that it contains. The search logs no batch, because it resolves nothing.
+  // A key matches a query that it contains. A query can be the `describe()` text of a missing key.
+  // The search logs no batch, because it resolves nothing.
   discover: (queries) =>
     Effect.map(readSecrets, (secrets) =>
       Object.fromEntries(
-        queries.map((query) => [query, Object.keys(secrets).filter((key) => key.includes(query))]),
+        queries.map((query) => {
+          const text = query.startsWith(scheme) ? query.slice(scheme.length) : query;
+
+          return [query, Object.keys(secrets).filter((key) => key.includes(text))];
+        }),
       ),
     ),
   helpers: { file },

@@ -41,7 +41,8 @@ op({ account: "partner-team", vault: "app", item: "postgres", section: "prod", f
 - `envi find <name>` lists the references of the items whose titles match, without a value. See
   [envi find](../cli/find.md). The SDK lists the fields of an item only with their values, so
   `find` gets each matched item whole. The provider drops every value when it decodes the answer.
-  It reads the items of one vault in calls of 50 items at most.
+  It reads the items of one vault in calls of 50 items at most. A `NotFound` error names the
+  closest references of the same search.
 - Envi supports no query attribute, such as `?attribute=otp`.
 - A missing vault, item, or field gives `NotFound`, so `.optional()` and `.default()` apply.
 - An item that the credential cannot read gives `AccessDenied`. A malformed reference gives

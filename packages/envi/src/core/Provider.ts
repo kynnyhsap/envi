@@ -163,11 +163,13 @@ const fromDefinition = <Ref, Helpers extends object>(
     discover: Option.map(
       Option.fromUndefinedOr(definition.discover),
       (discover) => (queries, context) =>
+        // One own key for each query, so a query such as `toString` never reads a property of
+        // `Object.prototype`.
         Effect.map(discover(queries, context), (results) =>
           Object.fromEntries(
-            Object.entries(results).map(([query, references]) => [
+            queries.map((query) => [
               query,
-              references.map(definition.describe),
+              Object.hasOwn(results, query) ? (results[query] ?? []).map(definition.describe) : [],
             ]),
           ),
         ),

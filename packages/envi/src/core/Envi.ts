@@ -12,6 +12,7 @@ import * as Tuple from "effect/Tuple";
 
 import * as Cache from "./Cache.ts";
 import * as CacheSettings from "./CacheSettings.ts";
+import * as Candidates from "./Candidates.ts";
 import * as ChildEnvironment from "./ChildEnvironment.ts";
 import * as Config from "./Config.ts";
 import * as Dotenv from "./Dotenv.ts";
@@ -323,6 +324,12 @@ const resolveWithPolicy = (
   sources: Readonly<Record<string, Source.AnySource>>,
 ) =>
   Resolver.resolve(sources, policy.settings).pipe(
+    Effect.flatMap((resolution) =>
+      Effect.map(
+        Candidates.attach(resolution.vars, { interactive: policy.settings.interactive }),
+        (vars) => ({ ...resolution, vars }),
+      ),
+    ),
     Effect.provide(Provider.layer(providers)),
     Effect.provideService(Cache.Cache, policy.cache ? runtime.cache : Cache.none),
   );

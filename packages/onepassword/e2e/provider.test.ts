@@ -5,6 +5,7 @@ import {
   defineConfig,
   Envi,
   FileCache,
+  ReferenceFailure,
   SecretReferenceError,
   ValueOrigin,
 } from "@kynnyhsap/envi";
@@ -117,6 +118,30 @@ describe.skipIf(testCredentials.length === 0)("1Password provider against a real
               }
             }
           }),
+      );
+
+      it.effect("names the closest reference of a field with a typo, without a value", () =>
+        Effect.gen(function* () {
+          const envi = yield* Envi.Envi;
+
+          const error = yield* envi
+            .resolve(config, op(primaryVault, "app", "SENTRY_DS"))
+            .pipe(Effect.provide(Layer.provide(Envi.layer(), Cache.layerNone)), Effect.flip);
+
+          expect(error).toBeInstanceOf(SecretReferenceError);
+          expect(error).toMatchObject({ reason: ReferenceFailure.NotFound });
+          expect(error instanceof SecretReferenceError ? error.candidates?.[0] : undefined).toBe(
+            `op://${primaryVault}/app/web/SENTRY_DSN`,
+          );
+
+          for (const vault of fixtureVaults) {
+            for (const item of vault.items) {
+              for (const field of item.fields) {
+                expect(JSON.stringify(error) + String(error)).not.toContain(field.value);
+              }
+            }
+          }
+        }),
       );
 
       it.effect("fails for a missing required field with the safe reference text", () =>
