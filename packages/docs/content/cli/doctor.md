@@ -14,16 +14,16 @@ envi doctor
 envi doctor --json
 ```
 
-| Field            | Holds                                                                                  |
-| ---------------- | -------------------------------------------------------------------------------------- |
-| `version`        | The version of Envi.                                                                   |
-| `runtime`        | `node` or `bun`, and its version.                                                      |
-| `platform`       | The OS and the CPU architecture, such as `darwin arm64`.                               |
-| `ci`             | `true` when `CI` is set. The default cache is off in CI, and a prompt is forbidden.    |
-| `configs`        | The number of config files of a search `up` from here and of the whole `repo`.         |
-| `cacheDirectory` | `true` when a cache directory is selected: `ENVI_CACHE_DIR`, or the default in `HOME`. |
-| `keychain`       | The keychain of the platform, and whether `PATH` holds its command as an executable.   |
-| `variables`      | The names of the `ENVI_*` variables that are set.                                      |
+| Field            | Holds                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `version`        | The version of Envi.                                                                       |
+| `runtime`        | `node` or `bun`, and its version.                                                          |
+| `platform`       | The OS and the CPU architecture, such as `darwin arm64`.                                   |
+| `ci`             | `true` when `CI` is set, except to empty, `false`, or `0`. See [Settings](../settings.md). |
+| `configs`        | The number of config files of a search `up` from here and of the whole `repo`.             |
+| `cacheDirectory` | `true` when a cache directory is selected: `ENVI_CACHE_DIR`, or the default in `HOME`.     |
+| `keychain`       | The keychain of the platform, and whether `PATH` holds its command as an executable.       |
+| `variables`      | The names of the `ENVI_*` variables that are set.                                          |
 
 `envi doctor` shows no path, no reference, and no value of a variable, because a value such as
 `ENVI_CACHE_KEY` or `ENVI_CACHE_DIR` can be a secret or a private path. A config can change the
