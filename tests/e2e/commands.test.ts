@@ -35,6 +35,9 @@ import {
 
 const app = fixture("cached");
 
+/** The longest file name of macOS and Linux, in bytes. */
+const longestName = 255;
+
 const workspace = fixture("workspace");
 
 /** Runs a command on the cache of the sandbox. A flag follows the name of its command. */
@@ -435,6 +438,24 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi commands", (it) =
             expect(yield* fs.readFileString(path.join(real, "out.env"))).toContain("PORT=3000\n");
             expect(yield* fs.readFileString(collapsed)).toBe("PORT=1\n");
           }),
+      );
+
+      it.effect("writes a file whose name has the longest length that the OS allows", () =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const sandbox = yield* makeSandbox("none");
+          const folder = path.join(sandbox.directory, "out");
+          const file = path.join(folder, `${"x".repeat(longestName - ".env".length)}.env`);
+
+          yield* fs.makeDirectory(folder);
+
+          const result = yield* cli(runtime, sandbox, ["export", "--output", file]);
+
+          expect(result.exitCode).toBe(0);
+          expect(yield* fs.readFileString(file)).toContain("PORT=3000\n");
+          expect(yield* fs.readDirectory(folder)).toEqual([path.basename(file)]);
+        }),
       );
 
       it.effect("writes the file that a symlink points to, and keeps the link", () =>

@@ -67,7 +67,8 @@ export const write = Effect.fn("ExportFile.write")(function* (file: string, text
   );
 
   const suffix = Hex.encode(crypto.getRandomValues(new Uint8Array(tempNameBytes)));
-  const temp = `${target}.${suffix}.tmp`;
+  // A short name, because the name of the target can have the longest length that the OS allows.
+  const temp = `${path.dirname(target)}${path.sep}.envi-${suffix}.tmp`;
 
   // `wx` creates a new file, and the handle keeps that file when another process changes the
   // path. The umask can narrow the mode of the new file, so `chmod` sets `0600` before the rename.
