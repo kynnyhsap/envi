@@ -140,7 +140,7 @@ interface Catalog {
 export const hints: Catalog = {
   SecretReferenceError: {
     NotFound:
-      "Check that the reference names an existing secret, and that the credential can see it. If the var may be missing, add `.optional()` or `.default(value)`.",
+      "Check that the reference names an existing secret, and that the credential can see it. Run `envi find <name>` to list the references of a close name. If the var may be missing, add `.optional()` or `.default(value)`.",
     Invalid:
       "Fix the reference so that it matches the format of the provider. Run `envi inspect` to see each reference.",
     AccessDenied: "Give the credential access to the secret, or use a credential that has access.",
