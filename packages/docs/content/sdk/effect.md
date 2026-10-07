@@ -23,6 +23,8 @@ program.pipe(Effect.provide(layer({ strict: true })));
 `layer(options)` provides the default cache, the environment and the signals of the process, and
 the platform services of Node or Bun. The layer serves any config, so the cache directory and the
 encryption come from `options.cache`. The `cache` key of each config still sets its `ttl`, its
-`maxStale`, and `false`, unless `options.cache` replaces it. `sync` of several configs still
+`maxStale`, and `false`, unless `options.cache` replaces it. An object in `options.cache` turns
+the cache on over `ENVI_CACHE_ENABLED` and the default of CI, and a missing key then only logs a
+warning. `sync` of several configs still
 requires that every config that uses the cache selects the same encryption and directory. See
 [Cache](../cache.md).
