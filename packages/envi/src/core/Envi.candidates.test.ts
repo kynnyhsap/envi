@@ -6,9 +6,10 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
+import * as Scheduler from "effect/Scheduler";
 import * as TestClock from "effect/testing/TestClock";
 
-import { defineConfig } from "./Config.ts";
+import { type Config, defineConfig } from "./Config.ts";
 import * as Envi from "./Envi.ts";
 import { ProviderError, ProviderFailure, ReferenceFailure, VarsError } from "./Errors.ts";
 import { enviLayer } from "./fixtures/Support.ts";
@@ -80,7 +81,7 @@ const joinWithClock = <A, E>(fiber: Fiber.Fiber<A, E>) =>
   });
 
 /** The failed vars of a load, and the summary of each. */
-const failuresOf = (config: ReturnType<typeof configOf>) =>
+const failuresOf = (config: Config) =>
   Effect.gen(function* () {
     const envi = yield* Envi.Envi;
     const error = yield* Effect.flip(envi.load(config));
@@ -142,25 +143,72 @@ describe("the close references of a NotFound failure", () => {
       }).pipe(Effect.provide(enviLayer())),
   );
 
-  it.effect("stops the search when a program cancels the load", () =>
+  it.effect("stops the search when a program cancels the load, at any yield point", () =>
     Effect.gen(function* () {
-      const started = yield* Deferred.make<void>();
-      const stopped = yield* Deferred.make<void>();
+      // A small budget of operations makes the fibers yield at other points of the search. With a
+      // budget below 3, the load does not reach the search in the time of a test.
+      for (let maxOps = 3; maxOps <= 100; maxOps++) {
+        const started = yield* Deferred.make<void>();
+        const stopped = yield* Deferred.make<void>();
 
-      const { provider } = searching(() =>
-        Deferred.succeed(started, undefined).pipe(
-          Effect.andThen(Effect.never),
-          Effect.onInterrupt(() => Deferred.succeed(stopped, undefined)),
+        const { provider } = searching(() =>
+          Deferred.succeed(started, undefined).pipe(
+            Effect.andThen(Effect.never),
+            Effect.onInterrupt(() => Deferred.succeed(stopped, undefined)),
+          ),
+        );
+
+        const load = yield* Effect.forkChild(
+          failuresOf(configOf(provider)).pipe(
+            Effect.provideService(Scheduler.MaxOpsBeforeYield, maxOps),
+          ),
+        );
+
+        yield* Deferred.await(started);
+        yield* Fiber.interrupt(load);
+        yield* Deferred.await(stopped);
+
+        expect(yield* Deferred.isDone(stopped)).toBe(true);
+      }
+    }).pipe(Effect.provide(enviLayer())),
+  );
+
+  it.effect("keeps a plain NotFound for a reference with the name of an object property", () =>
+    Effect.gen(function* () {
+      const names = ["toString", "constructor", "__proto__"];
+
+      const provider = Provider.make({
+        id: providerId,
+        scope: providerId,
+        describe: (key) => key,
+        resolveMany: (requests) =>
+          Effect.succeed(
+            Object.fromEntries(
+              requests.map((request) => [request.key, Result.fail(ReferenceFailure.NotFound)]),
+            ),
+          ),
+        discover: () => Effect.succeed({}),
+        helpers: {},
+      });
+
+      const config = defineConfig({
+        providers: [provider],
+        vars: Object.fromEntries(
+          names.map((name) => [name.toUpperCase(), reference(providerId, name)]),
         ),
-      );
+      });
 
-      const load = yield* Effect.forkChild(failuresOf(configOf(provider)));
+      const failures = yield* failuresOf(config);
+      const report = yield* Effect.flatMap(Envi.Envi, (envi) => envi.find(config, names));
 
-      yield* Deferred.await(started);
-      yield* Fiber.interrupt(load);
-      yield* Deferred.await(stopped);
+      expect(failures.map(({ key }) => key)).toEqual(names.map((name) => name.toUpperCase()));
 
-      expect(yield* Deferred.isDone(stopped)).toBe(true);
+      for (const { error } of failures) {
+        expect(error).toMatchObject({ reason: ReferenceFailure.NotFound });
+        expect(error).not.toHaveProperty("candidates");
+      }
+
+      expect(report.queries).toEqual(names.map((query) => ({ query, references: [] })));
     }).pipe(Effect.provide(enviLayer())),
   );
 

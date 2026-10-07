@@ -43,24 +43,25 @@ const search = (
   references: ReadonlyArray<string>,
   context: Provider.ResolveContext,
 ) =>
-  Effect.gen(function* () {
-    const fiber = yield* Effect.forkDetach(
+  // The start of the search and its release are one step, so a cancellation cannot fall between
+  // them. At the deadline, or when the caller cancels the resolution, the search stops. Its cleanup
+  // runs in the background. An ended search ignores the interruption.
+  Effect.acquireUseRelease(
+    Effect.forkDetach(
       Effect.flatMap(providers.get(id), (provider) =>
         Option.match(provider.discover, {
           onNone: () => Effect.succeed(noResults()),
           onSome: (discover) => discover(references, context),
         }),
       ),
-    );
-
-    // At the deadline, or when the caller cancels the resolution, the search stops. Its cleanup
-    // runs in the background. An ended search ignores the interruption.
-    const results = yield* Effect.timeoutOption(Fiber.join(fiber), searchTimeout).pipe(
-      Effect.ensuring(Effect.forkDetach(Fiber.interrupt(fiber))),
-    );
-
-    return Option.getOrElse(results, noResults);
-  }).pipe(
+    ),
+    (fiber) =>
+      Effect.map(
+        Effect.timeoutOption(Fiber.join(fiber), searchTimeout),
+        Option.getOrElse(noResults),
+      ),
+    (fiber) => Effect.forkDetach(Fiber.interrupt(fiber)),
+  ).pipe(
     Effect.catchCause(() => Effect.succeed(noResults())),
     Effect.map((results) => [id, results] as const),
   );
