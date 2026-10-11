@@ -83,7 +83,7 @@ export const cache = {
 export const monorepo = await syncAll([envi, createEnvi(staticConfig)], { stage: "development" });
 
 // A program that chooses its own credential ignores the token and the account of the shell. This
-// client always asks the 1Password app of `my-team`.
+// client pins the default desktop account of the provider to `my-team`.
 const desktopClient = createEnvi(config, {
   providers: [onePasswordProvider({ account: "my-team", credentialFromEnvironment: false })],
 });

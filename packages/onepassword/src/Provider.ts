@@ -68,8 +68,9 @@ const replacedWarning = ({ variable, setting }: Credential.Replacement) =>
   ).pipe(Effect.annotateLogs({ variable, setting }));
 
 /**
- * Reads the credential, and warns once for each provider and each setting that a variable
- * replaced, because every operation reads the credential more than once.
+ * Reads the credential, and warns once for each provider and each variable that replaced a
+ * setting, because every operation reads the credential more than once. A variable replaces only
+ * one setting.
  */
 const credentialOf = (
   settings: Credential.OnePasswordSettings,
@@ -79,11 +80,10 @@ const credentialOf = (
     Effect.as(
       Effect.forEach(replaced, (replacement) =>
         Effect.flatMap(
-          Ref.modify(warned, (seen) => {
-            const key = `${replacement.variable}|${replacement.setting}`;
-
-            return [HashSet.has(seen, key), HashSet.add(seen, key)] as const;
-          }),
+          Ref.modify(warned, (seen) => [
+            HashSet.has(seen, replacement.variable),
+            HashSet.add(seen, replacement.variable),
+          ]),
           (seen) => (seen ? Effect.void : replacedWarning(replacement)),
         ),
       ),

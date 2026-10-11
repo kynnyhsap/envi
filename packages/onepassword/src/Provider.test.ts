@@ -4,6 +4,8 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Logger from "effect/Logger";
+import * as Predicate from "effect/Predicate";
+import * as References from "effect/References";
 import * as Result from "effect/Result";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -90,14 +92,17 @@ const fakeSdk = (
 const withEnv = (env: Readonly<Record<string, string>>) =>
   Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(env)));
 
-/** Runs an effect and returns the message of each warning. */
+/** Runs an effect and returns the message and the annotations of each warning. */
 const captureWarnings = <A, E>(effect: Effect.Effect<A, E>) =>
   Effect.gen(function* () {
-    const warnings: Array<string> = [];
+    const warnings: Array<{ readonly message: string; readonly annotations: object }> = [];
 
-    const logger = Logger.make(({ logLevel, message }) => {
+    const logger = Logger.make(({ logLevel, message, fiber }) => {
       if (logLevel === "Warn") {
-        warnings.push(String(message));
+        warnings.push({
+          message: String(message),
+          annotations: fiber.getRef(References.CurrentLogAnnotations),
+        });
       }
     });
 
@@ -423,12 +428,20 @@ describe("onePasswordProvider", () => {
         Effect.gen(function* () {
           const warnings = yield* captureWarnings(runs(settings, 1)).pipe(withEnv(env));
 
-          expect(warnings.length).toBe(replaced.length);
-          replaced.forEach(([variable, setting], index) => {
-            expect(warnings[index]).toContain(variable);
-            expect(warnings[index]).toContain(setting);
+          const values = [
+            ...Object.values(env),
+            settings.serviceAccountToken,
+            settings.account,
+          ].filter(Predicate.isString);
+
+          const logged = JSON.stringify(warnings);
+
+          expect(warnings.map((warning) => warning.annotations)).toEqual(
+            replaced.map(([variable, setting]) => ({ variable, setting })),
+          );
+          values.forEach((value) => {
+            expect(logged).not.toContain(value);
           });
-          expect(warnings.join("\n")).not.toMatch(/ops_/);
         }),
     );
 
