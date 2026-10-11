@@ -82,6 +82,14 @@ export const cache = {
 // Use case 1: one sync for a whole monorepo, with one call for each shared provider.
 export const monorepo = await syncAll([envi, createEnvi(staticConfig)], { stage: "development" });
 
+// A program that chooses its own credential ignores the token and the account of the shell. This
+// client always asks the 1Password app of `my-team`.
+const desktopClient = createEnvi(config, {
+  providers: [onePasswordProvider({ account: "my-team", credentialFromEnvironment: false })],
+});
+
+export const desktopEnv = await desktopClient.load({ stage: "development" });
+
 // The overrides win over the config. A test replaces the providers and turns the cache off.
 const testClient = createEnvi(
   defineConfig({

@@ -287,6 +287,48 @@ describe("onePasswordProvider", () => {
     }).pipe(withEnv({ ENVI_PROVIDER_ONEPASSWORD_ACCOUNT: "partner-team" })),
   );
 
+  describe("with credentialFromEnvironment false", () => {
+    const shell = {
+      ENVI_PROVIDER_ONEPASSWORD_SERVICE_ACCOUNT_TOKEN: "ops_shell_envi",
+      OP_SERVICE_ACCOUNT_TOKEN: "ops_shell_generic",
+      ENVI_PROVIDER_ONEPASSWORD_ACCOUNT: "partner-team",
+    };
+
+    it.effect("uses the token of the program over a token of the shell", () =>
+      Effect.gen(function* () {
+        const settings = { account: "my-team", serviceAccountToken: "ops_program" };
+        const pinned = fakeSdk(secrets);
+        const shared = fakeSdk(secrets);
+
+        yield* makeProvider(
+          { ...settings, credentialFromEnvironment: false },
+          Effect.succeed(pinned),
+        ).resolveMany(requests, { interactive: false });
+        yield* makeProvider(settings, Effect.succeed(shared)).resolveMany(requests, {
+          interactive: false,
+        });
+
+        expect(pinned.connections).toEqual([settings.serviceAccountToken]);
+        expect(shared.connections).toEqual([shell.ENVI_PROVIDER_ONEPASSWORD_SERVICE_ACCOUNT_TOKEN]);
+      }).pipe(withEnv(shell)),
+    );
+
+    it.effect("asks the app for the account of the program despite a token of the shell", () =>
+      Effect.gen(function* () {
+        const settings = { account: "my-team", credentialFromEnvironment: false };
+        const sdk = fakeSdk(secrets);
+        const provider = makeProvider(settings, Effect.succeed(sdk));
+
+        yield* provider.resolveMany(requests, { interactive: true }).pipe(withEnv(shell));
+
+        expect(sdk.connections).toEqual([new FakeDesktopAuth(settings.account)]);
+        expect(yield* provider.scope.pipe(withEnv(shell))).toBe(
+          yield* provider.scope.pipe(withEnv({})),
+        );
+      }),
+    );
+  });
+
   it.effect("fails at once without a token when the run is not interactive", () =>
     Effect.gen(function* () {
       const sdk = fakeSdk(secrets);

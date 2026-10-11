@@ -41,16 +41,22 @@ const withAccount =
       Result.fromOption(() => request),
     );
 
-const notInteractive = () =>
+/** The next action of a missing credential: the setting, and the variables while they count. */
+const setOne = (settings: Credential.OnePasswordSettings, setting: string, variables: string) =>
+  Credential.fromEnvironment(settings)
+    ? `Pass \`${setting}\` to onePasswordProvider, or set ${variables}.`
+    : `Pass \`${setting}\` to onePasswordProvider.`;
+
+const notInteractive = (settings: Credential.OnePasswordSettings) =>
   failure(
     ProviderFailure.AuthenticationFailed,
-    `This run is not interactive, so Envi does not use the 1Password app. Set ${Credential.tokenVariables.join(" or ")}.`,
+    `This run is not interactive, so Envi does not use the 1Password app. ${setOne(settings, "serviceAccountToken", Credential.tokenVariables.join(" or "))}`,
   );
 
-const noAccount = () =>
+const noAccount = (settings: Credential.OnePasswordSettings) =>
   failure(
     ProviderFailure.Misconfigured,
-    `No 1Password account is set. Pass \`account\` to onePasswordProvider, or set ${Credential.accountVariable}.`,
+    `No 1Password account is set. ${setOne(settings, "account", Credential.accountVariable)}`,
   );
 
 /** The client of the account of the provider, for a search, which names no account. */
@@ -67,11 +73,11 @@ const defaultClient = (
     }
 
     if (!context.interactive) {
-      return yield* notInteractive();
+      return yield* notInteractive(settings);
     }
 
     const account = yield* Option.match(credential.account, {
-      onNone: () => Effect.fail(noAccount()),
+      onNone: () => Effect.fail(noAccount(settings)),
       onSome: Effect.succeed,
     });
 
@@ -114,14 +120,14 @@ export const makeProvider = <DesktopAuth>(
         }
 
         if (!context.interactive) {
-          return yield* notInteractive();
+          return yield* notInteractive(settings);
         }
 
         const sdk = yield* loadSdk;
         const [known, unknown] = Arr.partition(requests, withAccount(credential.account));
 
         if (Arr.isReadonlyArrayNonEmpty(unknown)) {
-          return yield* noAccount();
+          return yield* noAccount(settings);
         }
 
         const batches = yield* Effect.forEach(

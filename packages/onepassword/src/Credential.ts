@@ -1,5 +1,6 @@
 // The credential of one operation: a service account token, or desktop authentication through the
-// 1Password app. An environment variable wins over a setting, and a token wins over an account.
+// 1Password app. An environment variable wins over a setting, unless `credentialFromEnvironment` is
+// `false`, and a token wins over an account.
 import { type ProviderError, ProviderFailure } from "@kynnyhsap/envi";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -16,6 +17,11 @@ export interface OnePasswordSettings {
   readonly account?: string;
   /** The token of a service account. With a token, Envi never uses desktop authentication. */
   readonly serviceAccountToken?: string | Redacted.Redacted;
+  /**
+   * `false` ignores the token and the account variables, so only these settings select the
+   * credential. A program that chooses its own credential sets it. Default: `true`.
+   */
+  readonly credentialFromEnvironment?: boolean;
 }
 
 /** The environment variable of the account. */
@@ -66,9 +72,13 @@ const readOptional = <A>(setting: Config.Config<A>, name: string) =>
 /** An empty or a blank value counts as absent, as an unset variable does. */
 const isPresent = (value: string): boolean => value.trim() !== "";
 
+/** Whether the variables of the environment can select the credential. */
+export const fromEnvironment = (settings: OnePasswordSettings): boolean =>
+  settings.credentialFromEnvironment !== false;
+
 const readToken = (settings: OnePasswordSettings) =>
   Effect.gen(function* () {
-    for (const name of tokenVariables) {
+    for (const name of fromEnvironment(settings) ? tokenVariables : []) {
       const found = Option.filter(yield* readOptional(Config.Redacted(name), name), (token) =>
         isPresent(Redacted.value(token)),
       );
@@ -84,12 +94,15 @@ const readToken = (settings: OnePasswordSettings) =>
     );
   });
 
-const readAccount = (settings: OnePasswordSettings) =>
-  Effect.map(readOptional(Config.String(accountVariable), accountVariable), (fromVariable) =>
-    Option.filter(fromVariable, isPresent).pipe(
-      Option.orElse(() => Option.filter(Option.fromUndefinedOr(settings.account), isPresent)),
-    ),
-  );
+const readAccount = (settings: OnePasswordSettings) => {
+  const fromSetting = Option.filter(Option.fromUndefinedOr(settings.account), isPresent);
+
+  return fromEnvironment(settings)
+    ? Effect.map(readOptional(Config.String(accountVariable), accountVariable), (fromVariable) =>
+        Option.filter(fromVariable, isPresent).pipe(Option.orElse(() => fromSetting)),
+      )
+    : Effect.succeed(fromSetting);
+};
 
 /** Reads the credential of one operation from the environment and the settings. */
 export const read = (settings: OnePasswordSettings): Effect.Effect<Credential, ProviderError> =>
