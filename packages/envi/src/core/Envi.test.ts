@@ -1,5 +1,6 @@
 import { assert, describe, expect, expectTypeOf, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
@@ -516,6 +517,30 @@ describe("Envi", () => {
         TOKEN: "s3cret value",
       });
     }).pipe(Effect.provide([layer, nodePlatform])),
+  );
+
+  it.effect("rejects a var name that the file of GITHUB_ENV cannot hold, and writes nothing", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const envi = yield* Envi.Envi;
+      const envFile = yield* fs.makeTempFileScoped();
+      const provider = memoryProvider({ token: "s3cret value" });
+
+      const broken = defineConfig({ providers: [provider], vars: { "A=B": mem("token") } });
+      const valid = defineConfig({ providers: [provider], vars: { A_B: mem("token") } });
+
+      const error = yield* Effect.flip(
+        withEnv({ GITHUB_ENV: envFile })(envi.export(broken, ExportFormat.Github)),
+      );
+
+      expect(error).toBeInstanceOf(ExportError);
+      expect(error).toMatchObject({ key: "A=B", format: ExportFormat.Github });
+      expect(yield* fs.readFileString(envFile)).toBe("");
+
+      yield* withEnv({ GITHUB_ENV: envFile })(envi.export(valid, ExportFormat.Github));
+
+      expect(yield* fs.readFileString(envFile)).toMatch(/^A_B<<(\S+)\ns3cret value\n\1\n$/u);
+    }).pipe(Effect.scoped, Effect.provide([layer, nodePlatform])),
   );
 
   it.effect("fails a dotenv export of a value that dotenv cannot represent", () =>

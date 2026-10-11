@@ -185,7 +185,7 @@ export const hints: Catalog = {
       "Another Envi process holds the cache lock. Wait for it to finish, then run the command again.",
   },
   ExportError:
-    "Export with `--format json`, or remove the characters that dotenv cannot quote from the value.",
+    "Export with `--format json`. For `dotenv`, remove the characters that dotenv cannot quote from the value. For `github`, name the var with letters, digits, and `_`, not first a digit.",
   ExportFileError: {
     WriteFailed: "Check that the folder of the file exists and is writable.",
     NoGithubEnv:
@@ -406,13 +406,16 @@ export class CacheError extends ReasonError<CacheError>()(
   },
 ) {}
 
-/** An export format cannot represent the value of one var. The error never holds the value. */
+/**
+ * An export format cannot represent one var: a value that dotenv cannot quote, or a name that the
+ * file of `GITHUB_ENV` cannot hold. The error never holds the value.
+ */
 export class ExportError extends EnviError<ExportError>()(
   "ExportError",
   { key: Schema.String, format: Schema.String },
   {
     summary: (error) =>
-      `Envi export cannot represent a value: ${error.key} does not fit the ${error.format} format`,
+      `Envi export cannot represent a var: ${error.key} does not fit the ${error.format} format`,
     hint: hints.ExportError,
   },
 ) {}

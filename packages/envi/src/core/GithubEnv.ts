@@ -7,7 +7,8 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 
-import { ExportFileError, ExportFileFailure } from "./Errors.ts";
+import { ExportError, ExportFileError, ExportFileFailure } from "./Errors.ts";
+import { ExportFormat } from "./Reports.ts";
 
 /** The variable that names the env file of a GitHub Actions step. The runner sets it. */
 export const envFileVariable = "GITHUB_ENV";
@@ -16,6 +17,12 @@ export const envFileVariable = "GITHUB_ENV";
 const fileMode = 0o600;
 
 const maskCommand = "::add-mask::";
+
+/**
+ * A name that the env file holds as one var, and a shell reads: letters, digits, and `_`, not
+ * first a digit. A name with `=`, `<<`, or a line break would corrupt the file.
+ */
+const envName = /^[A-Za-z_]\w*$/u;
 
 /**
  * The env file of the step. An empty value counts as absent. The export reads it before it
@@ -66,7 +73,8 @@ const blockOf = ([key, raw]: readonly [string, string]) => {
 
 /**
  * Masks each secret with a workflow command on stdout, and then appends the vars to the env
- * file. Stdout gets no other line, and the runner does not show a mask command in the log.
+ * file. Stdout gets no other line, and the runner does not show a mask command in the log. A var
+ * name that the file cannot hold fails with an `ExportError` before Envi prints or writes.
  *
  * @param secrets - The value of each secret var of the stage, also of a var that `only` leaves out.
  * @param values - The vars to export, each a key and its raw string.
@@ -77,6 +85,12 @@ export const write = Effect.fn("GithubEnv.write")(function* (
   values: ReadonlyArray<readonly [string, string]>,
 ) {
   const fs = yield* FileSystem.FileSystem;
+  const invalid = values.find(([key]) => !envName.test(key));
+
+  if (invalid !== undefined) {
+    yield* new ExportError({ key: invalid[0], format: ExportFormat.Github });
+  }
+
   const masks = masksOf(secrets);
 
   if (masks.length > 0) {

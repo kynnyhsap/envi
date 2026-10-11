@@ -69,7 +69,10 @@ var without a value stays out, as without `--only`. Envi still resolves every va
    `.redact(false)`. Each line of a value gets its own command, because the runner masks one log
    line at a time. Envi escapes `%`, CR, and LF as the runner expects.
 2. It appends each exported var to the file that `GITHUB_ENV` names, in the form
-   `NAME<<DELIMITER`, with a random delimiter. The value keeps its line ends, also CRLF.
+   `NAME<<DELIMITER`, with a random delimiter. The value keeps its line ends, also CRLF. A var
+   name must hold only letters, digits, and `_`, and not start with a digit. Envi checks the
+   names before it prints or writes anything, and fails with an
+   [`ExportError`](../errors/export.md) otherwise.
 
 Stdout gets only the mask commands, and the runner does not show them in the log. No other output
 holds a value. Without `GITHUB_ENV`, the export fails with

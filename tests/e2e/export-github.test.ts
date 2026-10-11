@@ -228,6 +228,11 @@ layer(NodeServices.layer, { excludeTestServices: true })("envi export --format g
         expect(yield* fs.exists(output)).toBe(false);
         expect(yield* readFile(envFile)).toBe(earlierStep);
         expect(yield* providerCalls(sandbox)).toEqual([]);
+
+        const allowed = yield* exportGithub(runtime, sandbox, { GITHUB_ENV: envFile });
+
+        expect(allowed.exitCode).toBe(0);
+        expect(addedVars(yield* readFile(envFile))).toHaveProperty("API_TOKEN");
       }),
     );
   });
