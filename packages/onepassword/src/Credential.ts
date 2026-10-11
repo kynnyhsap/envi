@@ -76,44 +76,104 @@ const isPresent = (value: string): boolean => value.trim() !== "";
 export const fromEnvironment = (settings: OnePasswordSettings): boolean =>
   settings.credentialFromEnvironment !== false;
 
-const readToken = (settings: OnePasswordSettings) =>
+/** The settings that a variable can replace. */
+export const CredentialSetting = {
+  ServiceAccountToken: "serviceAccountToken",
+  Account: "account",
+} as const;
+
+/** The schema of `CredentialSetting`. */
+export const CredentialSettingSchema = Schema.Enum(CredentialSetting);
+
+export type CredentialSetting = typeof CredentialSettingSchema.Type;
+
+/** A variable that replaced another value of a setting. It holds names, never a value. */
+export const Replacement = Schema.Struct({
+  variable: Schema.String,
+  setting: CredentialSettingSchema,
+});
+
+export type Replacement = typeof Replacement.Type;
+
+/** The credential of one operation, and each setting that a variable replaced. */
+export const Reading = Schema.Struct({
+  credential: Credential,
+  replaced: Schema.Array(Replacement),
+});
+
+export type Reading = typeof Reading.Type;
+
+/** One value from the first of the variables that holds one, and the name of that variable. */
+const firstVariable = <A>(
+  names: ReadonlyArray<string>,
+  config: (name: string) => Config.Config<A>,
+  present: (value: A) => boolean,
+) =>
   Effect.gen(function* () {
-    for (const name of fromEnvironment(settings) ? tokenVariables : []) {
-      const found = Option.filter(yield* readOptional(Config.Redacted(name), name), (token) =>
-        isPresent(Redacted.value(token)),
-      );
+    for (const name of names) {
+      const found = Option.filter(yield* readOptional(config(name), name), present);
 
       if (Option.isSome(found)) {
-        return found;
+        return Option.some({ name, value: found.value });
       }
     }
 
-    return Option.fromUndefinedOr(settings.serviceAccountToken).pipe(
-      Option.map((token) => (Predicate.isString(token) ? Redacted.make(token) : token)),
-      Option.filter((token) => isPresent(Redacted.value(token))),
-    );
+    return Option.none<{ readonly name: string; readonly value: A }>();
   });
 
-const readAccount = (settings: OnePasswordSettings) => {
-  const fromSetting = Option.filter(Option.fromUndefinedOr(settings.account), isPresent);
+/** The variable wins over the setting. It replaces the setting only when their values differ. */
+const choose = <A>(
+  variable: Option.Option<{ readonly name: string; readonly value: A }>,
+  setting: Option.Option<A>,
+  name: CredentialSetting,
+  text: (value: A) => string,
+) => ({
+  value: Option.orElse(
+    Option.map(variable, (found) => found.value),
+    () => setting,
+  ),
+  replaced: Option.match(Option.all([variable, setting]), {
+    onNone: (): ReadonlyArray<Replacement> => [],
+    onSome: ([found, value]) =>
+      text(found.value) === text(value) ? [] : [{ variable: found.name, setting: name }],
+  }),
+});
 
-  return fromEnvironment(settings)
-    ? Effect.map(readOptional(Config.String(accountVariable), accountVariable), (fromVariable) =>
-        Option.filter(fromVariable, isPresent).pipe(Option.orElse(() => fromSetting)),
-      )
-    : Effect.succeed(fromSetting);
-};
+const isPresentToken = (token: Redacted.Redacted): boolean => isPresent(Redacted.value(token));
 
 /** Reads the credential of one operation from the environment and the settings. */
-export const read = (settings: OnePasswordSettings): Effect.Effect<Credential, ProviderError> =>
+export const read = (settings: OnePasswordSettings): Effect.Effect<Reading, ProviderError> =>
   Effect.gen(function* () {
-    const token = yield* readToken(settings);
+    const variables = fromEnvironment(settings);
 
-    if (Option.isSome(token)) {
-      return { kind: CredentialKind.ServiceAccount, token: token.value };
+    const token = choose(
+      yield* firstVariable(variables ? tokenVariables : [], Config.Redacted, isPresentToken),
+      Option.fromUndefinedOr(settings.serviceAccountToken).pipe(
+        Option.map((value) => (Predicate.isString(value) ? Redacted.make(value) : value)),
+        Option.filter(isPresentToken),
+      ),
+      CredentialSetting.ServiceAccountToken,
+      Redacted.value,
+    );
+
+    if (Option.isSome(token.value)) {
+      return {
+        credential: { kind: CredentialKind.ServiceAccount, token: token.value.value },
+        replaced: token.replaced,
+      };
     }
 
-    return { kind: CredentialKind.Desktop, account: yield* readAccount(settings) };
+    const account = choose(
+      yield* firstVariable(variables ? [accountVariable] : [], Config.String, isPresent),
+      Option.filter(Option.fromUndefinedOr(settings.account), isPresent),
+      CredentialSetting.Account,
+      String,
+    );
+
+    return {
+      credential: { kind: CredentialKind.Desktop, account: account.value },
+      replaced: account.replaced,
+    };
   });
 
 /**

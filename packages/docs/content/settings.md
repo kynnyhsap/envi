@@ -36,8 +36,9 @@ config that uses the cache must end with the same cache encryption and directory
 | `OP_SERVICE_ACCOUNT_TOKEN`                        | A 1Password service account token, with a lower priority.        |
 
 A provider setting counts as a config key, even when a program passes the provider through
-`createEnvi`. The 1Password setting `credentialFromEnvironment: false` ignores the three
-1Password variables, so a program can pin its own credential. See
+`createEnvi`. The 1Password provider logs a warning when one of its variables replaces a setting
+that holds another value. The 1Password setting `credentialFromEnvironment: false` ignores the
+three 1Password variables, so a program can pin its own credential. See
 [1Password](./providers/1password.md#authentication).
 
 The CLI also reads the OpenTelemetry variables, such as `OTEL_EXPORTER_OTLP_ENDPOINT`, and

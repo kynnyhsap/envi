@@ -58,6 +58,16 @@ op({ account: "partner-team", vault: "app", item: "postgres", section: "prod", f
 A variable wins over a setting, so CI can replace the token of a config. An empty variable
 counts as absent.
 
+If a variable replaces a setting that holds another value, the provider logs a warning. The
+warning names the variable and the setting, never a value. It shows once for each provider, in
+these cases:
+
+- A token variable replaces `serviceAccountToken`.
+- `ENVI_PROVIDER_ONEPASSWORD_ACCOUNT` replaces `account`, and no token is set.
+
+A token variable next to `account` logs nothing, because a token wins over an account. That is
+the usual setup of CI.
+
 A program that chooses its own credential sets `credentialFromEnvironment: false`. The provider
 then ignores the three variables. It uses `serviceAccountToken` if the program passes one, and
 the desktop app with `account` otherwise. A token or an account in the shell never replaces the

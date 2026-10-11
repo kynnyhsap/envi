@@ -3,9 +3,11 @@ import { ProviderFailure, ReferenceFailure } from "@kynnyhsap/envi";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Logger from "effect/Logger";
 import * as Result from "effect/Result";
 import * as TestClock from "effect/testing/TestClock";
 
+import type { OnePasswordSettings } from "./Credential.ts";
 import { makeProvider } from "./Provider.ts";
 import type { Sdk } from "./Sdk.ts";
 
@@ -87,6 +89,22 @@ const fakeSdk = (
 
 const withEnv = (env: Readonly<Record<string, string>>) =>
   Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown(env)));
+
+/** Runs an effect and returns the message of each warning. */
+const captureWarnings = <A, E>(effect: Effect.Effect<A, E>) =>
+  Effect.gen(function* () {
+    const warnings: Array<string> = [];
+
+    const logger = Logger.make(({ logLevel, message }) => {
+      if (logLevel === "Warn") {
+        warnings.push(String(message));
+      }
+    });
+
+    yield* effect.pipe(Effect.provide(Logger.layer([logger])));
+
+    return warnings;
+  });
 
 const requests = [
   { key: "a", reference: { uri: "op://app/postgres/url" } },
@@ -325,6 +343,106 @@ describe("onePasswordProvider", () => {
         expect(yield* provider.scope.pipe(withEnv(shell))).toBe(
           yield* provider.scope.pipe(withEnv({})),
         );
+      }),
+    );
+  });
+
+  describe("when a variable and a setting disagree", () => {
+    const envToken = "ENVI_PROVIDER_ONEPASSWORD_SERVICE_ACCOUNT_TOKEN";
+    const opToken = "OP_SERVICE_ACCOUNT_TOKEN";
+    const envAccount = "ENVI_PROVIDER_ONEPASSWORD_ACCOUNT";
+
+    /** One provider, and operations that each read the scope and resolve, as a cache miss does. */
+    const runs = (settings: OnePasswordSettings, operations: number) =>
+      Effect.gen(function* () {
+        const provider = makeProvider(settings, Effect.succeed(fakeSdk(secrets)));
+
+        for (let run = 0; run < operations; run += 1) {
+          yield* provider.scope;
+          yield* provider.resolveMany(requests, { interactive: true });
+        }
+      });
+
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly settings: OnePasswordSettings;
+      readonly env: Readonly<Record<string, string>>;
+      readonly replaced: ReadonlyArray<readonly [variable: string, setting: string]>;
+    }> = [
+      {
+        name: "the ENVI token variable replaces another token",
+        settings: { serviceAccountToken: "ops_program" },
+        env: { [envToken]: "ops_shell" },
+        replaced: [[envToken, "serviceAccountToken"]],
+      },
+      {
+        name: "OP_SERVICE_ACCOUNT_TOKEN replaces another token",
+        settings: { serviceAccountToken: "ops_program" },
+        env: { [opToken]: "ops_shell" },
+        replaced: [[opToken, "serviceAccountToken"]],
+      },
+      {
+        name: "the account variable replaces another account",
+        settings: { account: "my-team" },
+        env: { [envAccount]: "partner-team" },
+        replaced: [[envAccount, "account"]],
+      },
+      {
+        name: "a variable holds the same token",
+        settings: { serviceAccountToken: "ops_program" },
+        env: { [envToken]: "ops_program" },
+        replaced: [],
+      },
+      {
+        name: "a variable holds the same account",
+        settings: { account: "my-team" },
+        env: { [envAccount]: "my-team" },
+        replaced: [],
+      },
+      {
+        name: "a token variable replaces the account, as in CI",
+        settings: { account: "my-team" },
+        env: { [opToken]: "ops_ci", [envAccount]: "partner-team" },
+        replaced: [],
+      },
+      {
+        name: "credentialFromEnvironment is false",
+        settings: {
+          account: "my-team",
+          serviceAccountToken: "ops_program",
+          credentialFromEnvironment: false,
+        },
+        env: { [envToken]: "ops_shell", [envAccount]: "partner-team" },
+        replaced: [],
+      },
+    ];
+
+    it.effect.each(cases)(
+      "warns only for a replaced setting: $name",
+      ({ settings, env, replaced }) =>
+        Effect.gen(function* () {
+          const warnings = yield* captureWarnings(runs(settings, 1)).pipe(withEnv(env));
+
+          expect(warnings.length).toBe(replaced.length);
+          replaced.forEach(([variable, setting], index) => {
+            expect(warnings[index]).toContain(variable);
+            expect(warnings[index]).toContain(setting);
+          });
+          expect(warnings.join("\n")).not.toMatch(/ops_/);
+        }),
+    );
+
+    it.effect("warns once for each provider, across several operations", () =>
+      Effect.gen(function* () {
+        const settings = { serviceAccountToken: "ops_program" };
+        const env = { [envToken]: "ops_shell" };
+        const once = yield* captureWarnings(runs(settings, 3)).pipe(withEnv(env));
+        const two = Effect.zip(runs(settings, 1), runs(settings, 1));
+
+        const twice = yield* captureWarnings(two).pipe(withEnv(env));
+
+        expect(once.length).toBe(1);
+        expect(twice.length).toBe(2);
       }),
     );
   });
