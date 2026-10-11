@@ -1,5 +1,5 @@
-// The text of `export`: dotenv lines or a json object. A value that dotenv cannot keep fails the
-// export with the var key, and never with the value.
+// The text of `export`: dotenv lines or a json object. `GithubEnv.ts` holds the `github` format.
+// A value that dotenv cannot keep fails the export with the var key, and never with the value.
 import * as Effect from "effect/Effect";
 
 import { ExportError } from "./Errors.ts";
@@ -29,9 +29,9 @@ const line = (key: string, raw: string): Effect.Effect<string, ExportError> => {
     : Effect.succeed(`${key}="${raw.replaceAll("\n", "\\n")}"`);
 };
 
-/** The text of the values in one format. Each value is a key and its raw string. */
+/** The text of the values in a text format. Each value is a key and its raw string. */
 export const render = (
-  format: ExportFormat,
+  format: Exclude<ExportFormat, typeof ExportFormat.Github>,
   values: ReadonlyArray<readonly [string, string]>,
 ): Effect.Effect<string, ExportError> =>
   format === ExportFormat.Json

@@ -3,6 +3,7 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import type * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Match from "effect/Match";
 import * as Option from "effect/Option";
@@ -20,25 +21,28 @@ import {
   type CacheError,
   type ConfigLoadError,
   type ExportError,
+  type ExportFileError,
   type ProviderError,
   RunError,
   RunFailure,
   type SettingsError,
   type UnknownStageError,
+  UnknownVarError,
   type VarsError,
 } from "./Errors.ts";
+import * as GithubEnv from "./GithubEnv.ts";
 import * as Groups from "./Groups.ts";
 import * as Outcomes from "./Outcomes.ts";
 import * as Provider from "./Provider.ts";
-import type {
-  CacheClearReport,
-  CacheListReport,
-  CheckReport,
+import {
+  type CacheClearReport,
+  type CacheListReport,
+  type CheckReport,
   ExportFormat,
-  FindReport,
-  InspectReport,
-  RunReport,
-  SyncReport,
+  type FindReport,
+  type InspectReport,
+  type RunReport,
+  type SyncReport,
 } from "./Reports.ts";
 import * as Resolver from "./Resolver.ts";
 import * as ResolveSettings from "./ResolveSettings.ts";
@@ -99,10 +103,20 @@ export interface LoadOptions<Stage extends string> extends ResolveOptions {
   readonly stage?: Stage | undefined;
 }
 
-/** The options of `inspect` and `export`. */
-export interface ExportOptions<Stage extends string> extends LoadOptions<Stage> {
+/** The options of `inspect`. */
+export interface InspectOptions<Stage extends string> extends LoadOptions<Stage> {
   /** Hides each redacted value. `inspect` hides by default. `export` shows by default. */
   readonly redact?: boolean | undefined;
+}
+
+/** The options of `export`. */
+export interface ExportOptions<Stage extends string> extends InspectOptions<Stage> {
+  /**
+   * Exports only these vars. A name that the stage does not declare fails the export with an
+   * `UnknownVarError` before Envi resolves anything. Envi still resolves every var of the stage,
+   * and the `github` format masks every secret of the stage.
+   */
+  readonly only?: ReadonlyArray<string> | undefined;
 }
 
 /** The options of `run`. */
@@ -179,13 +193,21 @@ export interface Interface {
   ) => Effect.Effect<CheckReport, ReportError>;
   readonly inspect: <C extends Config.Config>(
     config: C,
-    options?: ExportOptions<Config.StageOf<C>>,
+    options?: InspectOptions<Config.StageOf<C>>,
   ) => Effect.Effect<InspectReport, EnviError>;
+  /**
+   * Returns the text of the vars in a format. The `github` format prints a mask command for each
+   * secret on stdout, appends the vars to the file of `GITHUB_ENV`, and returns an empty text.
+   */
   readonly export: <C extends Config.Config>(
     config: C,
     format: ExportFormat,
     options?: ExportOptions<Config.StageOf<C>>,
-  ) => Effect.Effect<string, EnviError | ExportError>;
+  ) => Effect.Effect<
+    string,
+    EnviError | ExportError | ExportFileError | UnknownVarError,
+    FileSystem.FileSystem
+  >;
   /**
    * Resolves every var, and then starts the command with the parent environment plus the vars.
    * A failed var starts no child. The report holds the exit code of the child.
@@ -347,13 +369,22 @@ const resolveWith = Effect.fn("Envi.resolveWith")(function* (
   return yield* resolveWithPolicy(runtime, policy, providers, sources);
 });
 
+/** The stage of a run and the descriptors of its vars. */
+const stageVars = Effect.fn("Envi.stageVars")(function* (
+  config: Config.Config,
+  options: LoadOptions<string> | undefined,
+) {
+  const stage = yield* stageOf(config, options?.stage);
+
+  return { stage, sources: yield* Config.varsFor(config, stage) };
+});
+
 const resolveVars = Effect.fn("Envi.resolveVars")(function* (
   runtime: Runtime,
   config: Config.Config,
   options: LoadOptions<string> | undefined,
 ) {
-  const stage = yield* stageOf(config, options?.stage);
-  const sources = yield* Config.varsFor(config, stage);
+  const { stage, sources } = yield* stageVars(config, options);
 
   const resolution = yield* resolveWith(
     runtime,
@@ -563,7 +594,7 @@ const check = (runtime: Runtime, config: Config.Config, options: LoadOptions<str
 const inspect = (
   runtime: Runtime,
   config: Config.Config,
-  options: ExportOptions<string> | undefined,
+  options: InspectOptions<string> | undefined,
 ) =>
   Effect.map(resolveAll(runtime, config, options), ({ stage, entries }): InspectReport => ({
     stage,
@@ -572,15 +603,59 @@ const inspect = (
     ),
   }));
 
+/**
+ * Resolves every var of the stage, and selects the vars of `only`. A name that the stage does not
+ * declare fails before Envi resolves anything.
+ */
+const exportEntries = Effect.fn("Envi.exportEntries")(function* (
+  runtime: Runtime,
+  config: Config.Config,
+  options: ExportOptions<string> | undefined,
+) {
+  const { stage, sources } = yield* stageVars(config, options);
+  const only = options?.only;
+  const missing = Arr.dedupe((only ?? []).filter((key) => !Object.hasOwn(sources, key)));
+
+  if (missing.length > 0) {
+    return yield* new UnknownVarError({ stage, keys: missing });
+  }
+
+  const resolution = yield* resolveWith(
+    runtime,
+    config,
+    stage,
+    providersOf(runtime, config),
+    sources,
+    options,
+  );
+
+  const entries = yield* Outcomes.allOrVarsError(config, stage, resolution.vars);
+  const selected = only === undefined ? entries : entries.filter(([key]) => only.includes(key));
+
+  return {
+    secrets: Outcomes.rawEntries(
+      entries.filter(([, resolved]) => resolved.isRedacted),
+      false,
+    ).map(([, raw]) => raw),
+    values: Outcomes.rawEntries(selected, options?.redact ?? false),
+  };
+});
+
 const exportVars = (
   runtime: Runtime,
   config: Config.Config,
   format: ExportFormat,
   options: ExportOptions<string> | undefined,
 ) =>
-  Effect.flatMap(resolveAll(runtime, config, options), ({ entries }) =>
-    Dotenv.render(format, Outcomes.rawEntries(entries, options?.redact ?? false)),
-  );
+  format === ExportFormat.Github
+    ? Effect.flatMap(GithubEnv.envFile, (file) =>
+        Effect.flatMap(exportEntries(runtime, config, options), ({ secrets, values }) =>
+          Effect.as(GithubEnv.write(file, secrets, values), ""),
+        ),
+      )
+    : Effect.flatMap(exportEntries(runtime, config, options), ({ values }) =>
+        Dotenv.render(format, values),
+      );
 
 /** Starts the child, waits for its exit, and maps each spawn failure to a `RunError`. */
 const superviseChild = (child: ChildProcess.Command, command: string) => {

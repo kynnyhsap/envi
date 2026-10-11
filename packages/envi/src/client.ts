@@ -64,7 +64,7 @@ export interface EnviClient<C extends Config.Config> extends AnyEnvi {
   ) => Promise<RunReport>;
   readonly sync: (options?: Envi.LoadOptions<Config.StageOf<C>>) => Promise<SyncReport>;
   readonly check: (options?: Envi.LoadOptions<Config.StageOf<C>>) => Promise<CheckReport>;
-  readonly inspect: (options?: Envi.ExportOptions<Config.StageOf<C>>) => Promise<InspectReport>;
+  readonly inspect: (options?: Envi.InspectOptions<Config.StageOf<C>>) => Promise<InspectReport>;
   readonly export: (
     format: ExportFormat,
     options?: Envi.ExportOptions<Config.StageOf<C>>,

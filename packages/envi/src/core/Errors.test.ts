@@ -29,6 +29,7 @@ import {
   SecretReferenceError,
   SettingsError,
   UnknownStageError,
+  UnknownVarError,
   VarsError,
 } from "./Errors.ts";
 
@@ -47,6 +48,7 @@ const samples: ReadonlyArray<AnyEnviError> = [
   new DeriveError({ thrown: "TypeError", location: "envi.config.ts:3:7" }),
   new VarsError({ stage: "development", failures: [{ key: "TOKEN", error: token }] }),
   new UnknownStageError({ stage: "qa", stages: ["development", "production"] }),
+  new UnknownVarError({ stage: "development", keys: ["MISSING"] }),
   new CacheError({ reason: CacheFailure.LockTimeout, detail: "Busy." }),
   new ExportError({ key: "TOKEN", format: "dotenv" }),
   new ExportFileError({ reason: ExportFileFailure.WriteFailed, path: "/repo/.env" }),

@@ -18,9 +18,10 @@ import {
   SecretReferenceError,
   SettingsError,
   UnknownStageError,
+  UnknownVarError,
   VarsError,
 } from "./Errors.ts";
-import { enviLayer, withEnv } from "./fixtures/Support.ts";
+import { enviLayer, nodePlatform, withEnv } from "./fixtures/Support.ts";
 import { mem, memoryProvider, memoryProviderId } from "./Memory.ts";
 import * as Provider from "./Provider.ts";
 import { ExportFormat, ValueOrigin } from "./Reports.ts";
@@ -493,7 +494,28 @@ describe("Envi", () => {
 
       expect(redacted).toContain("PORT=3000");
       expect(redacted).not.toContain("s3cret");
-    }).pipe(Effect.provide(layer)),
+    }).pipe(Effect.provide([layer, nodePlatform])),
+  );
+
+  it.effect("exports only the named vars, and rejects a name that the stage does not declare", () =>
+    Effect.gen(function* () {
+      const envi = yield* Envi.Envi;
+      const config = makeConfig();
+      const only = ["TOKEN", "PORT"];
+
+      const error = yield* Effect.flip(
+        envi.export(config, ExportFormat.Json, { only: [...only, "MISSING"] }),
+      );
+
+      expect(error).toBeInstanceOf(UnknownVarError);
+      expect(error).toMatchObject({ stage: "development", keys: ["MISSING"] });
+      expect((yield* envi.cache.list).entries).toEqual([]);
+
+      expect(JSON.parse(yield* envi.export(config, ExportFormat.Json, { only }))).toEqual({
+        PORT: "3000",
+        TOKEN: "s3cret value",
+      });
+    }).pipe(Effect.provide([layer, nodePlatform])),
   );
 
   it.effect("fails a dotenv export of a value that dotenv cannot represent", () =>
@@ -517,7 +539,7 @@ describe("Envi", () => {
       expect(error).toBeInstanceOf(ExportError);
       expect(error).toMatchObject({ key: "ODD" });
       expect(error.message).not.toContain("HOME");
-    }).pipe(Effect.provide(layer)),
+    }).pipe(Effect.provide([layer, nodePlatform])),
   );
 
   it.effect("lists and clears the cache", () =>
