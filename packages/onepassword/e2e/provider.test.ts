@@ -5,6 +5,7 @@ import {
   defineConfig,
   Envi,
   FileCache,
+  ProviderFailure,
   ReferenceFailure,
   SecretReferenceError,
   ValueOrigin,
@@ -16,6 +17,8 @@ import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
+import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 
 import { type OnePasswordSettings, onePasswordProvider, op } from "../src/index.ts";
@@ -50,6 +53,17 @@ const TempFileCache = Layer.unwrap(
 const TestLayer = Layer.provideMerge(
   Layer.provide(Envi.layer(), TempFileCache),
   Layer.merge(NodeServices.layer, ConfigProvider.layer(ConfigProvider.fromUnknown({}))),
+);
+
+// A shell with a credential that 1Password rejects, such as a token that was rotated away.
+const staleTokenVariable = "ENVI_PROVIDER_ONEPASSWORD_SERVICE_ACCOUNT_TOKEN";
+
+const staleShell = ConfigProvider.layer(
+  ConfigProvider.fromUnknown({
+    [staleTokenVariable]: "ops_stale",
+    OP_SERVICE_ACCOUNT_TOKEN: "ops_stale",
+    ENVI_PROVIDER_ONEPASSWORD_ACCOUNT: "stale-team",
+  }),
 );
 
 describe.skipIf(testCredentials.length === 0)("1Password provider against a real account", () => {
@@ -141,6 +155,39 @@ describe.skipIf(testCredentials.length === 0)("1Password provider against a real
               }
             }
           }
+        }),
+      );
+
+      it.effect("uses the credential of the program over a stale credential of the shell", () =>
+        Effect.gen(function* () {
+          const warnings: Array<object> = [];
+
+          const logger = Logger.make(({ logLevel, fiber }) => {
+            if (logLevel === "Warn") {
+              warnings.push(fiber.getRef(References.CurrentLogAnnotations));
+            }
+          });
+
+          const resolveWith = (target: OnePasswordSettings) =>
+            Envi.Envi.use((envi) =>
+              envi.resolve(configOf(target), op(primaryVault, "app", "DATABASE_URL")),
+            ).pipe(
+              Effect.provide(Layer.provide(Envi.layer(), Cache.layerNone)),
+              Effect.provide(Logger.layer([logger])),
+              Effect.provide(staleShell),
+            );
+
+          const pinned = yield* resolveWith({ ...settings, credentialFromEnvironment: false });
+          const error = yield* Effect.flip(resolveWith(settings));
+
+          expect(pinned).toBe(yield* expected(primaryVault, "app", "DATABASE_URL"));
+          expect(error).toMatchObject({ reason: ProviderFailure.AuthenticationFailed });
+          // A token variable replaces the token of the program. It does not replace an account.
+          expect(warnings).toEqual(
+            settings.serviceAccountToken === undefined
+              ? []
+              : [{ variable: staleTokenVariable, setting: "serviceAccountToken" }],
+          );
         }),
       );
 

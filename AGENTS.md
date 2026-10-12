@@ -280,7 +280,8 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   suite runs once for each credential that is set: the service account of
   `ENVI_TEST_ONEPASSWORD_TOKEN`, and the desktop app of `ENVI_TEST_ONEPASSWORD_ACCOUNT`. A desktop
   run clears the token variables, so a token never replaces the app. The service account creates
-  the vaults, so the desktop user needs "View items" on them.
+  the vaults, and `setup` lets the owners and the administrators view their items, so the desktop
+  user must be an owner or an administrator.
 - `examples/` holds config and SDK examples with compile-time type assertions. Change an example
   in the same change as the API.
 - In the workspace, a package resolves to its source through the export condition

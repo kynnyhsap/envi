@@ -12,7 +12,7 @@ const withEnv = (env: Readonly<Record<string, string>>) =>
 describe("Credential", () => {
   it.effect("reads a token before an account", () =>
     Effect.gen(function* () {
-      const credential = yield* read({ account: "my-team", serviceAccountToken: "ops_fake" });
+      const { credential } = yield* read({ account: "my-team", serviceAccountToken: "ops_fake" });
 
       expect(credential.kind).toBe(CredentialKind.ServiceAccount);
     }).pipe(withEnv({})),
@@ -20,7 +20,7 @@ describe("Credential", () => {
 
   it.effect("reads the account without a token", () =>
     Effect.gen(function* () {
-      const credential = yield* read({ account: "my-team" });
+      const { credential } = yield* read({ account: "my-team" });
 
       expect(credential).toEqual({ kind: CredentialKind.Desktop, account: Option.some("my-team") });
     }).pipe(withEnv({})),

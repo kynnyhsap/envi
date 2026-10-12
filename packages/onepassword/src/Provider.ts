@@ -4,7 +4,9 @@ import { Provider, type ProviderError, ProviderFailure } from "@kynnyhsap/envi";
 import * as Arr from "effect/Array";
 import * as Cache from "effect/Cache";
 import * as Effect from "effect/Effect";
+import * as HashSet from "effect/HashSet";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 
 import * as Batch from "./Batch.ts";
@@ -41,37 +43,74 @@ const withAccount =
       Result.fromOption(() => request),
     );
 
-const notInteractive = () =>
+/** The next action of a missing credential: the setting, and the variables while they count. */
+const setOne = (settings: Credential.OnePasswordSettings, setting: string, variables: string) =>
+  Credential.fromEnvironment(settings)
+    ? `Pass \`${setting}\` to onePasswordProvider, or set ${variables}.`
+    : `Pass \`${setting}\` to onePasswordProvider.`;
+
+const notInteractive = (settings: Credential.OnePasswordSettings) =>
   failure(
     ProviderFailure.AuthenticationFailed,
-    `This run is not interactive, so Envi does not use the 1Password app. Set ${Credential.tokenVariables.join(" or ")}.`,
+    `This run is not interactive, so Envi does not use the 1Password app. ${setOne(settings, "serviceAccountToken", Credential.tokenVariables.join(" or "))}`,
   );
 
-const noAccount = () =>
+const noAccount = (settings: Credential.OnePasswordSettings) =>
   failure(
     ProviderFailure.Misconfigured,
-    `No 1Password account is set. Pass \`account\` to onePasswordProvider, or set ${Credential.accountVariable}.`,
+    `No 1Password account is set. ${setOne(settings, "account", Credential.accountVariable)}`,
+  );
+
+/** The warning of a variable that replaced a setting. It names both, and never a value. */
+const replacedWarning = ({ variable, setting }: Credential.Replacement) =>
+  Effect.logWarning(
+    `${variable} replaces the setting \`${setting}\` of onePasswordProvider. Pass \`credentialFromEnvironment: false\` to use the setting.`,
+  ).pipe(Effect.annotateLogs({ variable, setting }));
+
+/**
+ * Reads the credential, and warns once for each provider and each variable that replaced a
+ * setting, because every operation reads the credential more than once. A variable replaces only
+ * one setting.
+ */
+const credentialOf = (
+  settings: Credential.OnePasswordSettings,
+  warned: Ref.Ref<HashSet.HashSet<string>>,
+) =>
+  Effect.flatMap(Credential.read(settings), ({ credential, replaced }) =>
+    Effect.as(
+      Effect.forEach(replaced, (replacement) =>
+        Effect.flatMap(
+          Ref.modify(warned, (seen) => [
+            HashSet.has(seen, replacement.variable),
+            HashSet.add(seen, replacement.variable),
+          ]),
+          (seen) => (seen ? Effect.void : replacedWarning(replacement)),
+        ),
+      ),
+      credential,
+    ),
   );
 
 /** The client of the account of the provider, for a search, which names no account. */
 const defaultClient = (
   settings: Credential.OnePasswordSettings,
+  readCredential: Effect.Effect<Credential.Credential, ProviderError>,
   clients: Clients.Clients,
   context: Provider.ResolveContext,
 ) =>
   Effect.gen(function* () {
-    const credential = yield* Credential.read(settings);
+    const credential = yield* readCredential;
 
     if (credential.kind === Credential.CredentialKind.ServiceAccount) {
       return { kind: credential.kind, client: yield* Cache.get(clients, credential) };
     }
 
     if (!context.interactive) {
-      return yield* notInteractive();
+      return yield* notInteractive(settings);
     }
 
     const account = yield* Option.match(credential.account, {
-      onNone: () => Effect.fail(noAccount()),
+      onNone: () => Effect.fail(noAccount(settings)),
       onSome: Effect.succeed,
     });
 
@@ -93,19 +132,20 @@ export const makeProvider = <DesktopAuth>(
   // `Provider.make` is synchronous, and the cache needs no service to exist. Each lookup runs with
   // the services of its caller, such as the clock and the log level.
   const clients = Effect.runSync(Clients.make(loadSdk));
+  const readCredential = credentialOf(settings, Effect.runSync(Ref.make(HashSet.empty<string>())));
 
   return Provider.make({
     id: providerId,
     Reference,
     describe: describeReference,
     credentialVariables: Credential.tokenVariables,
-    scope: Effect.map(Credential.read(settings), Credential.scopeOf),
+    scope: Effect.map(readCredential, Credential.scopeOf),
     // `describe` never holds the account, but the account of a reference selects its value. The
     // text is part of the cache key: do not change it.
     referenceKey: (reference) => `${reference.account ?? ""}|${describeReference(reference)}`,
     resolveMany: (requests, context) =>
       Effect.gen(function* () {
-        const credential = yield* Credential.read(settings);
+        const credential = yield* readCredential;
 
         if (credential.kind === Credential.CredentialKind.ServiceAccount) {
           const client = yield* Cache.get(clients, credential);
@@ -114,14 +154,14 @@ export const makeProvider = <DesktopAuth>(
         }
 
         if (!context.interactive) {
-          return yield* notInteractive();
+          return yield* notInteractive(settings);
         }
 
         const sdk = yield* loadSdk;
         const [known, unknown] = Arr.partition(requests, withAccount(credential.account));
 
         if (Arr.isReadonlyArrayNonEmpty(unknown)) {
-          return yield* noAccount();
+          return yield* noAccount(settings);
         }
 
         const batches = yield* Effect.forEach(
@@ -141,7 +181,7 @@ export const makeProvider = <DesktopAuth>(
       }),
     discover: (queries, context) =>
       Effect.gen(function* () {
-        const { kind, client } = yield* defaultClient(settings, clients, context);
+        const { kind, client } = yield* defaultClient(settings, readCredential, clients, context);
 
         return yield* Discover.discover(yield* loadSdk, kind, client, queries);
       }),

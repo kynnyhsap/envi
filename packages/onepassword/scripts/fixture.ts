@@ -8,7 +8,8 @@ import { Argument, Command } from "effect/cli";
 // With ENVI_TEST_ONEPASSWORD_TOKEN, the script uses that service account token and asks for no
 // approval. The service account needs the permission to create vaults. Without the token, the
 // script uses desktop authentication: the 1Password app asks for one approval per run.
-// `setup` is idempotent. It creates what is missing and replaces an item that differs.
+// `setup` is idempotent. It creates what is missing and replaces an item that differs. It also lets
+// the owners and the administrators view the items, so the desktop app of an owner can read them.
 import * as Config from "effect/Config";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
@@ -101,6 +102,52 @@ const createItem = (client: Client, vaultId: string, item: FixtureItem) =>
     );
   });
 
+/**
+ * Reports each group of owners or administrators that cannot read the items of a vault. With
+ * `repair`, it adds the permission. The service account creates the vaults, so without this step
+ * the desktop user of the tests can manage a vault but not read it.
+ */
+const reconcileAccess = (client: Client, title: string, vaultId: string, repair: boolean) =>
+  Effect.gen(function* () {
+    const { GroupType, READ_ITEMS, REVEAL_ITEM_PASSWORD, UPDATE_ITEM_HISTORY, VaultAccessorType } =
+      yield* sdk;
+
+    // "Allow viewing" of a Teams account. A Business account accepts the same set.
+    const read = READ_ITEMS | REVEAL_ITEM_PASSWORD | UPDATE_ITEM_HISTORY;
+    const people = new Set<string>([GroupType.Owners, GroupType.Administrators]);
+
+    const vault = yield* call(`read the access of ${title}`, () =>
+      client.vaults.get(vaultId, { accessors: true }),
+    );
+
+    const groups = yield* Effect.forEach(
+      (vault.access ?? []).filter((access) => access.accessorType === VaultAccessorType.Group),
+      (access) =>
+        Effect.map(
+          call(`read a group of ${title}`, () => client.groups.get(access.accessorUuid, {})),
+          (group) => ({ access, group }),
+        ),
+    );
+
+    const missing = groups.filter(
+      ({ access, group }) => people.has(group.groupType) && (access.permissions & read) !== read,
+    );
+
+    if (repair && missing.length > 0) {
+      yield* call(`grant the people of ${title} access`, () =>
+        client.vaults.updateGroupPermissions(
+          missing.map(({ access }) => ({
+            vaultId,
+            groupId: access.accessorUuid,
+            permissions: access.permissions | read,
+          })),
+        ),
+      );
+    }
+
+    return missing.map(({ group }) => `vault ${title}: the ${group.groupType} cannot read items`);
+  });
+
 /** Reports each difference between the account and the manifest. With `repair`, it fixes them. */
 const reconcile = (client: Client, repair: boolean) =>
   Effect.gen(function* () {
@@ -185,6 +232,8 @@ const reconcile = (client: Client, repair: boolean) =>
           (yield* call(`create the vault ${vault.title}`, () =>
             client.vaults.create({ title: vault.title, description: fixtureMarker }),
           )).id;
+
+        differences.push(...(yield* reconcileAccess(client, vault.title, vaultId, repair)));
 
         return yield* Effect.forEach(vault.items, (item) => reconcileItem(vault, vaultId, item), {
           discard: true,
