@@ -93,11 +93,15 @@ This repository is public. These rules have no exception.
 - **One copy of `effect`.** `effect` is a required peer dependency. The config, the SDK, and the
   code of the user share one copy, because the CLI loads the config and its schemas into its own
   process. The build never bundles. The peer is a `~` range of the minor version that CI tests,
-  because `effect/cli` and `effect/process` can break in a minor version. Envi releases a new
-  version for each new Effect release. The `effect-release` workflow opens an issue when npm has
-  a newer Effect. A global `envi` starts the local `envi` of the project. `envi` depends on
-  `@effect/platform-node-shared`, at the Effect range of the catalog. It does not depend on
-  `@effect/platform-node`, because that package asks for `redis` as a peer, and npm installs
+  because `effect/cli` and `effect/process` can break in a minor version. Its floor is the patch
+  version that CI tests. Envi releases a new version for each new Effect release. The
+  `effect-release` workflow opens an issue when npm has a newer Effect and every `@effect/*`
+  package of the catalog at that version, because Effect publishes its packages hours or a day
+  apart. A global `envi` starts the local `envi` of the project. `envi` depends on
+  `@effect/platform-node-shared`, at the floor of the `effect` range, exactly. Each `@effect/*`
+  release asks for `effect` of at least its own version, so a range would give a user who holds
+  the floor of `effect` a newer `@effect/*` package and a peer conflict. `envi` does not depend
+  on `@effect/platform-node`, because that package asks for `redis` as a peer, and npm installs
   every peer.
 - **One version for every package.** Envi and every provider package share one version, the way
   the Effect v4 packages do. A release bumps every package together. A provider asks for `^` that
@@ -213,7 +217,8 @@ not published yet. `scripts/versions.ts` enforces the version rules:
   `workspace:^` Envi as its peer. The root manifest uses `catalog:` for every dependency that a
   package also uses.
 - `effect` and every `@effect/*` entry of the catalog share one version. The `effect` entry is a
-  `~` range, and it is the peer range of the packages.
+  `~` range, and it is the peer range of the packages. Every `@effect/*` entry is the floor of
+  that range, exactly.
 - Each README and each docs page asks for the `effect` spec of the catalog in its install
   command, and names the floors of `engines`.
 

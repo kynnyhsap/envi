@@ -34,6 +34,12 @@ const packages = [
 /** The peer range of `effect`, the way the README install command asks for it. */
 const effectRange = workspaceManifest.workspaces.catalog.effect;
 
+/**
+ * The lowest `effect` that the peer range allows. A project that locked this version before it
+ * installs Envi must get no `@effect/*` package that asks for a newer `effect`.
+ */
+const effectFloor = effectRange.replace(/^~/u, "");
+
 /** The file name that `npm pack` and `bun pm pack` give a tarball. */
 const tarballName = (manifest: { readonly name: string; readonly version: string }) =>
   `${manifest.name.replace("@", "").replace("/", "-")}-${manifest.version}.tgz`;
@@ -57,7 +63,7 @@ const secretValue = "postgres://packaged";
  * The manifest of the fresh project. Bun looks up the peer of the provider on the registry, and
  * the registry has no Envi before the first publish. The override points that peer at the tarball.
  */
-const projectManifest = (tarballs: string) => {
+const projectManifest = (tarballs: string, effect: string) => {
   const [envi, onePassword] = packages.map(
     (item) => `file:${tarballs}/${tarballName(item.manifest)}`,
   );
@@ -69,7 +75,7 @@ const projectManifest = (tarballs: string) => {
     dependencies: {
       [enviManifest.name]: envi,
       [onePasswordManifest.name]: onePassword,
-      effect: effectRange,
+      effect,
     },
     overrides: { [enviManifest.name]: envi },
   });
@@ -118,6 +124,24 @@ console.log(JSON.stringify({ PORT: env.PORT, DATABASE_URL: url }));
 `,
 };
 
+/**
+ * The `effect` and the `@effect/platform-node-shared` that Envi loads in the project, as Node
+ * resolves them. Each path names a copy, so equal paths prove one copy of `effect`.
+ */
+const resolveEffect = `const { createRequire } = require("node:module");
+const fromApp = createRequire(process.cwd() + "/");
+const fromEnvi = createRequire(require.resolve("${enviManifest.name}/package.json"));
+const shared = fromEnvi.resolve("@effect/platform-node-shared/package.json");
+const fromShared = createRequire(shared);
+console.log(JSON.stringify({
+  shared: require(shared).version,
+  effect: require(fromEnvi.resolve("effect/package.json")).version,
+  copies: [...new Set([fromApp, fromEnvi, fromShared].map((from) => from.resolve("effect/package.json")))].length,
+}));`;
+
+/** The `@effect/platform-node-shared` that the published Envi pins. */
+const pinnedShared = workspaceManifest.workspaces.catalog["@effect/platform-node-shared"];
+
 /** Runs a command, and fails with its output when it exits with an error. */
 const exec = Effect.fn("exec")(function* (
   command: string,
@@ -139,7 +163,7 @@ class Project extends Context.Service<
   { readonly directory: string; readonly installLog: string }
 >()("Project") {}
 
-const installedProject = (installer: Installer) =>
+const installedProject = (installer: Installer, effect = effectRange) =>
   Layer.effect(
     Project,
     Effect.gen(function* () {
@@ -160,7 +184,10 @@ const installedProject = (installer: Installer) =>
       yield* Effect.forEach(Object.entries(files), ([name, text]) =>
         fs.writeFileString(path.join(project, name), text),
       );
-      yield* fs.writeFileString(path.join(project, "package.json"), projectManifest(tarballs));
+      yield* fs.writeFileString(
+        path.join(project, "package.json"),
+        projectManifest(tarballs, effect),
+      );
       const install = yield* exec(installer.install[0], installer.install.slice(1), project);
 
       return { directory: project, installLog: install.stdout + install.stderr };
@@ -268,6 +295,15 @@ describe.each(installers)("the published packages installed with $manager", (ins
       }),
     );
 
+    it.effect("loads one effect and the pinned platform-node-shared", () =>
+      Effect.gen(function* () {
+        const { directory: project } = yield* Project;
+        const result = yield* exec("node", ["-e", resolveEffect], project);
+
+        expect(JSON.parse(result.stdout)).toMatchObject({ shared: pinnedShared, copies: 1 });
+      }),
+    );
+
     it.effect("installs no package that Envi does not use", () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
@@ -321,3 +357,47 @@ describe.each(installers)("the published packages installed with $manager", (ins
     );
   });
 });
+
+describe.each(installers)(
+  "the published packages installed with $manager next to the lowest effect",
+  (installer) => {
+    layer(installedProject(installer, effectFloor).pipe(Layer.provideMerge(NodeServices.layer)), {
+      excludeTestServices: true,
+      timeout: "3 minutes",
+    })((it) => {
+      it.effect("installs without a peer conflict", () =>
+        Effect.gen(function* () {
+          const { installLog } = yield* Project;
+
+          expect(installLog).not.toMatch(/ERESOLVE|incorrect peer/i);
+        }),
+      );
+
+      it.effect("keeps the effect of the project, and loads the pinned platform-node-shared", () =>
+        Effect.gen(function* () {
+          const { directory: project } = yield* Project;
+          const result = yield* exec("node", ["-e", resolveEffect], project);
+
+          expect(JSON.parse(result.stdout)).toEqual({
+            shared: pinnedShared,
+            effect: effectFloor,
+            copies: 1,
+          });
+        }),
+      );
+
+      // npm checks every peer of a tree that npm installed. It cannot read the `file:` specs of a
+      // tree that Bun installed, so the check of the paths above covers Bun.
+      if (installer.manager === "npm") {
+        it.effect("leaves a dependency tree that npm accepts", () =>
+          Effect.gen(function* () {
+            const { directory: project } = yield* Project;
+            const result = yield* runProcess("npm", ["ls", "--all"], project);
+
+            expect(result.exitCode, result.stdout + result.stderr).toBe(0);
+          }),
+        );
+      }
+    });
+  },
+);

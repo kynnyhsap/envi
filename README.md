@@ -17,13 +17,14 @@ Envi runs on Node 22.19.0 or later and on Bun 1.3.0 or later, on macOS and Linux
 ## Install
 
 ```sh
-bun add @kynnyhsap/envi @kynnyhsap/envi-1password "effect@~4.0.0"
+bun add @kynnyhsap/envi @kynnyhsap/envi-1password "effect@~4.0.3"
 ```
 
 The package is `@kynnyhsap/envi`, and its command is `envi`. `effect` is a peer dependency, so the
 project has one copy of it. Envi needs `effect` 4. Envi asks for the patch versions of one minor
-version of `effect`, the version that its CI tests, because a minor version of Effect can break
-`effect/cli`. Use that range in the project. Each Envi release moves to the newest Effect release.
+version of `effect`, from the patch version that its CI tests, because a minor version of Effect
+can break `effect/cli`. Use that range in the project. Each Envi release moves to the newest Effect
+release.
 `@kynnyhsap/envi-1password` installs `@1password/sdk`. A global `envi` starts the local `envi` of
 the project.
 

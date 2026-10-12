@@ -6,9 +6,13 @@ import { Command, Flag } from "effect/cli";
 // - The `engines` of the root manifest hold the runtime floors. Every package has those `engines`,
 //   the docs name the floors, and the `floors` job of CI tests them.
 // - `workspaces.catalog` holds every dependency version. A package manifest uses only `catalog:`
-//   and `workspace:` specs. `effect` and every `@effect/*` entry share one version.
+//   and `workspace:` specs.
 // - The `effect` entry is a `~` range of one minor version, because a minor version of Effect can
-//   break `effect/cli` and `effect/process`.
+//   break `effect/cli` and `effect/process`. Its floor is the version that the lockfile tests.
+// - Every `@effect/*` entry is that floor, exactly. Each `@effect/*` release asks for `effect` of
+//   at least its own version, so a range would give a user with the floor of `effect` a package
+//   that asks for a newer one. The pin also keeps a fresh install off an `@effect/*` release that
+//   npm has before the `effect` release of the same version.
 // - The docs ask for the `effect` spec of the catalog. The docs are the READMEs and the docs pages.
 //
 //   bun run versions           writes the root version and engines into every package, and the
@@ -128,18 +132,14 @@ const specProblems = (
         ];
   });
 
-  const effectVersions = new Set(
-    Object.entries(catalog)
-      .filter(([name]) => name === "effect" || name.startsWith("@effect/"))
-      .map(([, version]) => version.replace(/^[~^]/u, "")),
-  );
+  const effectFloor = catalog["effect"]?.replace(/^~/u, "");
 
-  const effectProblems =
-    effectVersions.size > 1
-      ? [
-          `package.json: the catalog has several Effect versions: ${[...effectVersions].join(", ")}. Use one.`,
-        ]
-      : [];
+  const effectProblems = Object.entries(catalog)
+    .filter(([name, version]) => name.startsWith("@effect/") && version !== effectFloor)
+    .map(
+      ([name, version]) =>
+        `package.json: the catalog asks for ${name} "${version}". Use "${effectFloor}", the floor of effect.`,
+    );
 
   return [...wrongSpecs, ...effectProblems, ...effectSpecProblems(catalog["effect"])];
 };
