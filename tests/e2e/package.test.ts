@@ -124,6 +124,24 @@ console.log(JSON.stringify({ PORT: env.PORT, DATABASE_URL: url }));
 `,
 };
 
+/**
+ * The `effect` and the `@effect/platform-node-shared` that Envi loads in the project, as Node
+ * resolves them. Each path names a copy, so equal paths prove one copy of `effect`.
+ */
+const resolveEffect = `const { createRequire } = require("node:module");
+const fromApp = createRequire(process.cwd() + "/");
+const fromEnvi = createRequire(require.resolve("${enviManifest.name}/package.json"));
+const shared = fromEnvi.resolve("@effect/platform-node-shared/package.json");
+const fromShared = createRequire(shared);
+console.log(JSON.stringify({
+  shared: require(shared).version,
+  effect: require(fromEnvi.resolve("effect/package.json")).version,
+  copies: [...new Set([fromApp, fromEnvi, fromShared].map((from) => from.resolve("effect/package.json")))].length,
+}));`;
+
+/** The `@effect/platform-node-shared` that the published Envi pins. */
+const pinnedShared = workspaceManifest.workspaces.catalog["@effect/platform-node-shared"];
+
 /** Runs a command, and fails with its output when it exits with an error. */
 const exec = Effect.fn("exec")(function* (
   command: string,
@@ -277,6 +295,15 @@ describe.each(installers)("the published packages installed with $manager", (ins
       }),
     );
 
+    it.effect("loads one effect and the pinned platform-node-shared", () =>
+      Effect.gen(function* () {
+        const { directory: project } = yield* Project;
+        const result = yield* exec("node", ["-e", resolveEffect], project);
+
+        expect(JSON.parse(result.stdout)).toMatchObject({ shared: pinnedShared, copies: 1 });
+      }),
+    );
+
     it.effect("installs no package that Envi does not use", () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
@@ -345,6 +372,32 @@ describe.each(installers)(
           expect(installLog).not.toMatch(/ERESOLVE|incorrect peer/i);
         }),
       );
+
+      it.effect("keeps the effect of the project, and loads the pinned platform-node-shared", () =>
+        Effect.gen(function* () {
+          const { directory: project } = yield* Project;
+          const result = yield* exec("node", ["-e", resolveEffect], project);
+
+          expect(JSON.parse(result.stdout)).toEqual({
+            shared: pinnedShared,
+            effect: effectFloor,
+            copies: 1,
+          });
+        }),
+      );
+
+      // npm checks every peer of a tree that npm installed. It cannot read the `file:` specs of a
+      // tree that Bun installed, so the check of the paths above covers Bun.
+      if (installer.manager === "npm") {
+        it.effect("leaves a dependency tree that npm accepts", () =>
+          Effect.gen(function* () {
+            const { directory: project } = yield* Project;
+            const result = yield* runProcess("npm", ["ls", "--all"], project);
+
+            expect(result.exitCode, result.stdout + result.stderr).toBe(0);
+          }),
+        );
+      }
     });
   },
 );
