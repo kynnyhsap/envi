@@ -252,10 +252,14 @@ export const DoctorReport = Schema.Struct({
 
 export type DoctorReport = typeof DoctorReport.Type;
 
-/** The formats of `export`. */
+/**
+ * The formats of `export`. `github` masks each secret with a workflow command on stdout, and
+ * appends the vars to the env file of a GitHub Actions step.
+ */
 export const ExportFormat = {
   Dotenv: "dotenv",
   Json: "json",
+  Github: "github",
 } as const;
 
 /** The schema of `ExportFormat`. The CLI decodes `--format` with it. */

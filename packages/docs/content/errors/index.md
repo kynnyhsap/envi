@@ -58,12 +58,14 @@ The SDK fails with the same tagged errors. Each error has the getters `summary`,
 | [DeriveError](./derive.md)                                                 | The function of a `derive()` var threw.                                               |
 | [VarsError](./vars.md)                                                     | One or more vars failed.                                                              |
 | [UnknownStageError](./unknown-stage.md)                                    | The selected stage is not in the `stages` list of the config.                         |
+| [UnknownVarError](./unknown-var.md)                                        | `envi export --only` names a var that the stage does not declare.                     |
 | [CacheError Unreadable](./cache-unreadable.md)                             | Envi cannot read or decrypt a cache file.                                             |
 | [CacheError Unwritable](./cache-unwritable.md)                             | Envi cannot write a cache file.                                                       |
 | [CacheError KeyUnavailable](./cache-key-unavailable.md)                    | Envi has no encryption key for the cache.                                             |
 | [CacheError LockTimeout](./cache-lock-timeout.md)                          | Envi waited too long for the lock of the cache directory.                             |
-| [ExportError](./export.md)                                                 | A value holds characters that the dotenv format cannot quote safely.                  |
-| [ExportFileError WriteFailed](./export-file-write-failed.md)               | Envi cannot write the output file of `envi export --output`.                          |
+| [ExportError](./export.md)                                                 | A format cannot represent one var: a dotenv value or a `github` var name.             |
+| [ExportFileError WriteFailed](./export-file-write-failed.md)               | Envi cannot write the output file of `envi export --output`, or of `GITHUB_ENV`.      |
+| [ExportFileError NoGithubEnv](./export-file-no-github-env.md)              | `envi export --format github` runs without `GITHUB_ENV`.                              |
 | [SettingsError](./settings.md)                                             | A setting holds a value that Envi cannot read, or the configs of a sync disagree.     |
 | [RunError CommandNotFound](./run-command-not-found.md)                     | The command of `envi run` does not exist on `PATH`.                                   |
 | [RunError CommandNotExecutable](./run-command-not-executable.md)           | The command of `envi run` exists, but the OS does not allow Envi to run it.           |
