@@ -2,7 +2,9 @@ name: Effect release
 
 # Envi releases a new version for each new Effect release. Dependabot skips a Bun catalog
 # (dependabot/dependabot-core#14320), so this workflow opens an issue when npm has an Effect
-# version newer than the `effect` entry of the catalog.
+# version newer than the floor of the `effect` entry of the catalog. Effect publishes its packages
+# hours or a day apart, so the workflow waits until npm has every `@effect/*` package of the
+# catalog at that version too.
 
 on:
   schedule:
@@ -35,6 +37,24 @@ jobs:
             exit 0
           fi
 
+          # Each `@effect/*` package of the catalog at that version. A later run retries a missing one.
+          missing=""
+          for name in $(jq -r '.workspaces.catalog | keys[] | select(startswith("@effect/"))' package.json); do
+            if ! answer=$(npm view "$name@$newest" version --json 2>/dev/null); then
+              if [ "$(echo "$answer" | jq -r '.error.code? // empty')" != "E404" ]; then
+                echo "npm view $name@$newest failed."
+                exit 1
+              fi
+
+              missing="$missing $name"
+            fi
+          done
+
+          if [ -n "$missing" ]; then
+            echo "npm has effect@$newest, but not yet:$missing."
+            exit 0
+          fi
+
           title="Move to effect@$newest"
 
           if [ -n "$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[].number')" ]; then
@@ -44,7 +64,7 @@ jobs:
 
           gh issue create --title "$title" --body "npm has \`effect@$newest\`. The catalog asks for \`$current\`.
 
-          1. Set \`effect\` and every \`@effect/*\` entry of the catalog in the root \`package.json\` to the new version.
+          1. In the catalog of the root \`package.json\`, set \`effect\` to \`~$newest\` and every \`@effect/*\` entry to \`$newest\`.
           2. Run \`bun install\` and \`bun run versions\`.
           3. Run \`bun run verify\`, and fix every import that the release moved.
           4. Merge the change, and release Envi."

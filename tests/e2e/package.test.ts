@@ -34,6 +34,12 @@ const packages = [
 /** The peer range of `effect`, the way the README install command asks for it. */
 const effectRange = workspaceManifest.workspaces.catalog.effect;
 
+/**
+ * The lowest `effect` that the peer range allows. A project that locked this version before it
+ * installs Envi must get no `@effect/*` package that asks for a newer `effect`.
+ */
+const effectFloor = effectRange.replace(/^~/u, "");
+
 /** The file name that `npm pack` and `bun pm pack` give a tarball. */
 const tarballName = (manifest: { readonly name: string; readonly version: string }) =>
   `${manifest.name.replace("@", "").replace("/", "-")}-${manifest.version}.tgz`;
@@ -57,7 +63,7 @@ const secretValue = "postgres://packaged";
  * The manifest of the fresh project. Bun looks up the peer of the provider on the registry, and
  * the registry has no Envi before the first publish. The override points that peer at the tarball.
  */
-const projectManifest = (tarballs: string) => {
+const projectManifest = (tarballs: string, effect: string) => {
   const [envi, onePassword] = packages.map(
     (item) => `file:${tarballs}/${tarballName(item.manifest)}`,
   );
@@ -69,7 +75,7 @@ const projectManifest = (tarballs: string) => {
     dependencies: {
       [enviManifest.name]: envi,
       [onePasswordManifest.name]: onePassword,
-      effect: effectRange,
+      effect,
     },
     overrides: { [enviManifest.name]: envi },
   });
@@ -139,7 +145,7 @@ class Project extends Context.Service<
   { readonly directory: string; readonly installLog: string }
 >()("Project") {}
 
-const installedProject = (installer: Installer) =>
+const installedProject = (installer: Installer, effect = effectRange) =>
   Layer.effect(
     Project,
     Effect.gen(function* () {
@@ -160,7 +166,10 @@ const installedProject = (installer: Installer) =>
       yield* Effect.forEach(Object.entries(files), ([name, text]) =>
         fs.writeFileString(path.join(project, name), text),
       );
-      yield* fs.writeFileString(path.join(project, "package.json"), projectManifest(tarballs));
+      yield* fs.writeFileString(
+        path.join(project, "package.json"),
+        projectManifest(tarballs, effect),
+      );
       const install = yield* exec(installer.install[0], installer.install.slice(1), project);
 
       return { directory: project, installLog: install.stdout + install.stderr };
@@ -321,3 +330,21 @@ describe.each(installers)("the published packages installed with $manager", (ins
     );
   });
 });
+
+describe.each(installers)(
+  "the published packages installed with $manager next to the lowest effect",
+  (installer) => {
+    layer(installedProject(installer, effectFloor).pipe(Layer.provideMerge(NodeServices.layer)), {
+      excludeTestServices: true,
+      timeout: "3 minutes",
+    })((it) => {
+      it.effect("installs without a peer conflict", () =>
+        Effect.gen(function* () {
+          const { installLog } = yield* Project;
+
+          expect(installLog).not.toMatch(/ERESOLVE|incorrect peer/i);
+        }),
+      );
+    });
+  },
+);
