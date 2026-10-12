@@ -8,12 +8,15 @@ import { Command, Flag } from "effect/cli";
 // - `workspaces.catalog` holds every dependency version. A package manifest uses only `catalog:`
 //   and `workspace:` specs.
 // - The `effect` entry is a `~` range of one minor version, because a minor version of Effect can
-//   break `effect/cli` and `effect/process`. Its floor is the version that the lockfile tests.
+//   break `effect/cli` and `effect/process`. Its floor is the oldest patch that Envi needs, and
+//   the lockfile resolves `effect` to that floor, so the tests run on it.
 // - Every `@effect/*` entry is that floor, exactly. Each `@effect/*` release asks for `effect` of
-//   at least its own version, so a range would give a user with the floor of `effect` a package
-//   that asks for a newer one. The pin also keeps a fresh install off an `@effect/*` release that
-//   npm has before the `effect` release of the same version.
-// - The docs ask for the `effect` spec of the catalog. The docs are the READMEs and the docs pages.
+//   at least its own version, so a newer one would make a user with an older patch of `effect`
+//   update it. The pin also keeps a fresh install off an `@effect/*` release that npm has before
+//   the `effect` release of the same version.
+// - An install command of the docs names no `effect`, because the package manager installs the
+//   peer. A doc that names an `effect` spec names the one of the catalog. The docs are the READMEs
+//   and the docs pages.
 //
 //   bun run versions           writes the root version and engines into every package, and the
 //                              range and the floors into the docs
@@ -63,6 +66,9 @@ const Spec = {
 
 /** An `effect` spec in a doc, such as `effect@~4.0.0`. */
 const effectSpec = /(?<![\w@/-])effect@[^\s"'`]+/gu;
+
+/** An install command of a doc that names `effect`, such as `bun add envi effect@~4.0.0`. */
+const effectInstall = /^(?:bun add|npm install|pnpm add|yarn add) .*(?<![\w@/-])effect(?![\w/-])/mu;
 
 /** A runtime floor in a doc, such as `Node 22.19.0`. */
 const floor = (runtime: string) => new RegExp(`\\b${runtime} \\d+\\.\\d+\\.\\d+`, "gu");
@@ -144,6 +150,20 @@ const specProblems = (
   return [...wrongSpecs, ...effectProblems, ...effectSpecProblems(catalog["effect"])];
 };
 
+/** The version of `effect` that `bun.lock` resolves. */
+const lockedEffect = /^\s*"effect": \["effect@([^"]+)"/mu;
+
+/** The rule that the tests run on the floor of `effect`. */
+const lockProblems = (lock: string, effectFloor: string | undefined): ReadonlyArray<string> => {
+  const locked = lockedEffect.exec(lock)?.[1];
+
+  return locked === effectFloor
+    ? []
+    : [
+        `bun.lock: resolves effect ${locked ?? "nowhere"}, not the floor ${effectFloor}. Set the catalog entry to "${effectFloor}", run \`bun install\`, and set it back.`,
+      ];
+};
+
 /** A file whose text differs from the text that the rules give it. */
 interface Rewrite {
   readonly file: string;
@@ -161,6 +181,33 @@ const trackedDocs = Effect.flatMap(
       ? Effect.fail(new ScriptError({ detail: "git lists no doc. Run the script in a checkout." }))
       : Effect.succeed(files),
 );
+
+/** The docs with the spec and the floors of the rules, and each install command that names `effect`. */
+const readDocs = Effect.fn("readDocs")(function* (
+  effectRange: string,
+  engines: typeof Engines.Type,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const docs = yield* trackedDocs;
+
+  const docRewrites = yield* Effect.forEach(docs, (file) =>
+    Effect.map(fs.readFileString(path.join(root, file)), (text) => ({
+      file,
+      text,
+      rewritten: text
+        .replace(effectSpec, `effect@${effectRange}`)
+        .replace(floor("Node"), `Node ${engines.node.replace(">=", "")}`)
+        .replace(floor("Bun"), `Bun ${engines.bun.replace(">=", "")}`),
+    })),
+  );
+
+  const installProblems = docRewrites
+    .filter((doc) => effectInstall.test(doc.text))
+    .map((doc) => `${doc.file}: an install command names effect. The package manager installs it.`);
+
+  return { docRewrites, installProblems };
+});
 
 const check = Flag.Boolean("check").pipe(
   Flag.withDescription("Fail when a file differs or a rule breaks, without a change."),
@@ -187,12 +234,17 @@ const command = Command.make("versions", { check }, (input) =>
       }),
     );
 
-    const problems = specProblems(
-      packages.flatMap((item) => dependenciesOf(item.file, item.manifest)),
-      dependenciesOf("package.json", rootManifest),
-      new Set(packages.map((item) => item.manifest.name)),
-      rootManifest.workspaces.catalog,
-    );
+    const lock = yield* fs.readFileString(path.join(root, "bun.lock"));
+
+    const problems = [
+      ...lockProblems(lock, rootManifest.workspaces.catalog["effect"]?.replace(/^~/u, "")),
+      ...specProblems(
+        packages.flatMap((item) => dependenciesOf(item.file, item.manifest)),
+        dependenciesOf("package.json", rootManifest),
+        new Set(packages.map((item) => item.manifest.name)),
+        rootManifest.workspaces.catalog,
+      ),
+    ];
 
     const effectRange = rootManifest.workspaces.catalog["effect"];
 
@@ -213,18 +265,7 @@ const command = Command.make("versions", { check }, (input) =>
       .filter((item) => item.rewritten !== item.text)
       .map((item) => ({ file: item.file, text: item.rewritten }));
 
-    const docs = yield* trackedDocs;
-
-    const docRewrites = yield* Effect.forEach(docs, (file) =>
-      Effect.map(fs.readFileString(path.join(root, file)), (text) => ({
-        file,
-        text,
-        rewritten: text
-          .replace(effectSpec, `effect@${effectRange}`)
-          .replace(floor("Node"), `Node ${engines.node.replace(">=", "")}`)
-          .replace(floor("Bun"), `Bun ${engines.bun.replace(">=", "")}`),
-      })),
-    );
+    const { docRewrites, installProblems } = yield* readDocs(effectRange, engines);
 
     const rewrites: ReadonlyArray<Rewrite> = [
       ...manifestRewrites,
@@ -236,6 +277,7 @@ const command = Command.make("versions", { check }, (input) =>
     if (input.check) {
       const all = [
         ...problems,
+        ...installProblems,
         ...rewrites.map(
           (rewrite) =>
             `${rewrite.file}: differs from the root manifest or the catalog. Run \`bun run versions\`.`,
@@ -257,11 +299,11 @@ const command = Command.make("versions", { check }, (input) =>
 
     yield* Console.log(`Wrote ${rewrites.length} files.`);
 
-    return yield* problems.length === 0
+    const failed = [...problems, ...installProblems];
+
+    return yield* failed.length === 0
       ? Effect.void
-      : Effect.fail(
-          new ScriptError({ detail: `The version check failed:\n${problems.join("\n")}` }),
-        );
+      : Effect.fail(new ScriptError({ detail: `The version check failed:\n${failed.join("\n")}` }));
   }),
 );
 

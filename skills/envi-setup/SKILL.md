@@ -18,18 +18,22 @@ node -e 'const { parseEnv } = require("node:util"); const { readFileSync } = req
 
 ## 1. Install
 
-Envi needs the exact `effect` version that its peer dependency names:
+Install Envi and the 1Password provider with the package manager of the project:
+
+```sh
+bun add @kynnyhsap/envi @kynnyhsap/envi-1password
+```
+
+Envi asks for `effect` as a peer dependency. The package manager installs it when the project has
+none. Read the range of the peer:
 
 ```sh
 npm view @kynnyhsap/envi peerDependencies.effect
 ```
 
-Install Envi, the 1Password provider, and that `effect` version with the package manager of the
-project:
-
-```sh
-bun add @kynnyhsap/envi @kynnyhsap/envi-1password "effect@<version>"
-```
+If the project has `effect` already, keep its version. If that version is outside the range, tell
+the user, and do not change it without asking. In a pnpm project, add `effect` with that range,
+because the config imports `effect/Schema`.
 
 Then read the docs of the installed version: `bunx envi docs show getting-started`, or
 `npx envi docs show getting-started`.

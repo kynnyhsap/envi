@@ -31,14 +31,11 @@ const packages = [
   { folder: "packages/onepassword", manifest: onePasswordManifest },
 ] as const;
 
-/** The peer range of `effect`, the way the README install command asks for it. */
-const effectRange = workspaceManifest.workspaces.catalog.effect;
-
 /**
  * The lowest `effect` that the peer range allows. A project that locked this version before it
  * installs Envi must get no `@effect/*` package that asks for a newer `effect`.
  */
-const effectFloor = effectRange.replace(/^~/u, "");
+const effectFloor = workspaceManifest.workspaces.catalog.effect.replace(/^~/u, "");
 
 /** The file name that `npm pack` and `bun pm pack` give a tarball. */
 const tarballName = (manifest: { readonly name: string; readonly version: string }) =>
@@ -63,7 +60,7 @@ const secretValue = "postgres://packaged";
  * The manifest of the fresh project. Bun looks up the peer of the provider on the registry, and
  * the registry has no Envi before the first publish. The override points that peer at the tarball.
  */
-const projectManifest = (tarballs: string, effect: string) => {
+const projectManifest = (tarballs: string, effect: string | undefined) => {
   const [envi, onePassword] = packages.map(
     (item) => `file:${tarballs}/${tarballName(item.manifest)}`,
   );
@@ -75,6 +72,7 @@ const projectManifest = (tarballs: string, effect: string) => {
     dependencies: {
       [enviManifest.name]: envi,
       [onePasswordManifest.name]: onePassword,
+      // `JSON.stringify` leaves out an `effect` that is undefined.
       effect,
     },
     overrides: { [enviManifest.name]: envi },
@@ -163,7 +161,11 @@ class Project extends Context.Service<
   { readonly directory: string; readonly installLog: string }
 >()("Project") {}
 
-const installedProject = (installer: Installer, effect = effectRange) =>
+/**
+ * A fresh project that installed both tarballs. Without `effect`, the project is one of a user who
+ * does not use Effect, and the package manager installs the peer.
+ */
+const installedProject = (installer: Installer, effect?: string) =>
   Layer.effect(
     Project,
     Effect.gen(function* () {

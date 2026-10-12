@@ -6,6 +6,10 @@ on:
   pull_request:
   # The release workflow runs every job of CI before it publishes.
   workflow_call:
+  # The fresh install of `package.test.ts` gets the newest patch of `effect`. A daily run fails on
+  # main when a new patch breaks Envi, because a new patch needs no change in the repo.
+  schedule:
+    - cron: "0 7 * * *"
 
 permissions:
   contents: read
