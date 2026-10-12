@@ -86,6 +86,7 @@ export const cleared = {
   OTEL_TRACES_EXPORTER: undefined,
   OTEL_LOGS_EXPORTER: undefined,
   TRACEPARENT: undefined,
+  GITHUB_ENV: undefined,
 };
 
 export interface Sandbox {

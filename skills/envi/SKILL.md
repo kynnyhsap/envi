@@ -46,6 +46,7 @@ you remember, because they match the installed version.
 | Resolve every secret again      | `envi sync --refresh`                      |
 | Use another stage               | `envi run --stage production -- <command>` |
 | Find the reference of a secret  | `envi find <name>`                         |
+| Pass secrets to GitHub Actions  | `envi export --format github --only <var>` |
 
 A flag follows its command, and the flags of `envi run` come before `--`.
 

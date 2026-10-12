@@ -59,9 +59,11 @@ export const CacheFailureSchema = Schema.Enum(CacheFailure);
 
 export type CacheFailure = typeof CacheFailureSchema.Type;
 
-/** The reasons why `envi export --output` writes no file. */
+/** The reasons why `envi export` writes no file: the file of `--output`, or of `GITHUB_ENV`. */
 export const ExportFileFailure = {
   WriteFailed: "WriteFailed",
+  /** The `github` format runs without `GITHUB_ENV`, outside a GitHub Actions step. */
+  NoGithubEnv: "NoGithubEnv",
 } as const;
 
 /** The schema of `ExportFileFailure`. */
@@ -127,6 +129,7 @@ interface Catalog {
   readonly DeriveError: string;
   readonly VarsError: string;
   readonly UnknownStageError: string;
+  readonly UnknownVarError: string;
   readonly CacheError: Readonly<Record<CacheFailure, string>>;
   readonly ExportError: string;
   readonly ExportFileError: Readonly<Record<ExportFileFailure, string>>;
@@ -169,6 +172,8 @@ export const hints: Catalog = {
   VarsError: "Fix each failed var. Each failure has its own hint. `envi check` lists all failures.",
   UnknownStageError:
     "Pass a declared stage with `--stage` or `ENVI_STAGE`, or add the stage to `stages` in the config.",
+  UnknownVarError:
+    "Pass only the vars of the stage to `--only` or `only`. Run `envi inspect --stage <stage>` to list them.",
   CacheError: {
     Unreadable:
       "Check the permissions of the cache directory, or remove the entries with `envi cache clear`.",
@@ -180,9 +185,11 @@ export const hints: Catalog = {
       "Another Envi process holds the cache lock. Wait for it to finish, then run the command again.",
   },
   ExportError:
-    "Export with `--format json`, or remove the characters that dotenv cannot quote from the value.",
+    "Export with `--format json`. For `dotenv`, remove the characters that dotenv cannot quote from the value. For `github`, name the var with letters, digits, and `_`, not first a digit.",
   ExportFileError: {
     WriteFailed: "Check that the folder of the file exists and is writable.",
+    NoGithubEnv:
+      "Run `--format github` in a step of GitHub Actions, which sets `GITHUB_ENV`. Elsewhere, use `--format dotenv` or `--format json`.",
   },
   SettingsError: "Fix the value of the setting that the error names, or remove it.",
   RunError: {
@@ -377,6 +384,17 @@ export class UnknownStageError extends EnviError<UnknownStageError>()(
   },
 ) {}
 
+/** `only` names a var that the stage does not declare. `keys` holds each such name. */
+export class UnknownVarError extends EnviError<UnknownVarError>()(
+  "UnknownVarError",
+  { stage: Schema.String, keys: Schema.Array(Schema.String) },
+  {
+    summary: (error) =>
+      `Envi var is not declared in the stage ${error.stage}: ${error.keys.join(", ")}`,
+    hint: hints.UnknownVarError,
+  },
+) {}
+
 /** The cache failed as a whole. One corrupt entry is not a failure: Envi treats it as a miss. */
 export class CacheError extends ReasonError<CacheError>()(
   "CacheError",
@@ -388,18 +406,21 @@ export class CacheError extends ReasonError<CacheError>()(
   },
 ) {}
 
-/** An export format cannot represent the value of one var. The error never holds the value. */
+/**
+ * An export format cannot represent one var: a value that dotenv cannot quote, or a name that the
+ * file of `GITHUB_ENV` cannot hold. The error never holds the value.
+ */
 export class ExportError extends EnviError<ExportError>()(
   "ExportError",
   { key: Schema.String, format: Schema.String },
   {
     summary: (error) =>
-      `Envi export cannot represent a value: ${error.key} does not fit the ${error.format} format`,
+      `Envi export cannot represent a var: ${error.key} does not fit the ${error.format} format`,
     hint: hints.ExportError,
   },
 ) {}
 
-/** Envi wrote no export file. `path` is the target file. */
+/** Envi wrote no export file. `path` is the target file, or `$GITHUB_ENV` when it is not set. */
 export class ExportFileError extends ReasonError<ExportFileError>()(
   "ExportFileError",
   ExportFileFailureSchema,
@@ -469,6 +490,7 @@ export const AnyEnviErrorSchema = Schema.Union([
   DeriveError,
   VarsError,
   UnknownStageError,
+  UnknownVarError,
   CacheError,
   ExportError,
   ExportFileError,

@@ -20,7 +20,10 @@ const key = await envi.resolve(op("payments", "stripe", "secret-key")); // one s
 ```
 
 The client also has `run`, `sync`, `check`, `inspect`, `export`, `find(queries)`, and
-`cache.path`, `cache.list`, and `cache.clear`. Each returns the report that `--json` prints. `syncAll(clients)` syncs several
+`cache.path`, `cache.list`, and `cache.clear`. Each returns the report that `--json` prints.
+`export(format, { only })` returns the text of the format, and `only` works as `--only`. The
+`github` format prints the mask commands on stdout, appends the vars to the file of `GITHUB_ENV`,
+and returns an empty string, as `envi export --format github` does. `syncAll(clients)` syncs several
 clients with one call for each shared provider. A var that names a provider outside its own config
 fails with `UnknownProvider`, as in `check`. Configs with different cache settings or `strict`
 resolve in separate batches. Every client must have the same overrides: the same provider

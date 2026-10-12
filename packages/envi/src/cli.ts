@@ -24,6 +24,7 @@ import {
   ConfigLoadError,
   ConfigLoadFailure,
   isEnviError,
+  SettingsError,
 } from "./core/Errors.ts";
 import * as ExportFile from "./core/ExportFile.ts";
 import * as Keychain from "./core/Keychain.ts";
@@ -401,25 +402,45 @@ const exportCommand = Command.make(
       Flag.withDescription("Write to this file with the mode 0600."),
       Flag.optional,
     ),
+    only: Flag.String("only").pipe(
+      Flag.withDescription("Export only this var. Repeat the flag for several vars."),
+      Flag.atLeast(0),
+    ),
   },
   (flags) =>
     Effect.gen(function* () {
+      const format = flags.json ? ExportFormat.Json : flags.format;
+
+      // `github` appends the vars to the file of `GITHUB_ENV`, so it has no output of its own.
+      if (format === ExportFormat.Github && Option.isSome(flags.output)) {
+        yield* new SettingsError({
+          name: "--output",
+          expected: "no file with --format github, which writes to GITHUB_ENV",
+        });
+      }
+
       const config = yield* loadOneConfig(flags);
 
       const text = yield* Envi.Envi.use((envi) =>
-        envi.export(config, flags.json ? ExportFormat.Json : flags.format, {
+        envi.export(config, format, {
           ...loadOptions(flags),
           redact: Option.getOrUndefined(flags.redact),
+          only: flags.only.length > 0 ? flags.only : undefined,
         }),
       ).pipe(Effect.provide(enviLayer(flags, config.cache)));
 
-      yield* Option.match(flags.output, {
-        onNone: () => writeStdout(text),
-        onSome: (file) => ExportFile.write(file, text),
-      });
+      // `github` already printed its mask commands and wrote the file of `GITHUB_ENV`.
+      if (format !== ExportFormat.Github) {
+        yield* Option.match(flags.output, {
+          onNone: () => writeStdout(text),
+          onSome: (file) => ExportFile.write(file, text),
+        });
+      }
     }).pipe(handle(flags.json, CommandName.Export)),
 ).pipe(
-  Command.withDescription("Print the resolved vars with real values, or write them to a file."),
+  Command.withDescription(
+    "Print the resolved vars with real values, write them to a file, or pass them to GitHub Actions.",
+  ),
 );
 
 // `run` has no `--json`: the child owns stdout.
