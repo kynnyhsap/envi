@@ -1,10 +1,10 @@
 name: Effect release
 
-# Envi releases a new version for each new Effect release. Dependabot skips a Bun catalog
-# (dependabot/dependabot-core#14320), so this workflow opens an issue when npm has an Effect
-# version newer than the floor of the `effect` entry of the catalog. Effect publishes its packages
-# hours or a day apart, so the workflow waits until npm has every `@effect/*` package of the
-# catalog at that version too.
+# The `effect` peer of Envi accepts every patch of one minor version, and the daily CI run tests
+# the newest patch. A new minor version needs a new Envi release. Dependabot skips a Bun catalog
+# (dependabot/dependabot-core#14320), so this workflow opens an issue when npm has a new minor
+# version of `effect`. Effect publishes its packages hours or a day apart, so the workflow waits
+# until npm has every `@effect/*` package of the catalog at the first patch of that minor version.
 
 on:
   schedule:
@@ -29,20 +29,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           current=$(jq -r '.workspaces.catalog.effect' package.json)
-          # The versions at or above the catalog entry.
-          newest=$(npm view "effect@>=${current#\~}" version --json | jq -r 'if type == "array" then last else . end')
+          floor=${current#\~}
+          # The newest version at or above the floor.
+          newest=$(npm view "effect@>=$floor" version --json | jq -r 'if type == "array" then last else . end')
 
-          if [ "$newest" = "${current#\~}" ]; then
-            echo "The catalog has the newest Effect: $current."
+          if [ "${newest%.*}" = "${floor%.*}" ]; then
+            echo "The range $current covers effect@$newest. The daily CI run tests it."
             exit 0
           fi
 
-          # Each `@effect/*` package of the catalog at that version. A later run retries a missing one.
+          # The first patch of the new minor version, for `effect` and each `@effect/*` package.
+          target="${newest%.*}.0"
           missing=""
-          for name in $(jq -r '.workspaces.catalog | keys[] | select(startswith("@effect/"))' package.json); do
-            if ! answer=$(npm view "$name@$newest" version --json 2>/dev/null); then
+          for name in effect $(jq -r '.workspaces.catalog | keys[] | select(startswith("@effect/"))' package.json); do
+            if ! answer=$(npm view "$name@$target" version --json 2>/dev/null); then
               if [ "$(echo "$answer" | jq -r '.error.code? // empty')" != "E404" ]; then
-                echo "npm view $name@$newest failed."
+                echo "npm view $name@$target failed."
                 exit 1
               fi
 
@@ -51,20 +53,20 @@ jobs:
           done
 
           if [ -n "$missing" ]; then
-            echo "npm has effect@$newest, but not yet:$missing."
+            echo "npm has effect@$newest, but not yet$missing at $target."
             exit 0
           fi
 
-          title="Move to effect@$newest"
+          title="Move to effect@~$target"
 
           if [ -n "$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[].number')" ]; then
-            echo "An open issue already asks for effect@$newest."
+            echo "An open issue already asks for effect@~$target."
             exit 0
           fi
 
-          gh issue create --title "$title" --body "npm has \`effect@$newest\`. The catalog asks for \`$current\`.
+          gh issue create --title "$title" --body "npm has \`effect@$newest\`, a new minor version. The catalog asks for \`$current\`.
 
-          1. In the catalog of the root \`package.json\`, set \`effect\` to \`~$newest\` and every \`@effect/*\` entry to \`$newest\`.
-          2. Run \`bun install\` and \`bun run versions\`.
+          1. In the catalog of the root \`package.json\`, set \`effect\` to \`$target\` and every \`@effect/*\` entry to \`$target\`. Run \`bun install\`, then set \`effect\` back to \`~$target\` and run \`bun install\` again, so the lockfile tests the floor.
+          2. Run \`bun run versions\`.
           3. Run \`bun run verify\`, and fix every import that the release moved.
           4. Merge the change, and release Envi."

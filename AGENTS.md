@@ -92,16 +92,21 @@ This repository is public. These rules have no exception.
   environment variable, config key, default.
 - **One copy of `effect`.** `effect` is a required peer dependency. The config, the SDK, and the
   code of the user share one copy, because the CLI loads the config and its schemas into its own
-  process. The build never bundles. The peer is a `~` range of the minor version that CI tests,
-  because `effect/cli` and `effect/process` can break in a minor version. Its floor is the patch
-  version that CI tests. Envi releases a new version for each new Effect release. The
-  `effect-release` workflow opens an issue when npm has a newer Effect and every `@effect/*`
-  package of the catalog at that version, because Effect publishes its packages hours or a day
-  apart. A global `envi` starts the local `envi` of the project. `envi` depends on
-  `@effect/platform-node-shared`, at the floor of the `effect` range, exactly. Each `@effect/*`
-  release asks for `effect` of at least its own version, so a range would give a user who holds
-  the floor of `effect` a newer `@effect/*` package and a peer conflict. `envi` does not depend
-  on `@effect/platform-node`, because that package asks for `redis` as a peer, and npm installs
+  process. The build never bundles. npm, pnpm, and Bun install a missing peer, so a user who does
+  not use Effect never names `effect`, and a user who uses Effect keeps their own version. The
+  peer is a `~` range of one minor version, because `effect/cli` and `effect/process` can break in
+  a minor version. Its floor is the oldest patch that Envi needs, and it rises only when Envi
+  needs a fix or an API of a newer patch. Never raise it only because Effect released a patch: a
+  higher floor makes every user update `effect`. The lockfile resolves `effect` to the floor, so
+  the tests run on it, and the fresh install of `package.test.ts` runs on the newest patch. CI
+  runs every day, so a new patch that breaks Envi fails CI on `main`. A new minor version of
+  Effect needs a new Envi release. The `effect-release` workflow opens an issue when npm has a new
+  minor version and every `@effect/*` package of the catalog at that version, because Effect
+  publishes its packages hours or a day apart. A global `envi` starts the local `envi` of the
+  project. `envi` depends on `@effect/platform-node-shared`, at the floor of the `effect` range,
+  exactly. Each `@effect/*` release asks for `effect` of at least its own version, so a newer one
+  would make a user with an older patch update `effect`. `envi` does not depend on
+  `@effect/platform-node`, because that package asks for `redis` as a peer, and npm installs
   every peer.
 - **One version for every package.** Envi and every provider package share one version, the way
   the Effect v4 packages do. A release bumps every package together. A provider asks for `^` that
@@ -219,8 +224,9 @@ not published yet. `scripts/versions.ts` enforces the version rules:
 - `effect` and every `@effect/*` entry of the catalog share one version. The `effect` entry is a
   `~` range, and it is the peer range of the packages. Every `@effect/*` entry is the floor of
   that range, exactly.
-- Each README and each docs page asks for the `effect` spec of the catalog in its install
-  command, and names the floors of `engines`.
+- `bun.lock` resolves `effect` to the floor of the catalog range.
+- An install command names no `effect`. Each README and each docs page that names an `effect`
+  spec names the one of the catalog, and names the floors of `engines`.
 
 - Every change goes through a pull request against `main`. Do not commit to `main` directly.
   CI must pass before a merge.

@@ -8,14 +8,15 @@ description: "Install Envi, write envi.config.ts, and run a command with the var
 ## Install
 
 ```sh
-bun add @kynnyhsap/envi @kynnyhsap/envi-1password "effect@~4.0.3"
+bun add @kynnyhsap/envi @kynnyhsap/envi-1password
 ```
 
-The package is `@kynnyhsap/envi`, and its command is `envi`. `effect` is a peer dependency, so the
-project has one copy of it. Envi needs `effect` 4. Envi asks for the patch versions of one minor
-version of `effect`, from the patch version that its CI tests, because a minor version of Effect
-can break `effect/cli`. Use that range in the project. Each Envi release moves to the newest Effect
-release.
+The package is `@kynnyhsap/envi`, and its command is `envi`. Envi asks for `effect@~4.0.0` as a
+peer dependency, so the project and Envi share one copy of `effect`. npm, pnpm, and Bun install
+`effect` with Envi when the project has none. A project that uses Effect keeps its own version:
+Envi accepts every patch of that range. A minor version of Effect can break `effect/cli`, so a new
+minor version needs a new Envi release. The config imports `effect/Schema`. The default linker of
+pnpm hides a package that the project does not list, so add `effect@~4.0.0` to a pnpm project.
 `@kynnyhsap/envi-1password` installs `@1password/sdk`. A global `envi` starts the local `envi` of
 the project.
 
